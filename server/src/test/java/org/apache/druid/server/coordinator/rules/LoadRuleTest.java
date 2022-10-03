@@ -63,6 +63,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -733,11 +734,11 @@ public class LoadRuleTest
     ServerHolder holder4 = createServerHolder("tier2", mockPeon4, false);
 
     EasyMock.expect(mockBalancerStrategy.findNewSegmentHomeReplicator(segment, ImmutableList.of(holder2)))
-            .andReturn(holder2);
+            .andReturn(Collections.singletonList(holder2).iterator());
     EasyMock.expect(mockBalancerStrategy.findNewSegmentHomeReplicator(segment, ImmutableList.of(holder4, holder3)))
-            .andReturn(holder3);
+            .andReturn(Collections.singletonList(holder3).iterator());
     EasyMock.expect(mockBalancerStrategy.findNewSegmentHomeReplicator(segment, ImmutableList.of(holder4)))
-            .andReturn(holder4);
+            .andReturn(Collections.singletonList(holder4).iterator());
 
     EasyMock.replay(throttler, mockPeon1, mockPeon2, mockPeon3, mockPeon4, mockBalancerStrategy);
 

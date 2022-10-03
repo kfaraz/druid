@@ -19,13 +19,11 @@
 
 package org.apache.druid.server.coordinator;
 
-import com.google.common.collect.HashBasedTable;
-import com.google.common.collect.Table;
 import org.apache.druid.java.util.emitter.EmittingLogger;
 import org.apache.druid.timeline.DataSegment;
-import org.apache.druid.timeline.SegmentId;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashSet;
@@ -34,20 +32,31 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 public class SegmentLoadManager
 {
-  // TODO Tasks
-  //  server holder should have canLoad()
-  //    accounts for load queue size
-  //    available disk space and if it is already loading segment or not
-  //   server holder can also have canDrop() which checks if you basically already have the segment loaded
+  /**
+   * TODO:
+   * how to get the current number of loading and loaded replicas
+   * segment replicant lookup has it, and is initialized at the start of the run
+   * we can either get a more recent number
+   * or we can just work with the replicant lookup itself
+   * pros: already exists
+   * cons: somewhat stale (not really an issue, I feel) it just means that we would be skipping this run
+   * and assigning/dropping things in the next run
+   * where do you need to fetch the current number of replicas in the new flow?
+   * it is used in assignment in the old flow, so not really needed here!
+   */
+
+  //  ServerHolder
+  //    should load/drop be initiated here or in the load manager itself
+  //    pros would be easier tracking of metrics
+  //    all the callbacks living in one place
+  //    we could still just call one method to do the stuff
   //  loading
-  //    account for disk space and load queue size
+  //    replica prioritization and throttling
   //  balancing
   //  snapshots
   //  logging
@@ -87,25 +96,6 @@ public class SegmentLoadManager
 
   private final AtomicBoolean runInProgress = new AtomicBoolean(false);
 
-  private final Table<SegmentId, String, String> pendingActions = HashBasedTable.create();
-  private final Table<SegmentId, String, String> completedActions = HashBasedTable.create();
-
-  // TODO: ensure that there is atmost a single status for a single server
-  private final ConcurrentMap<SegmentId, Map<String, List<SegmentStatus>>> segmentStatusPerTier
-      = new ConcurrentHashMap<>();
-
-  private static class SegmentStatus
-  {
-    private final ServerHolder server;
-    private SegmentState state;
-
-    private SegmentStatus(ServerHolder server, SegmentState state)
-    {
-      this.server = server;
-      this.state = state;
-    }
-  }
-
   private volatile DruidCluster cluster;
   private volatile BalancerStrategy balancerStrategy;
   private volatile CoordinatorStats stats;
@@ -124,12 +114,7 @@ public class SegmentLoadManager
     this.cluster = cluster;
     runInProgress.set(true);
 
-    // add delta to the cluster
-    // where do we keep the delta??
-    // delta could be another DruidCluster containing servers, but then we wouldn't know what has been "dropped"
-    // so basically just a set of finished queue items 👍
-    // Map<String, Request> successfullyFinishedOperations
-    // Map<String, Request> inProgressOperations??
+    // TODO: synchronize delta in each ServerHolder
   }
 
   public void finishRun()
@@ -165,13 +150,13 @@ public class SegmentLoadManager
             -> updateReplicasOnTier(segment, tier, targetReplicaCount)
     );
 
-    // Remove the segment from dropTiers if ???
-    // TODO: finalize and justify the condition
-    final Map<String, List<SegmentStatus>> segmentStatus = segmentStatusPerTier
-        .getOrDefault(segment.getId(), Collections.emptyMap());
+    // Find the minimum number of segments required for fault tolerance
+    final int totalTargetReplicas = tierToReplicaCount.values().stream()
+                                                      .reduce(0, Integer::sum);
+    final int minLoadedSegments = totalTargetReplicas > 1 ? 2 : 1;
 
+    // Drop segment from unneeded tiers if requirement is met across target tiers
     final int loadedCount = 1;
-    final int minLoadedSegments = tierToReplicaCount.size() > 1 ? 2 : 1;
     if (loadedCount < minLoadedSegments) {
       return;
     }
@@ -183,13 +168,13 @@ public class SegmentLoadManager
     }
   }
 
+  // Useful for
+  // - getting current status
+  // - count of underreplicated segments?
+  // inventory view gives count of segments already loaded
+  // this can also include count of segments that are in the queue, so a useful parameter
   public Map<String, Integer> getCurrentReplicas(String segment)
   {
-    // Useful for
-    // - getting current status
-    // - count of underreplicated segments?
-    // inventory view gives count of segments already loaded
-    // this can also include count of segments that are in the queue, so a useful parameter
 
     return Collections.emptyMap();
   }
@@ -197,47 +182,30 @@ public class SegmentLoadManager
   private void updateReplicasOnTier(DataSegment segment, String tier, int targetCount)
   {
     final Map<SegmentState, List<ServerHolder>> serversByState = new EnumMap<>(SegmentState.class);
+    Arrays.stream(SegmentState.values())
+          .forEach(state -> serversByState.put(state, new ArrayList<>()));
     cluster.getHistoricalsByTier(tier).forEach(
         serverHolder -> serversByState
-            .computeIfAbsent(serverHolder.getSegmentState(segment), state -> new ArrayList<>())
+            .get(serverHolder.getSegmentState(segment))
             .add(serverHolder)
     );
 
-    int currentCount = 0;
-    int movingCount = 0;
-    for (SegmentState state : serversByState.keySet()) {
-      switch (state) {
-        case LOADED:
-        case LOADING:
-          currentCount += serversByState.get(state).size();
-          break;
-        case DROPPING:
-          currentCount -= serversByState.get(state).size();
-          break;
-        case MOVING_FROM:
-        case MOVING_TO:
-          movingCount += serversByState.get(state).size();
-          break;
-        default:
-          break;
-      }
-    }
-
+    final int currentCount = serversByState.get(SegmentState.LOADED).size()
+                             + serversByState.get(SegmentState.LOADING).size();
     if (targetCount == currentCount) {
       return;
     }
 
+    final int movingCount = serversByState.get(SegmentState.MOVING_TO).size();
     if (targetCount == 0 && movingCount > 0) {
-      // Cancel the MOVING_TO ops, their callback will cancel the MOVING_FROM ops
-      int cancelledOps = cancelOperations(
+      // Cancel the segment balancing moves, if any
+      int cancelledMoves = cancelOperations(
           SegmentState.MOVING_TO,
           segment,
           serversByState.get(SegmentState.MOVING_TO),
           movingCount
       );
     }
-
-    // TODO: update the actual states too!!!
 
     if (targetCount > currentCount) {
       int numReplicasToLoad = targetCount - currentCount;
@@ -247,11 +215,17 @@ public class SegmentLoadManager
           serversByState.get(SegmentState.DROPPING),
           numReplicasToLoad
       );
-      // TODO: metric here
 
       numReplicasToLoad -= cancelledDrops;
+      int numLoaded = serversByState.get(SegmentState.LOADED).size();
+      boolean primaryExists = numLoaded + cancelledDrops > 0;
       if (numReplicasToLoad > 0) {
-        // assign primary and replicas to this tier;
+        int successfulLoadsQueued = loadReplicas(
+            numReplicasToLoad,
+            segment,
+            serversByState.get(SegmentState.NONE),
+            primaryExists
+        );
       }
     } else {
       int numReplicasToDrop = currentCount - targetCount;
@@ -261,7 +235,6 @@ public class SegmentLoadManager
           serversByState.get(SegmentState.LOADING),
           numReplicasToDrop
       );
-      // TODO: metric here
 
       numReplicasToDrop -= cancelledLoads;
       if (numReplicasToDrop > 0) {
@@ -271,7 +244,6 @@ public class SegmentLoadManager
             serversByState.get(SegmentState.LOADED)
         );
       }
-      // TODO: final metric here
     }
   }
 
@@ -281,6 +253,10 @@ public class SegmentLoadManager
    */
   private int dropReplicas(int numToDrop, DataSegment segment, List<ServerHolder> eligibleServers)
   {
+    if (eligibleServers == null || eligibleServers.isEmpty()) {
+      return 0;
+    }
+
     final TreeSet<ServerHolder> eligibleLiveServers = new TreeSet<>();
     final TreeSet<ServerHolder> eligibleDyingServers = new TreeSet<>();
     for (ServerHolder server : eligibleServers) {
@@ -319,62 +295,78 @@ public class SegmentLoadManager
   {
     int numDropsQueued = 0;
     while (numToDrop > numDropsQueued && serverIterator.hasNext()) {
-      // TODO: update the SegmentStatus here
-      // TODO: callback should update the segment status and also the underlying DruidServer
-      // I wonder if segment status should just live inside the ServerHolder
-
       ServerHolder holder = serverIterator.next();
-      holder.getPeon().dropSegment(segment, null);
+      holder.dropSegment(segment);
       numDropsQueued++;
     }
 
     return numDropsQueued;
   }
 
+  /**
+   * Queues load of {@code numToLoad} replicas of the segment on a tier.
+   * Returns the number of successfully queued load operations.
+   */
+  private int loadReplicas(
+      int numToLoad,
+      DataSegment segment,
+      List<ServerHolder> candidateServers,
+      boolean primaryExists
+  )
+  {
+    final List<ServerHolder> eligibleServers =
+        candidateServers.stream()
+                        .filter(server -> server.canLoadSegment(segment))
+                        .collect(Collectors.toList());
+
+    final Iterator<ServerHolder> serverIterator =
+        balancerStrategy.findNewSegmentHomeReplicator(segment, eligibleServers);
+    if (!serverIterator.hasNext()) {
+      // TODO: some noise here!
+    }
+
+    // Load the primary on this tier
+    int numLoadsQueued = 0;
+    if (!primaryExists && serverIterator.hasNext()) {
+      numLoadsQueued += loadReplica(segment, serverIterator.next(), true);
+    }
+
+    // Load the remaining replicas
+    while (numLoadsQueued < numToLoad && serverIterator.hasNext()) {
+      numLoadsQueued += loadReplica(segment, serverIterator.next(), false);
+    }
+
+    if (numToLoad > numLoadsQueued) {
+      log.warn("I have no servers serving [%s]?", segment.getId());
+    }
+
+    return numLoadsQueued;
+  }
+
+  /**
+   * Queues load of a replica of the segment on the server.
+   */
+  private int loadReplica(DataSegment segment, ServerHolder server, boolean isPrimary)
+  {
+    // check replication throttling
+
+    server.loadSegment(segment);
+    return 1;
+  }
+
   private int cancelOperations(
       SegmentState state,
       DataSegment segment,
       List<ServerHolder> servers,
-      int requiredNumCancellations
+      int maxNumToCancel
   )
   {
     int numCancelled = 0;
-    for (ServerHolder server : servers) {
-      if (numCancelled >= requiredNumCancellations) {
-        break;
-      }
-
-      if (server.getSegmentState(segment) == state) {
-        numCancelled += cancelOperation(state, segment, server) ? 1 : 0;
-      }
+    for (int i = 0; i < servers.size() && numCancelled < maxNumToCancel; ++i) {
+      numCancelled += servers.get(i).cancelSegmentOperation(state, segment)
+                      ? 1 : 0;
     }
-
     return numCancelled;
-  }
-
-  private boolean cancelOperation(SegmentState state, DataSegment segment, ServerHolder server)
-  {
-    final boolean success;
-    switch (state) {
-      case LOADING:
-      case MOVING_TO:
-        success = server.getPeon().cancelLoad(segment);
-        break;
-      case DROPPING:
-      case MOVING_FROM:
-        success = server.getPeon().cancelDrop(segment);
-        break;
-      default:
-        success = false;
-    }
-
-    // TODO: cancelDrop is fine but cancelLoad may cancel a load as well as a MOVING_TO operation together
-
-    if (success) {
-      // TODO: set state to cancelled
-      // this should happen inside the ServerHolder itself
-    }
-    return success;
   }
 
 }

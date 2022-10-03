@@ -733,7 +733,7 @@ public class BalanceSegmentsTest
     }
 
     @Override
-    public ServerHolder findNewSegmentHomeReplicator(DataSegment proposalSegment, List<ServerHolder> serverHolders)
+    public Iterator<ServerHolder> findNewSegmentHomeReplicator(DataSegment proposalSegment, List<ServerHolder> serverHolders)
     {
       return delegate.findNewSegmentHomeReplicator(proposalSegment, serverHolders);
     }

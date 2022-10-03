@@ -19,7 +19,9 @@
 
 package org.apache.druid.server.coordinator;
 
+import com.google.common.base.Preconditions;
 import org.apache.druid.client.ImmutableDruidServer;
+import org.apache.druid.java.util.common.ISE;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.timeline.SegmentId;
@@ -29,6 +31,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 /**
+ *
  */
 public class ServerHolder implements Comparable<ServerHolder>
 {
@@ -105,6 +108,7 @@ public class ServerHolder implements Comparable<ServerHolder>
    * the percent of move operations diverted from normal balancer moves for this purpose by
    * {@link CoordinatorDynamicConfig#getDecommissioningMaxPercentOfMaxSegmentsToMove()}. The mechanism allows draining
    * segments from nodes which are planned for replacement.
+   *
    * @return true if the node is decommissioning
    */
   public boolean isDecommissioning()
@@ -131,17 +135,29 @@ public class ServerHolder implements Comparable<ServerHolder>
     return availableSize;
   }
 
+  /**
+   * Checks if this server can load the specified segment.
+   * <p>
+   * A load is possible only if the server meets all of the following criteria:
+   * <ul>
+   *   <li>is not already serving or loading the segment</li>
+   *   <li>is not being decommissioned</li>
+   *   <li>has not already exceeded the load queue limit in this run</li>
+   *   <li>has available disk space</li>
+   * </ul>
+   */
   public boolean canLoadSegment(DataSegment segment)
   {
     final SegmentState state = getSegmentState(segment);
 
-    return (maxLoadQueueSize == 0 || maxLoadQueueSize > segmentsQueuedForLoad)
+    return !isDecommissioning
+           && (maxLoadQueueSize == 0 || maxLoadQueueSize > segmentsQueuedForLoad)
            && getAvailableSize() >= segment.getSize()
-           && state != SegmentState.LOADED
-           && state != SegmentState.LOADING;
+           && state == SegmentState.NONE;
   }
 
-  public SegmentState getSegmentState(DataSegment segment) {
+  public SegmentState getSegmentState(DataSegment segment)
+  {
     return segmentStates.getOrDefault(segment.getId(), SegmentState.NONE);
   }
 
@@ -158,6 +174,63 @@ public class ServerHolder implements Comparable<ServerHolder>
   public boolean isDroppingSegment(DataSegment segment)
   {
     return getSegmentState(segment) == SegmentState.DROPPING;
+  }
+
+  public void loadSegment(DataSegment segment)
+  {
+    if (!canLoadSegment(segment)) {
+      throw new ISE("Cannot load segment because ...");
+    }
+
+    segmentStates.put(segment.getId(), SegmentState.LOADING);
+    peon.dropSegment(segment, success ->
+        segmentStates.put(
+            segment.getId(),
+            success ? SegmentState.LOADED : SegmentState.NONE
+        )
+    );
+    segmentsQueuedForLoad++;
+  }
+
+  /**
+   * Let's assume that this was not called in a callback of balancing.
+   * TODO: We will handle this later.
+   */
+  public void dropSegment(DataSegment segment)
+  {
+    if (!isServingSegment(segment)) {
+      throw new ISE("Only a loaded segment can be queued for drop");
+    }
+
+    segmentStates.put(segment.getId(), SegmentState.DROPPING);
+    peon.dropSegment(segment, success ->
+        segmentStates.put(
+            segment.getId(),
+            success ? SegmentState.NONE : SegmentState.LOADED
+        )
+    );
+  }
+
+  public boolean cancelSegmentOperation(SegmentState expectedState, DataSegment segment)
+  {
+    SegmentState currentState = segmentStates.get(segment.getId());
+    if (currentState != expectedState) {
+      return false;
+    }
+
+    final boolean success;
+    switch (expectedState) {
+      case LOADING:
+      case MOVING_TO:
+        success = peon.cancelLoad(segment);
+        break;
+      case DROPPING:
+        success = peon.cancelDrop(segment);
+        break;
+      default:
+        success = false;
+    }
+    return success;
   }
 
   public int getNumberOfSegmentsInQueue()

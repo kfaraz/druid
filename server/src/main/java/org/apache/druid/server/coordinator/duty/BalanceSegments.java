@@ -197,7 +197,6 @@ public class BalanceSegments implements CoordinatorDuty
 
     final BalancerStrategy strategy = params.getBalancerStrategy();
     final int maxIterations = 2 * maxSegmentsToMove;
-    final int maxToLoad = params.getCoordinatorDynamicConfig().getMaxSegmentsInNodeLoadingQueue();
     int moved = 0, unmoved = 0;
 
     Iterator<BalancerSegmentHolder> segmentsToMove;
@@ -237,9 +236,8 @@ public class BalanceSegments implements CoordinatorDuty
         // but filter out replicas that are already serving the segment, and servers with a full load queue
         final List<ServerHolder> toMoveToWithLoadQueueCapacityAndNotServingSegment =
             toMoveTo.stream()
-                    .filter(s -> s.getServer().equals(fromServer) ||
-                                 (!s.isServingSegment(segmentToMove) &&
-                                  (maxToLoad <= 0 || s.getNumberOfSegmentsInQueue() < maxToLoad)))
+                    .filter(s -> s.getServer().equals(fromServer)
+                                 || s.canLoadSegment(segmentToMove))
                     .collect(Collectors.toList());
 
         if (toMoveToWithLoadQueueCapacityAndNotServingSegment.size() > 0) {

@@ -25,12 +25,8 @@ package org.apache.druid.server.coordinator;
 public enum SegmentState
 {
   NONE,
-  LOADED,
-
   LOADING,
-  DROPPING,
-  MOVING_FROM,
   MOVING_TO,
-
-  CANCELLED
+  LOADED,
+  DROPPING
 }
