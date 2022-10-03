@@ -28,30 +28,33 @@ import java.util.Set;
  * has been verified enough in production, CuratorLoadQueuePeon and this interface would be removed.
  */
 @Deprecated
-public abstract class LoadQueuePeon
+public interface LoadQueuePeon
 {
-  public abstract void start();
-  public abstract void stop();
+  void start();
+  void stop();
 
-  public abstract Set<DataSegment> getSegmentsToLoad();
+  Set<DataSegment> getSegmentsToLoad();
 
-  public abstract Set<DataSegment> getSegmentsToDrop();
+  Set<DataSegment> getSegmentsToDrop();
 
-  public abstract Set<DataSegment> getTimedOutSegments();
+  Set<DataSegment> getTimedOutSegments();
 
-  public abstract void unmarkSegmentToDrop(DataSegment segmentToLoad);
+  void unmarkSegmentToDrop(DataSegment segmentToLoad);
 
 
-  public abstract void markSegmentToDrop(DataSegment segmentToLoad);
+  void markSegmentToDrop(DataSegment segmentToLoad);
 
-  public abstract void loadSegment(DataSegment segment, LoadPeonCallback callback);
-  public abstract void dropSegment(DataSegment segment, LoadPeonCallback callback);
+  void loadSegment(DataSegment segment, LoadPeonCallback callback);
+  void dropSegment(DataSegment segment, LoadPeonCallback callback);
 
-  public abstract long getLoadQueueSize();
+  long getLoadQueueSize();
 
-  public abstract int getAndResetFailedAssignCount();
+  int getAndResetFailedAssignCount();
 
-  public abstract int getNumberOfSegmentsInQueue();
-  public abstract Set<DataSegment> getSegmentsMarkedToDrop();
+  int getNumberOfSegmentsInQueue();
+  Set<DataSegment> getSegmentsMarkedToDrop();
+
+  boolean cancelLoad(DataSegment segment);
+  boolean cancelDrop(DataSegment segment);
 
 }

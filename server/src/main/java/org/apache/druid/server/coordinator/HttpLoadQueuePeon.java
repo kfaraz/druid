@@ -51,6 +51,7 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -65,7 +66,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /**
  */
-public class HttpLoadQueuePeon extends LoadQueuePeon
+public class HttpLoadQueuePeon implements LoadQueuePeon
 {
   public static final TypeReference<List<DataSegmentChangeRequest>> REQUEST_ENTITY_TYPE_REF =
       new TypeReference<List<DataSegmentChangeRequest>>()
@@ -91,6 +92,7 @@ public class HttpLoadQueuePeon extends LoadQueuePeon
   private final ConcurrentSkipListSet<DataSegment> segmentsMarkedToDrop = new ConcurrentSkipListSet<>(
       DruidCoordinator.SEGMENT_COMPARATOR_RECENT_FIRST
   );
+  private final Set<DataSegment> activeRequestSegments = new HashSet<>();
 
   private final ScheduledExecutorService processingExecutor;
 
@@ -158,6 +160,7 @@ public class HttpLoadQueuePeon extends LoadQueuePeon
           segmentsToLoad.entrySet().iterator()
       );
 
+      activeRequestSegments.clear();
       while (newRequests.size() < batchSize && iter.hasNext()) {
         Map.Entry<DataSegment, SegmentHolder> entry = iter.next();
         if (entry.getValue().hasTimedOut()) {
@@ -165,6 +168,7 @@ public class HttpLoadQueuePeon extends LoadQueuePeon
           iter.remove();
         } else {
           newRequests.add(entry.getValue().getChangeRequest());
+          activeRequestSegments.add(entry.getKey());
         }
       }
     }
@@ -230,6 +234,7 @@ public class HttpLoadQueuePeon extends LoadQueuePeon
                             log.error("Server[%s] returned unknown state in status[%s].", serverId, e.getStatus());
                         }
                       }
+                      activeRequestSegments.clear();
                     }
                   }
                   catch (Exception ex) {
@@ -563,6 +568,17 @@ public class HttpLoadQueuePeon extends LoadQueuePeon
       });
     }
 
+    void requestCancelled()
+    {
+      callBackExecutor.execute(() -> {
+        for (LoadPeonCallback callback : callbacks) {
+          if (callback != null) {
+            callback.execute(false);
+          }
+        }
+      });
+    }
+
     @Override
     public String toString()
     {
@@ -598,6 +614,40 @@ public class HttpLoadQueuePeon extends LoadQueuePeon
     public DropSegmentHolder(DataSegment segment, LoadPeonCallback callback)
     {
       super(segment, new SegmentChangeRequestDrop(segment), callback);
+    }
+  }
+
+  @Override
+  public boolean cancelDrop(DataSegment segment)
+  {
+    return cancelOperation(segment, false);
+  }
+
+  @Override
+  public boolean cancelLoad(DataSegment segment)
+  {
+    return cancelOperation(segment, true);
+  }
+
+  /**
+   * Tries to cancel a load/drop operation. An load/drop request can be cancelled
+   * only if it has not already been sent to the corresponding server.
+   */
+  private boolean cancelOperation(DataSegment segment, boolean isLoad)
+  {
+    synchronized (lock) {
+      if (activeRequestSegments.contains(segment)) {
+        return false;
+      }
+
+      final SegmentHolder holder = isLoad ? segmentsToLoad.remove(segment)
+                                          : segmentsToDrop.remove(segment);
+      if (holder == null) {
+        return false;
+      }
+
+      holder.requestCancelled();
+      return true;
     }
   }
 

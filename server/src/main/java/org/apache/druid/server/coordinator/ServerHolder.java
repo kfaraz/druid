@@ -25,6 +25,8 @@ import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.timeline.SegmentId;
 
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  */
@@ -33,18 +35,34 @@ public class ServerHolder implements Comparable<ServerHolder>
   private static final Logger log = new Logger(ServerHolder.class);
   private final ImmutableDruidServer server;
   private final LoadQueuePeon peon;
+  private final int maxLoadQueueSize;
   private final boolean isDecommissioning;
+
+  private int segmentsQueuedForLoad = 0;
+
+  private final ConcurrentMap<SegmentId, SegmentState> segmentStates = new ConcurrentHashMap<>();
 
   public ServerHolder(ImmutableDruidServer server, LoadQueuePeon peon)
   {
-    this(server, peon, false);
+    this(server, peon, 0, false);
   }
 
   public ServerHolder(ImmutableDruidServer server, LoadQueuePeon peon, boolean isDecommissioning)
   {
+    this(server, peon, 0, isDecommissioning);
+  }
+
+  public ServerHolder(
+      ImmutableDruidServer server,
+      LoadQueuePeon peon,
+      int maxLoadQueueSize,
+      boolean isDecommissioning
+  )
+  {
     this.server = server;
     this.peon = peon;
     this.isDecommissioning = isDecommissioning;
+    this.maxLoadQueueSize = maxLoadQueueSize;
   }
 
   public ImmutableDruidServer getServer()
@@ -113,19 +131,33 @@ public class ServerHolder implements Comparable<ServerHolder>
     return availableSize;
   }
 
+  public boolean canLoadSegment(DataSegment segment)
+  {
+    final SegmentState state = getSegmentState(segment);
+
+    return (maxLoadQueueSize == 0 || maxLoadQueueSize > segmentsQueuedForLoad)
+           && getAvailableSize() >= segment.getSize()
+           && state != SegmentState.LOADED
+           && state != SegmentState.LOADING;
+  }
+
+  public SegmentState getSegmentState(DataSegment segment) {
+    return segmentStates.getOrDefault(segment.getId(), SegmentState.NONE);
+  }
+
   public boolean isServingSegment(DataSegment segment)
   {
-    return isServingSegment(segment.getId());
+    return getSegmentState(segment) == SegmentState.LOADED;
   }
 
   public boolean isLoadingSegment(DataSegment segment)
   {
-    return peon.getSegmentsToLoad().contains(segment);
+    return getSegmentState(segment) == SegmentState.LOADING;
   }
 
   public boolean isDroppingSegment(DataSegment segment)
   {
-    return peon.getSegmentsToDrop().contains(segment);
+    return getSegmentState(segment) == SegmentState.DROPPING;
   }
 
   public int getNumberOfSegmentsInQueue()
@@ -135,7 +167,7 @@ public class ServerHolder implements Comparable<ServerHolder>
 
   public boolean isServingSegment(SegmentId segmentId)
   {
-    return server.getSegment(segmentId) != null;
+    return segmentStates.get(segmentId) == SegmentState.LOADED;
   }
 
   @Override

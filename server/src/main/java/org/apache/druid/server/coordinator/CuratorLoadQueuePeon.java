@@ -63,7 +63,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * of the same or different methods.
  */
 @Deprecated
-public class CuratorLoadQueuePeon extends LoadQueuePeon
+public class CuratorLoadQueuePeon implements LoadQueuePeon
 {
   private static final EmittingLogger log = new EmittingLogger(CuratorLoadQueuePeon.class);
 
@@ -496,5 +496,17 @@ public class CuratorLoadQueuePeon extends LoadQueuePeon
     for (LoadPeonCallback callback : holder.snapshotCallbacks()) {
       callBackExecutor.submit(() -> callback.execute(success));
     }
+  }
+
+  @Override
+  public boolean cancelDrop(DataSegment segment)
+  {
+    return false;
+  }
+
+  @Override
+  public boolean cancelLoad(DataSegment segment)
+  {
+    return false;
   }
 }
