@@ -19,7 +19,6 @@
 
 package org.apache.druid.server.coordinator;
 
-import com.google.common.base.Preconditions;
 import org.apache.druid.client.ImmutableDruidServer;
 import org.apache.druid.java.util.common.ISE;
 import org.apache.druid.java.util.common.logger.Logger;
@@ -66,6 +65,10 @@ public class ServerHolder implements Comparable<ServerHolder>
     this.peon = peon;
     this.isDecommissioning = isDecommissioning;
     this.maxLoadQueueSize = maxLoadQueueSize;
+
+    server.iterateAllSegments().forEach(
+        segment -> segmentStates.put(segment.getId(), SegmentState.LOADED)
+    );
   }
 
   public ImmutableDruidServer getServer()

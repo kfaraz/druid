@@ -155,13 +155,15 @@ public class SegmentLoadManager
                                                       .reduce(0, Integer::sum);
     final int minLoadedSegments = totalTargetReplicas > 1 ? 2 : 1;
 
+    // TODO: get the loadedCount
     // Drop segment from unneeded tiers if requirement is met across target tiers
     final int loadedCount = 1;
     if (loadedCount < minLoadedSegments) {
       return;
     }
 
-    final Set<String> dropTiers = new HashSet<>(segmentStatus.keySet());
+    // TODO: find the dropTiers
+    final Set<String> dropTiers = new HashSet<>();
     dropTiers.removeAll(tierToReplicaCount.keySet());
     for (String dropTier : dropTiers) {
       updateReplicasOnTier(segment, dropTier, 0);
