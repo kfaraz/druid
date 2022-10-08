@@ -625,10 +625,10 @@ public class DruidCoordinator
     return ImmutableList.of(
         new LogUsedSegments(),
         new UpdateCoordinatorStateAndPrepareCluster(),
-        new RunRules(getSegmentLoadManager()),
+        new RunRules(segmentLoadManager),
         new UnloadUnusedSegments(),
         new MarkAsUnusedOvershadowedSegments(DruidCoordinator.this),
-        new BalanceSegments(getSegmentLoadManager())
+        new BalanceSegments(segmentLoadManager)
     );
   }
 

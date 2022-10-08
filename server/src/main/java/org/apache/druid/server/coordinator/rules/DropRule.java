@@ -33,7 +33,7 @@ public abstract class DropRule implements Rule
   @Override
   public void run(DataSegment segment, SegmentLoadManager loadManager)
   {
-
+    loadManager.deleteSegment(segment);
   }
 
   @Override

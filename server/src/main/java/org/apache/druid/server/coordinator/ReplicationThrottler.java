@@ -48,23 +48,44 @@ public class ReplicationThrottler
 
   private volatile int maxReplicasPerTier;
   private volatile int maxLifetime;
-  private volatile int maxTotalReplicas;
+  private volatile int maxTotalReplicasPerRun;
   private final AtomicInteger numAssignedReplicas = new AtomicInteger();
 
-  public void resetParams(int maxReplicasPerTier, int maxLifetime, int maxTotalReplicas)
+  /**
+   * Resets the replication throttling parameters for a new coordinator run.
+   *
+   * @param maxReplicasPerTier     Maximum number of replicas that can be
+   *                               actively loading on a tier at any given time.
+   * @param maxLifetime            Number of coordinator runs after which
+   *                               replica remaining in the queue is considered
+   *                               to be stuck and causes an alert.
+   * @param maxTotalReplicasPerRun Maximum number of replicas that can be
+   *                               assigned for loading in a single coordinator run.
+   */
+  public void resetParams(int maxReplicasPerTier, int maxLifetime, int maxTotalReplicasPerRun)
   {
     this.maxReplicasPerTier = maxReplicasPerTier;
     this.maxLifetime = maxLifetime;
-    this.maxTotalReplicas = maxTotalReplicas;
+    this.maxTotalReplicasPerRun = maxTotalReplicasPerRun;
     this.numAssignedReplicas.set(0);
   }
 
+  /**
+   * Updates the replication state for the given historical tiers for a new
+   * coordinator run. This involves:
+   * <ul>
+   *   <li>Sending alerts for tiers that have a replica stuck in the load queue.</li>
+   *   <li>Identifying the tiers that do not have any active replication in
+   *   progress. Only these tiers will be considered eligible for replication
+   *   in this run.</li>
+   * </ul>
+   */
   public void updateReplicationState(Set<String> tiers)
   {
-    tiers.forEach(this::update);
+    tiers.forEach(this::updateReplicationState);
   }
 
-  private void update(String tier)
+  private void updateReplicationState(String tier)
   {
     final ReplicatorSegmentHolder holder = currentlyReplicating;
     int size = holder.getNumProcessing(tier);
@@ -88,12 +109,11 @@ public class ReplicationThrottler
       allowedTiers.add(tier);
       holder.resetLifetime(tier);
     }
-
   }
 
   public boolean canCreateReplicant(String tier)
   {
-    return numAssignedReplicas.get() < maxTotalReplicas
+    return numAssignedReplicas.get() < maxTotalReplicasPerRun
            && allowedTiers.contains(tier)
            && !currentlyReplicating.isAtMaxReplicants(tier);
   }

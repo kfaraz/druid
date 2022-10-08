@@ -233,6 +233,12 @@ public class SegmentLoadManager
     }
   }
 
+  public void deleteSegment(DataSegment segment)
+  {
+    segmentsMetadataManager.markSegmentAsUnused(segment.getId());
+    runStats.addToGlobalStat("deletedCount", 1);
+  }
+
   public Map<String, Integer> getUnavailableSegmentCountPerDatasource()
   {
     if (replicantLookup == null) {
