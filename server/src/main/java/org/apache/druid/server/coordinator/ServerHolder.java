@@ -40,25 +40,26 @@ public class ServerHolder implements Comparable<ServerHolder>
   private final int maxLoadQueueSize;
   private final boolean isDecommissioning;
 
-  private int segmentsQueuedForLoad = 0;
+  private int segmentsQueuedForLoad;
+  private long sizeOfLoadingSegments;
 
   private final ConcurrentMap<SegmentId, SegmentState> segmentStates = new ConcurrentHashMap<>();
 
   public ServerHolder(ImmutableDruidServer server, LoadQueuePeon peon)
   {
-    this(server, peon, 0, false);
+    this(server, peon, false, 0);
   }
 
   public ServerHolder(ImmutableDruidServer server, LoadQueuePeon peon, boolean isDecommissioning)
   {
-    this(server, peon, 0, isDecommissioning);
+    this(server, peon, isDecommissioning, 0);
   }
 
   public ServerHolder(
       ImmutableDruidServer server,
       LoadQueuePeon peon,
-      int maxLoadQueueSize,
-      boolean isDecommissioning
+      boolean isDecommissioning,
+      int maxLoadQueueSize
   )
   {
     this.server = server;
@@ -66,9 +67,13 @@ public class ServerHolder implements Comparable<ServerHolder>
     this.isDecommissioning = isDecommissioning;
     this.maxLoadQueueSize = maxLoadQueueSize;
 
-    server.iterateAllSegments().forEach(
-        segment -> segmentStates.put(segment.getId(), SegmentState.LOADED)
-    );
+    for (DataSegment segment : peon.getSegmentsToLoad()) {
+      segmentStates.put(segment.getId(), SegmentState.LOADING);
+      sizeOfLoadingSegments += segment.getSize();
+    }
+    for (DataSegment segment : peon.getSegmentsToDrop()) {
+      segmentStates.put(segment.getId(), SegmentState.DROPPING);
+    }
   }
 
   public ImmutableDruidServer getServer()
@@ -98,7 +103,7 @@ public class ServerHolder implements Comparable<ServerHolder>
 
   public long getSizeUsed()
   {
-    return getCurrServerSize() + getLoadQueueSize();
+    return getCurrServerSize() + sizeOfLoadingSegments;
   }
 
   public double getPercentUsed()
@@ -121,21 +126,7 @@ public class ServerHolder implements Comparable<ServerHolder>
 
   public long getAvailableSize()
   {
-    long maxSize = getMaxSize();
-    long sizeUsed = getSizeUsed();
-    long availableSize = maxSize - sizeUsed;
-
-    log.debug(
-        "Server[%s], MaxSize[%,d], CurrSize[%,d], QueueSize[%,d], SizeUsed[%,d], AvailableSize[%,d]",
-        server.getName(),
-        maxSize,
-        getCurrServerSize(),
-        getLoadQueueSize(),
-        sizeUsed,
-        availableSize
-    );
-
-    return availableSize;
+    return getMaxSize() - getSizeUsed();
   }
 
   /**
@@ -151,6 +142,7 @@ public class ServerHolder implements Comparable<ServerHolder>
    */
   public boolean canLoadSegment(DataSegment segment)
   {
+    // TODO: can we load a segment that is in DROPPING state?
     final SegmentState state = getSegmentState(segment);
 
     return !isDecommissioning
@@ -161,12 +153,17 @@ public class ServerHolder implements Comparable<ServerHolder>
 
   public SegmentState getSegmentState(DataSegment segment)
   {
-    return segmentStates.getOrDefault(segment.getId(), SegmentState.NONE);
+    SegmentState state = segmentStates.get(segment.getId());
+    if (state != null) {
+      return state;
+    }
+
+    return isServingSegment(segment) ? SegmentState.LOADED : SegmentState.NONE;
   }
 
   public boolean isServingSegment(DataSegment segment)
   {
-    return getSegmentState(segment) == SegmentState.LOADED;
+    return server.getSegment(segment.getId()) != null;
   }
 
   public boolean isLoadingSegment(DataSegment segment)
@@ -186,12 +183,22 @@ public class ServerHolder implements Comparable<ServerHolder>
     }
 
     segmentStates.put(segment.getId(), SegmentState.LOADING);
-    peon.dropSegment(segment, success ->
-        segmentStates.put(
-            segment.getId(),
-            success ? SegmentState.LOADED : SegmentState.NONE
-        )
-    );
+    peon.loadSegment(segment, null);
+
+    sizeOfLoadingSegments += segment.getSize();
+    segmentsQueuedForLoad++;
+  }
+
+  public void moveSegment(DataSegment segment)
+  {
+    if (!canLoadSegment(segment)) {
+      throw new ISE("Cannot load segment because ...");
+    }
+
+    segmentStates.put(segment.getId(), SegmentState.MOVING_TO);
+    peon.loadSegment(segment, null);
+
+    sizeOfLoadingSegments += segment.getSize();
     segmentsQueuedForLoad++;
   }
 

@@ -30,16 +30,17 @@ public class BalanceSegmentsTester extends BalanceSegments
 
   public BalanceSegmentsTester(DruidCoordinator coordinator)
   {
-    super(coordinator);
+    super(coordinator.getSegmentLoadManager());
   }
 
   @Override
   protected boolean moveSegment(
       final BalancerSegmentHolder segment,
-      final ImmutableDruidServer toServer,
+      final ServerHolder toServerHolder,
       final DruidCoordinatorRuntimeParams params
   )
   {
+    final ImmutableDruidServer toServer = toServerHolder.getServer();
     final String toServerName = toServer.getName();
     final LoadQueuePeon toPeon = params.getLoadManagementPeons().get(toServerName);
 

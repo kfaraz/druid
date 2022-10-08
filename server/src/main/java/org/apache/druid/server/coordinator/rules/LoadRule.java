@@ -32,6 +32,7 @@ import org.apache.druid.server.coordinator.DruidCluster;
 import org.apache.druid.server.coordinator.DruidCoordinator;
 import org.apache.druid.server.coordinator.DruidCoordinatorRuntimeParams;
 import org.apache.druid.server.coordinator.ReplicationThrottler;
+import org.apache.druid.server.coordinator.SegmentLoadManager;
 import org.apache.druid.server.coordinator.SegmentReplicantLookup;
 import org.apache.druid.server.coordinator.ServerHolder;
 import org.apache.druid.timeline.DataSegment;
@@ -65,6 +66,12 @@ public abstract class LoadRule implements Rule
 
   // Cache to hold unused results from strategy call in assignPrimary
   private final Map<String, ServerHolder> strategyCache = new HashMap<>();
+
+  @Override
+  public void run(DataSegment segment, SegmentLoadManager loadManager)
+  {
+    loadManager.loadSegment(segment, getTieredReplicants());
+  }
 
   @Override
   public CoordinatorStats run(

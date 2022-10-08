@@ -19,6 +19,7 @@
 
 package org.apache.druid.server.coordinator;
 
+import org.apache.druid.client.ServerInventoryView;
 import org.apache.druid.java.util.emitter.EmittingLogger;
 import org.apache.druid.timeline.DataSegment;
 
@@ -37,30 +38,32 @@ import java.util.stream.Collectors;
 
 public class SegmentLoadManager
 {
+  // TODO:
+  //  1. balancing moves
+  //  2. replicant lookup
+  //  3. replication throttler
+  //  4. load queue modes
+  //  5. revise
+  //  6. logs, metrics
+  //  7. test
+  //  8. revise
+
+  // Since there are certain APIs, there is definitely a requirement of the current state of things
+  // We could keep an atomic reference in here
+  // Which we update once the current run finishes, that should have the latest state of things
+  // Is it fine for this to be a snapshot??
+  // we will have to figure this out today!!!!
+
+
+  // Why is SLM not a duty
+  //  Because its lifecycle during coordinator downtime is very important.
+  //  It needs to keep up with the activity in the load queues.
+
   /**
    * TODO:
    * how to get the current number of loading and loaded replicas
    * segment replicant lookup has it, and is initialized at the start of the run
-   * we can either get a more recent number
-   * or we can just work with the replicant lookup itself
-   * pros: already exists
-   * cons: somewhat stale (not really an issue, I feel) it just means that we would be skipping this run
-   * and assigning/dropping things in the next run
-   * where do you need to fetch the current number of replicas in the new flow?
-   * it is used in assignment in the old flow, so not really needed here!
    */
-
-  //  ServerHolder
-  //    should load/drop be initiated here or in the load manager itself
-  //    pros would be easier tracking of metrics
-  //    all the callbacks living in one place
-  //    we could still just call one method to do the stuff
-  //  loading
-  //    replica prioritization and throttling
-  //  balancing
-  //  snapshots
-  //  logging
-  //  metrics
 
   // TODO: More
   //  top level method to skip balancing or replication altogether
@@ -78,19 +81,7 @@ public class SegmentLoadManager
   //  - items stuck in a queue
   //  - server flickers
   //  - cluster starting, only one server available
-  //  - prioritization of availability, fault tolerance, disk space and full replication
-
-  // TODO: priorities
-  //  - availability
-  //  - fault tolerance
-  //  - disk space
-  //  - full replication
-
-  // TODO holding on to the ServerHolder
-  //  pros: easy and clean operations of load/drop/cancel/move
-  //  pros: clean update of segment state
-  //  cons: need to hold onto it
-  //  cons: might miss out on delta
+  //  - prioritization: availability, fault tolerance, disk space, full replication
 
   private static final EmittingLogger log = new EmittingLogger(SegmentLoadManager.class);
 
@@ -98,9 +89,31 @@ public class SegmentLoadManager
 
   private volatile DruidCluster cluster;
   private volatile BalancerStrategy balancerStrategy;
-  private volatile CoordinatorStats stats;
+  private volatile CoordinatorStats runStats;
 
-  public void startRun(DruidCluster cluster)
+  private final boolean isHttpLoading;
+  private final ServerInventoryView serverInventoryView;
+
+  // TODO: this could even be present inside the ReplicationThrottler
+  private int totalReplicasAssignedInRun = 0;
+
+  private volatile SegmentReplicantLookup replicantLookup;
+
+  public SegmentLoadManager(ServerInventoryView serverInventoryView, boolean isHttpLoading)
+  {
+    this.serverInventoryView = serverInventoryView;
+    this.isHttpLoading = isHttpLoading;
+  }
+
+  /**
+   * Would prefer to have something more like synchronize or update view.
+   * This click would come at the start of every run.
+   * <p>
+   * TODO: Should runInProgress even exist??
+   *
+   * @param cluster
+   */
+  public void startRun(DruidCluster cluster, CoordinatorDynamicConfig dynamicConfig)
   {
     if (runInProgress.get()) {
       return;
@@ -111,10 +124,18 @@ public class SegmentLoadManager
     // - current set of used segments
     // - overshadowed segments (2 types?)
 
+    // create replicant lookup here
+
     this.cluster = cluster;
     runInProgress.set(true);
 
-    // TODO: synchronize delta in each ServerHolder
+    // Create a bunch of ServerHolders
+
+    // Snapshot the queues first
+    // Then snapshot the servers themselves
+
+    this.replicantLookup = SegmentReplicantLookup.make(cluster, dynamicConfig.getReplicateAfterLoadTimeout());
+    this.runStats = new CoordinatorStats();
   }
 
   public void finishRun()
@@ -127,7 +148,7 @@ public class SegmentLoadManager
    * Gets the list of segments that are eligibile for balancing.
    * - Exclude unused segments
    * - Exclude overshadowed segments
-   * -
+   * - Exclude broadcast segments
    */
   public List<String> getSegmentsToBalance()
   {
@@ -137,9 +158,90 @@ public class SegmentLoadManager
     return Collections.emptyList();
   }
 
-  public void moveSegment(String segment, String fromServer, String toServer)
+  public void balanceSegments(String tier, int maxSegmentsToMove,)
   {
 
+  }
+
+  public boolean moveSegment(DataSegment segment, ServerHolder fromServer, ServerHolder toServer)
+  {
+    // TODO: The later condition will handle this, I feel
+    if (fromServer.getServer().getMetadata().equals(toServer.getServer().getMetadata())) {
+      return false;
+    }
+
+    //  TODO: the segment should be used, not overshadowed, and not a broadcast segment
+    // this should be easy since BalanceSegments comes after RunRules
+
+    // fromServer must be loading or serving the segment
+    // and toServer must be able to load it
+    final SegmentState stateOnSrc = fromServer.getSegmentState(segment);
+    if ((stateOnSrc != SegmentState.LOADING
+         && stateOnSrc != SegmentState.LOADED)
+        || !toServer.canLoadSegment(segment)) {
+      return false;
+    }
+
+    final boolean cancelSuccess = stateOnSrc == SegmentState.LOADING
+                                  && fromServer.cancelSegmentOperation(SegmentState.LOADING, segment);
+
+    // Load the segment on toServer
+    if (cancelSuccess) {
+      toServer.loadSegment(segment);
+      // check the loaded count to determine if this should be a primary or replica load
+    } else {
+      // TODO: callback to drop from fromServer
+      toServer.moveSegment(segment, fromServer.getPeon(), toServer.getPeon());
+    }
+
+    return true;
+  }
+
+  private boolean moveSegment(
+      DataSegment segment,
+      LoadQueuePeon loadPeon,
+      LoadQueuePeon dropPeon,
+      String destServerName
+  )
+  {
+    final LoadPeonCallback loadPeonCallback = success -> {
+      dropPeon.unmarkSegmentToDrop(segment);
+      // TODO: update currentMovingSegments here
+    };
+
+    // mark segment to drop before it is actually loaded on server
+    // to be able to account for this information in BalancerStrategy immediately
+    // TODO: add to currentlyMovingSegments here
+    dropPeon.markSegmentToDrop(segment);
+    try {
+      loadPeon.loadSegment(
+          segment,
+          success -> {
+            // Drop segment only if:
+            // (1) segment load was successful on toServer
+            // AND (2) segment not already queued for drop on fromServer
+            // AND (3a) loading is http-based
+            //     OR (3b) inventory shows segment loaded on toServer
+
+            // Do not check the inventory with http loading as the HTTP
+            // response is enough to determine load success or failure
+            if (success
+                && !dropPeon.getSegmentsToDrop().contains(segment)
+                && (isHttpLoading
+                    || serverInventoryView.isSegmentLoadedByServer(destServerName, segment))) {
+              dropPeon.dropSegment(segment, loadPeonCallback);
+            } else {
+              loadPeonCallback.execute(success);
+            }
+          }
+      );
+    }
+    catch (Exception e) {
+      dropPeon.unmarkSegmentToDrop(segment);
+      throw new RuntimeException(e);
+    }
+
+    return true;
   }
 
   public void loadSegment(DataSegment segment, Map<String, Integer> tierToReplicaCount)
@@ -167,6 +269,60 @@ public class SegmentLoadManager
     dropTiers.removeAll(tierToReplicaCount.keySet());
     for (String dropTier : dropTiers) {
       updateReplicasOnTier(segment, dropTier, 0);
+    }
+  }
+
+  public void broadcastSegment(DataSegment segment)
+  {
+    for (ServerHolder server : cluster.getAllServers()) {
+      if (!server.getServer().getType().isSegmentBroadcastTarget()) {
+        // ignore this server
+      } else if (server.isDecommissioning()) {
+        dropBroadcastSegment(segment, server);
+      } else {
+        loadBroadcastSegment(segment, server);
+      }
+    }
+  }
+
+  private void loadBroadcastSegment(DataSegment segment, ServerHolder server)
+  {
+    final SegmentState state = server.getSegmentState(segment);
+    if (state == SegmentState.LOADED || state == SegmentState.LOADING) {
+      // Do nothing
+    }
+
+    boolean cancelDrop = state == SegmentState.DROPPING
+                         && server.cancelSegmentOperation(SegmentState.DROPPING, segment);
+    if (cancelDrop) {
+      // TODO: cancel metric here
+    } else if (server.canLoadSegment(segment)) {
+      server.loadSegment(segment);
+      // TODO: assignment metric here
+    } else {
+      log.makeAlert("Failed to broadcast segment for [%s]", segment.getDataSource())
+         .addData("segmentId", segment.getId())
+         .addData("segmentSize", segment.getSize())
+         .addData("hostName", server.getServer().getHost())
+         .addData("availableSize", server.getAvailableSize())
+         .emit();
+    }
+  }
+
+  private void dropBroadcastSegment(DataSegment segment, ServerHolder server)
+  {
+    final SegmentState state = server.getSegmentState(segment);
+    if (state == SegmentState.NONE || state == SegmentState.DROPPING) {
+      // do nothing
+    }
+
+    boolean cancelLoad = state == SegmentState.LOADING
+                         && server.cancelSegmentOperation(SegmentState.LOADING, segment);
+    if (cancelLoad) {
+      // TODO: cancel metric here
+    } else {
+      server.dropSegment(segment);
+      // TODO: drop metric here
     }
   }
 
@@ -350,7 +506,7 @@ public class SegmentLoadManager
    */
   private int loadReplica(DataSegment segment, ServerHolder server, boolean isPrimary)
   {
-    // check replication throttling
+    // TODO: check replication throttling
 
     server.loadSegment(segment);
     return 1;

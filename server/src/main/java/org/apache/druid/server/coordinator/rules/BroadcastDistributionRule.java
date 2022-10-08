@@ -27,6 +27,7 @@ import org.apache.druid.server.coordinator.CoordinatorStats;
 import org.apache.druid.server.coordinator.DruidCluster;
 import org.apache.druid.server.coordinator.DruidCoordinator;
 import org.apache.druid.server.coordinator.DruidCoordinatorRuntimeParams;
+import org.apache.druid.server.coordinator.SegmentLoadManager;
 import org.apache.druid.server.coordinator.SegmentReplicantLookup;
 import org.apache.druid.server.coordinator.ServerHolder;
 import org.apache.druid.timeline.DataSegment;
@@ -39,6 +40,12 @@ import java.util.stream.Collectors;
 public abstract class BroadcastDistributionRule implements Rule
 {
   private static final EmittingLogger log = new EmittingLogger(BroadcastDistributionRule.class);
+
+  @Override
+  public void run(DataSegment segment, SegmentLoadManager loadManager)
+  {
+    loadManager.broadcastSegment(segment);
+  }
 
   @Override
   public CoordinatorStats run(DruidCoordinator coordinator, DruidCoordinatorRuntimeParams params, DataSegment segment)

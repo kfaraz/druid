@@ -26,10 +26,8 @@ import org.apache.druid.java.util.emitter.EmittingLogger;
 import org.apache.druid.server.coordinator.BalancerSegmentHolder;
 import org.apache.druid.server.coordinator.BalancerStrategy;
 import org.apache.druid.server.coordinator.CoordinatorStats;
-import org.apache.druid.server.coordinator.DruidCoordinator;
 import org.apache.druid.server.coordinator.DruidCoordinatorRuntimeParams;
-import org.apache.druid.server.coordinator.LoadPeonCallback;
-import org.apache.druid.server.coordinator.LoadQueuePeon;
+import org.apache.druid.server.coordinator.SegmentLoadManager;
 import org.apache.druid.server.coordinator.ServerHolder;
 import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.timeline.SegmentId;
@@ -41,7 +39,6 @@ import java.util.Map;
 import java.util.NavigableSet;
 import java.util.SortedSet;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Collectors;
 
 /**
@@ -50,14 +47,14 @@ public class BalanceSegments implements CoordinatorDuty
 {
   protected static final EmittingLogger log = new EmittingLogger(BalanceSegments.class);
 
-  protected final DruidCoordinator coordinator;
+  private final SegmentLoadManager loadManager;
 
   protected final Map<String, ConcurrentHashMap<SegmentId, BalancerSegmentHolder>> currentlyMovingSegments =
       new HashMap<>();
 
-  public BalanceSegments(DruidCoordinator coordinator)
+  public BalanceSegments(SegmentLoadManager loadManager)
   {
-    this.coordinator = coordinator;
+    this.loadManager = loadManager;
   }
 
   protected void reduceLifetimes(String tier)
@@ -67,7 +64,7 @@ public class BalanceSegments implements CoordinatorDuty
       if (holder.getLifetime() <= 0) {
         log.makeAlert("[%s]: Balancer move segments queue has a segment stuck", tier)
            .addData("segment", holder.getSegment().getId())
-           .addData("server", holder.getFromServer().getMetadata())
+           .addData("server", holder.getFromServer().getServer().getMetadata())
            .emit();
       }
     }
@@ -231,7 +228,7 @@ public class BalanceSegments implements CoordinatorDuty
       boolean needToBalancePickedSegment = params.getUsedSegments().contains(segmentToMoveHolder.getSegment());
       if (needToBalancePickedSegment) {
         final DataSegment segmentToMove = segmentToMoveHolder.getSegment();
-        final ImmutableDruidServer fromServer = segmentToMoveHolder.getFromServer();
+        final ImmutableDruidServer fromServer = segmentToMoveHolder.getFromServer().getServer();
         // we want to leave the server the segment is currently on in the list...
         // but filter out replicas that are already serving the segment, and servers with a full load queue
         final List<ServerHolder> toMoveToWithLoadQueueCapacityAndNotServingSegment =
@@ -245,7 +242,7 @@ public class BalanceSegments implements CoordinatorDuty
               strategy.findNewSegmentHomeBalancer(segmentToMove, toMoveToWithLoadQueueCapacityAndNotServingSegment);
 
           if (destinationHolder != null && !destinationHolder.getServer().equals(fromServer)) {
-            if (moveSegment(segmentToMoveHolder, destinationHolder.getServer(), params)) {
+            if (moveSegment(segmentToMoveHolder, destinationHolder, params)) {
               moved++;
             } else {
               unmoved++;
@@ -275,35 +272,10 @@ public class BalanceSegments implements CoordinatorDuty
 
   protected boolean moveSegment(
       final BalancerSegmentHolder segment,
-      final ImmutableDruidServer toServer,
+      final ServerHolder toServer,
       final DruidCoordinatorRuntimeParams params
   )
   {
-    final LoadQueuePeon toPeon = params.getLoadManagementPeons().get(toServer.getName());
-
-    final ImmutableDruidServer fromServer = segment.getFromServer();
-    final DataSegment segmentToMove = segment.getSegment();
-    final SegmentId segmentId = segmentToMove.getId();
-
-    if (!toPeon.getSegmentsToLoad().contains(segmentToMove) &&
-        (toServer.getSegment(segmentId) == null) &&
-        new ServerHolder(toServer, toPeon).getAvailableSize() > segmentToMove.getSize()) {
-      log.debug("Moving [%s] from [%s] to [%s]", segmentId, fromServer.getName(), toServer.getName());
-
-      ConcurrentMap<SegmentId, BalancerSegmentHolder> movingSegments =
-          currentlyMovingSegments.get(toServer.getTier());
-      movingSegments.put(segmentId, segment);
-      final LoadPeonCallback callback = moveSuccess -> movingSegments.remove(segmentId);
-      try {
-        coordinator
-            .moveSegment(params, fromServer, toServer, segmentToMove, callback);
-        return true;
-      }
-      catch (Exception e) {
-        log.makeAlert(e, "[%s] : Moving exception", segmentId).emit();
-        callback.execute(false);
-      }
-    }
-    return false;
+    return loadManager.moveSegment(segment.getSegment(), segment.getFromServer(), toServer);
   }
 }

@@ -142,6 +142,7 @@ public class DruidCoordinator
   private final ScheduledExecutorService exec;
   private final LoadQueueTaskMaster taskMaster;
   private final Map<String, LoadQueuePeon> loadManagementPeons;
+  private final SegmentLoadManager segmentLoadManager;
   private final ServiceAnnouncer serviceAnnouncer;
   private final DruidNode self;
   private final Set<CoordinatorDuty> indexingServiceDuties;
@@ -255,6 +256,7 @@ public class DruidCoordinator
     this.coordLeaderSelector = coordLeaderSelector;
     this.objectMapper = objectMapper;
     this.compactSegments = initializeCompactSegmentsDuty();
+    this.segmentLoadManager = new SegmentLoadManager(serverInventoryView, taskMaster.isHttpLoading());
   }
 
   public boolean isLeader()
@@ -265,6 +267,11 @@ public class DruidCoordinator
   public Map<String, LoadQueuePeon> getLoadManagementPeons()
   {
     return loadManagementPeons;
+  }
+
+  public SegmentLoadManager getSegmentLoadManager()
+  {
+    return segmentLoadManager;
   }
 
   /**
@@ -747,7 +754,7 @@ public class DruidCoordinator
         new RunRules(DruidCoordinator.this),
         new UnloadUnusedSegments(),
         new MarkAsUnusedOvershadowedSegments(DruidCoordinator.this),
-        new BalanceSegments(DruidCoordinator.this)
+        new BalanceSegments(getSegmentLoadManager())
     );
   }
 
@@ -1037,7 +1044,8 @@ public class DruidCoordinator
             new ServerHolder(
                 server,
                 loadManagementPeons.get(server.getName()),
-                decommissioningServers.contains(server.getHost())
+                decommissioningServers.contains(server.getHost()),
+                params.getCoordinatorDynamicConfig().getMaxSegmentsInNodeLoadingQueue()
             )
         );
       }
