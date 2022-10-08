@@ -134,6 +134,8 @@ public class BalanceSegmentsProfiler
         .newBuilder()
         .addTier("normal", serverHolderList.toArray(new ServerHolder[0]))
         .build();
+    final ReplicationThrottler replicationThrottler = new ReplicationThrottler();
+    replicationThrottler.resetParams(2, 500, 4);
     DruidCoordinatorRuntimeParams params = CoordinatorRuntimeParamsTestHelpers
         .newBuilder(druidCluster)
         .withLoadManagementPeons(peonMap)
@@ -148,11 +150,11 @@ public class BalanceSegmentsProfiler
         )
         .withEmitter(emitter)
         .withDatabaseRuleManager(manager)
-        .withReplicationManager(new ReplicationThrottler(2, 500, false))
+        .withReplicationManager(replicationThrottler)
         .build();
 
     BalanceSegmentsTester tester = new BalanceSegmentsTester(coordinator);
-    RunRules runner = new RunRules(coordinator);
+    RunRules runner = new RunRules(coordinator.getSegmentLoadManager());
     watch.start();
     DruidCoordinatorRuntimeParams balanceParams = tester.run(params);
     DruidCoordinatorRuntimeParams assignParams = runner.run(params);

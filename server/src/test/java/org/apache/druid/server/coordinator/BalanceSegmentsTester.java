@@ -44,7 +44,7 @@ public class BalanceSegmentsTester extends BalanceSegments
     final String toServerName = toServer.getName();
     final LoadQueuePeon toPeon = params.getLoadManagementPeons().get(toServerName);
 
-    final String fromServerName = segment.getFromServer().getName();
+    final String fromServerName = segment.getFromServer().getServer().getName();
     final DataSegment segmentToMove = segment.getSegment();
     final SegmentId segmentId = segmentToMove.getId();
 

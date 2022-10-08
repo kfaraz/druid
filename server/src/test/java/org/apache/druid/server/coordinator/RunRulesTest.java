@@ -86,7 +86,8 @@ public class RunRulesTest
                                      .withNumPartitions(1)
                                      .eachOfSizeInMb(1);
 
-    ruleRunner = new RunRules(new ReplicationThrottler(24, 1, false), coordinator);
+    //ruleRunner = new RunRules(new ReplicationThrottler(24, 1, false), coordinator);
+    ruleRunner = new RunRules(coordinator.getSegmentLoadManager());
   }
 
   @After
@@ -1020,7 +1021,8 @@ public class RunRulesTest
 
     DruidCoordinatorRuntimeParams params = makeCoordinatorRuntimeParams(druidCluster, balancerStrategy).build();
 
-    RunRules runner = new RunRules(new ReplicationThrottler(7, 1, false), coordinator);
+    //RunRules runner = new RunRules(new ReplicationThrottler(7, 1, false), coordinator);
+    RunRules runner = new RunRules(coordinator.getSegmentLoadManager());
     DruidCoordinatorRuntimeParams afterParams = runner.run(params);
     CoordinatorStats stats = afterParams.getCoordinatorStats();
 

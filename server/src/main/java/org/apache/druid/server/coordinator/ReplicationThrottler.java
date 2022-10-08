@@ -26,8 +26,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * The ReplicationThrottler is used to throttle the number of replicants that are created.
@@ -39,71 +41,62 @@ public class ReplicationThrottler
   private final Map<String, Boolean> replicatingLookup = new HashMap<>();
   private final ReplicatorSegmentHolder currentlyReplicating = new ReplicatorSegmentHolder();
 
-  private volatile int maxReplicants;
+  private volatile int maxReplicasPerTier;
   private volatile int maxLifetime;
-  private volatile boolean loadPrimaryReplicantsOnly;
+  private volatile int maxTotalReplicas;
+  private final AtomicInteger numAssignedReplicas = new AtomicInteger();
 
-  public ReplicationThrottler(int maxReplicants, int maxLifetime, boolean loadPrimaryReplicantsOnly)
+  public void resetParams(int maxReplicasPerTier, int maxLifetime, int maxTotalReplicas)
   {
-    updateParams(maxReplicants, maxLifetime, loadPrimaryReplicantsOnly);
-  }
-
-  public void updateParams(int maxReplicants, int maxLifetime, boolean loadPrimaryReplicantsOnly)
-  {
-    this.maxReplicants = maxReplicants;
+    this.maxReplicasPerTier = maxReplicasPerTier;
     this.maxLifetime = maxLifetime;
-    this.loadPrimaryReplicantsOnly = loadPrimaryReplicantsOnly;
+    this.maxTotalReplicas = maxTotalReplicas;
+    this.numAssignedReplicas.set(0);
   }
 
-  public void updateReplicationState(String tier)
+  public void updateReplicationState(Set<String> tiers)
   {
-    update(tier, currentlyReplicating, replicatingLookup, "create");
+    tiers.forEach(this::update);
   }
 
-  public boolean isLoadPrimaryReplicantsOnly()
+  private void update(String tier)
   {
-    return loadPrimaryReplicantsOnly;
-  }
-
-  public void setLoadPrimaryReplicantsOnly(boolean loadPrimaryReplicantsOnly)
-  {
-    this.loadPrimaryReplicantsOnly = loadPrimaryReplicantsOnly;
-  }
-
-  private void update(String tier, ReplicatorSegmentHolder holder, Map<String, Boolean> lookup, String type)
-  {
+    final ReplicatorSegmentHolder holder = currentlyReplicating;
     int size = holder.getNumProcessing(tier);
     if (size != 0) {
       log.info(
-          "[%s]: Replicant %s queue still has %d segments. Lifetime[%d]. Segments %s",
+          "[%s]: Replicant create queue still has %d segments. Lifetime[%d]. Segments %s",
           tier,
-          type,
           size,
           holder.getLifetime(tier),
           holder.getCurrentlyProcessingSegmentsAndHosts(tier)
       );
       holder.reduceLifetime(tier);
-      lookup.put(tier, false);
+      replicatingLookup.put(tier, false);
 
       if (holder.getLifetime(tier) < 0) {
-        log.makeAlert("[%s]: Replicant %s queue stuck after %d+ runs!", tier, type, maxLifetime)
+        log.makeAlert("[%s]: Replicant create queue stuck after %d+ runs!", tier, maxLifetime)
            .addData("segments", holder.getCurrentlyProcessingSegmentsAndHosts(tier))
            .emit();
       }
     } else {
-      log.info("[%s]: Replicant %s queue is empty.", tier, type);
-      lookup.put(tier, true);
+      log.info("[%s]: Replicant create queue is empty.", tier);
+      replicatingLookup.put(tier, true);
       holder.resetLifetime(tier);
     }
+
   }
 
   public boolean canCreateReplicant(String tier)
   {
-    return !loadPrimaryReplicantsOnly && replicatingLookup.get(tier) && !currentlyReplicating.isAtMaxReplicants(tier);
+    return numAssignedReplicas.get() < maxTotalReplicas
+           && replicatingLookup.get(tier)
+           && !currentlyReplicating.isAtMaxReplicants(tier);
   }
 
   public void registerReplicantCreation(String tier, SegmentId segmentId, String serverId)
   {
+    numAssignedReplicas.incrementAndGet();
     currentlyReplicating.addSegment(tier, segmentId, serverId);
   }
 
@@ -117,13 +110,13 @@ public class ReplicationThrottler
     private final Map<String, ConcurrentHashMap<SegmentId, String>> currentlyProcessingSegments = new HashMap<>();
     private final Map<String, Integer> lifetimes = new HashMap<>();
 
-    public boolean isAtMaxReplicants(String tier)
+    boolean isAtMaxReplicants(String tier)
     {
       final ConcurrentHashMap<SegmentId, String> segments = currentlyProcessingSegments.get(tier);
-      return (segments != null && segments.size() >= maxReplicants);
+      return (segments != null && segments.size() >= maxReplicasPerTier);
     }
 
-    public void addSegment(String tier, SegmentId segmentId, String serverId)
+    void addSegment(String tier, SegmentId segmentId, String serverId)
     {
       ConcurrentHashMap<SegmentId, String> segments =
           currentlyProcessingSegments.computeIfAbsent(tier, t -> new ConcurrentHashMap<>());
@@ -133,7 +126,7 @@ public class ReplicationThrottler
       }
     }
 
-    public void removeSegment(String tier, SegmentId segmentId)
+    void removeSegment(String tier, SegmentId segmentId)
     {
       ConcurrentMap<SegmentId, String> segments = currentlyProcessingSegments.get(tier);
       if (segments != null) {
@@ -141,19 +134,19 @@ public class ReplicationThrottler
       }
     }
 
-    public int getNumProcessing(String tier)
+    int getNumProcessing(String tier)
     {
       ConcurrentMap<SegmentId, String> segments = currentlyProcessingSegments.get(tier);
       return (segments == null) ? 0 : segments.size();
     }
 
-    public int getLifetime(String tier)
+    int getLifetime(String tier)
     {
       Integer lifetime = lifetimes.putIfAbsent(tier, maxLifetime);
       return lifetime != null ? lifetime : maxLifetime;
     }
 
-    public void reduceLifetime(String tier)
+    void reduceLifetime(String tier)
     {
       lifetimes.compute(
           tier,
@@ -166,12 +159,12 @@ public class ReplicationThrottler
       );
     }
 
-    public void resetLifetime(String tier)
+    void resetLifetime(String tier)
     {
       lifetimes.put(tier, maxLifetime);
     }
 
-    public List<String> getCurrentlyProcessingSegmentsAndHosts(String tier)
+    List<String> getCurrentlyProcessingSegmentsAndHosts(String tier)
     {
       ConcurrentMap<SegmentId, String> segments = currentlyProcessingSegments.get(tier);
       List<String> segmentsAndHosts = new ArrayList<>();

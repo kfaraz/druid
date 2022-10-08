@@ -19,6 +19,7 @@
 
 package org.apache.druid.server.coordinator;
 
+import com.google.common.collect.Sets;
 import org.apache.druid.client.ServerInventoryView;
 import org.apache.druid.java.util.emitter.EmittingLogger;
 import org.apache.druid.timeline.DataSegment;
@@ -27,7 +28,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumMap;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -51,7 +51,7 @@ public class SegmentLoadManager
   // Since there are certain APIs, there is definitely a requirement of the current state of things
   // We could keep an atomic reference in here
   // Which we update once the current run finishes, that should have the latest state of things
-  // Is it fine for this to be a snapshot??
+  // Is it fine for this to be a snapshot??mreplica
   // we will have to figure this out today!!!!
 
 
@@ -96,6 +96,7 @@ public class SegmentLoadManager
 
   // TODO: this could even be present inside the ReplicationThrottler
   private int totalReplicasAssignedInRun = 0;
+  private final ReplicationThrottler replicationThrottler = new ReplicationThrottler();
 
   private volatile SegmentReplicantLookup replicantLookup;
 
@@ -106,15 +107,15 @@ public class SegmentLoadManager
   }
 
   /**
-   * Would prefer to have something more like synchronize or update view.
-   * This click would come at the start of every run.
-   * <p>
    * TODO: Should runInProgress even exist??
    *
    * @param cluster
    */
-  public void startRun(DruidCluster cluster, CoordinatorDynamicConfig dynamicConfig)
+  public void prepareForRun(DruidCluster cluster, CoordinatorDynamicConfig dynamicConfig)
   {
+    // update currentlyMovingSegments
+    // update currentlyReplicatingSegments
+
     if (runInProgress.get()) {
       return;
     }
@@ -124,24 +125,31 @@ public class SegmentLoadManager
     // - current set of used segments
     // - overshadowed segments (2 types?)
 
-    // create replicant lookup here
+    // create ReplicationThrottler?
 
     this.cluster = cluster;
     runInProgress.set(true);
 
     // Create a bunch of ServerHolders
 
-    // Snapshot the queues first
-    // Then snapshot the servers themselves
-
-    this.replicantLookup = SegmentReplicantLookup.make(cluster, dynamicConfig.getReplicateAfterLoadTimeout());
+    this.replicantLookup = SegmentReplicantLookup
+        .make(cluster, dynamicConfig.getReplicateAfterLoadTimeout());
     this.runStats = new CoordinatorStats();
+
+    replicationThrottler.resetParams(
+        dynamicConfig.getReplicationThrottleLimit(),
+        dynamicConfig.getReplicantLifetime(),
+        dynamicConfig.getMaxNonPrimaryReplicantsToLoad()
+    );
+    replicationThrottler.updateReplicationState(cluster.getTierNames());
   }
 
-  public void finishRun()
+  public CoordinatorStats finishRunAndGetStats()
   {
     runInProgress.set(false);
     this.cluster = null;
+
+    return runStats;
   }
 
   /**
@@ -158,11 +166,6 @@ public class SegmentLoadManager
     return Collections.emptyList();
   }
 
-  public void balanceSegments(String tier, int maxSegmentsToMove,)
-  {
-
-  }
-
   public boolean moveSegment(DataSegment segment, ServerHolder fromServer, ServerHolder toServer)
   {
     // TODO: The later condition will handle this, I feel
@@ -171,7 +174,8 @@ public class SegmentLoadManager
     }
 
     //  TODO: the segment should be used, not overshadowed, and not a broadcast segment
-    // this should be easy since BalanceSegments comes after RunRules
+    //    and not a segment that should not exist on this tier
+    //    this should be easy since BalanceSegments comes after RunRules
 
     // fromServer must be loading or serving the segment
     // and toServer must be able to load it
@@ -187,11 +191,12 @@ public class SegmentLoadManager
 
     // Load the segment on toServer
     if (cancelSuccess) {
-      toServer.loadSegment(segment);
-      // check the loaded count to determine if this should be a primary or replica load
+      int loadedCountOnTier = replicantLookup
+          .getLoadedReplicants(segment.getId(), toServer.getServer().getTier());
+      loadReplica(segment, toServer, loadedCountOnTier < 1);
     } else {
       // TODO: callback to drop from fromServer
-      toServer.moveSegment(segment, fromServer.getPeon(), toServer.getPeon());
+      return moveSegment(segment, fromServer.getPeon(), toServer.getPeon(), toServer.getServer().getName());
     }
 
     return true;
@@ -206,7 +211,7 @@ public class SegmentLoadManager
   {
     final LoadPeonCallback loadPeonCallback = success -> {
       dropPeon.unmarkSegmentToDrop(segment);
-      // TODO: update currentMovingSegments here
+      // TODO: update currentlyMovingSegments here
     };
 
     // mark segment to drop before it is actually loaded on server
@@ -247,26 +252,27 @@ public class SegmentLoadManager
   public void loadSegment(DataSegment segment, Map<String, Integer> tierToReplicaCount)
   {
     // Handle every target tier
-    tierToReplicaCount.forEach(
-        (tier, targetReplicaCount)
-            -> updateReplicasOnTier(segment, tier, targetReplicaCount)
-    );
+    final Set<String> targetTiers = tierToReplicaCount.keySet();
+    for (String tier : targetTiers) {
+      updateReplicasOnTier(segment, tier, tierToReplicaCount.get(tier));
+    }
 
     // Find the minimum number of segments required for fault tolerance
     final int totalTargetReplicas = tierToReplicaCount.values().stream()
                                                       .reduce(0, Integer::sum);
     final int minLoadedSegments = totalTargetReplicas > 1 ? 2 : 1;
 
-    // TODO: get the loadedCount
     // Drop segment from unneeded tiers if requirement is met across target tiers
-    final int loadedCount = 1;
-    if (loadedCount < minLoadedSegments) {
+    int loadedTargetReplicas = 0;
+    for (String tier : targetTiers) {
+      loadedTargetReplicas += replicantLookup.getLoadedReplicants(segment.getId(), tier);
+    }
+    if (loadedTargetReplicas < minLoadedSegments) {
       return;
     }
 
-    // TODO: find the dropTiers
-    final Set<String> dropTiers = new HashSet<>();
-    dropTiers.removeAll(tierToReplicaCount.keySet());
+    final Set<String> dropTiers = Sets.newHashSet(cluster.getTierNames());
+    dropTiers.removeAll(targetTiers);
     for (String dropTier : dropTiers) {
       updateReplicasOnTier(segment, dropTier, 0);
     }
@@ -502,12 +508,17 @@ public class SegmentLoadManager
   }
 
   /**
-   * Queues load of a replica of the segment on the server.
+   * Queues load of a replica of the segment on the given server.
    */
   private int loadReplica(DataSegment segment, ServerHolder server, boolean isPrimary)
   {
-    // TODO: check replication throttling
+    final String tier = server.getServer().getTier();
+    if (!isPrimary && !replicationThrottler.canCreateReplicant(tier)) {
+      return 0;
+    }
 
+    // TODO: update currentlyReplicating and clear it in the callback
+    replicationThrottler.registerReplicantCreation(tier, segment.getId(), server.getServer().getHost());
     server.loadSegment(segment);
     return 1;
   }
