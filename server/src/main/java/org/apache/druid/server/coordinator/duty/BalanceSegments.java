@@ -27,6 +27,7 @@ import org.apache.druid.server.coordinator.BalancerSegmentHolder;
 import org.apache.druid.server.coordinator.BalancerStrategy;
 import org.apache.druid.server.coordinator.CoordinatorStats;
 import org.apache.druid.server.coordinator.DruidCoordinatorRuntimeParams;
+import org.apache.druid.server.coordinator.LoadPeonCallback;
 import org.apache.druid.server.coordinator.SegmentLoadManager;
 import org.apache.druid.server.coordinator.ServerHolder;
 import org.apache.druid.timeline.DataSegment;
@@ -39,6 +40,7 @@ import java.util.Map;
 import java.util.NavigableSet;
 import java.util.SortedSet;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Collectors;
 
 /**
@@ -77,6 +79,8 @@ public class BalanceSegments implements CoordinatorDuty
     params.getDruidCluster().getHistoricals().forEach((String tier, NavigableSet<ServerHolder> servers) -> {
       balanceTier(params, tier, servers, stats);
     });
+
+    stats.accumulate(loadManager.getRunStats());
     return params.buildFromExisting().withCoordinatorStats(stats).build();
   }
 
@@ -271,11 +275,31 @@ public class BalanceSegments implements CoordinatorDuty
   }
 
   protected boolean moveSegment(
-      final BalancerSegmentHolder segment,
+      final BalancerSegmentHolder segmentHolder,
       final ServerHolder toServer,
       final DruidCoordinatorRuntimeParams params
   )
   {
-    return loadManager.moveSegment(segment.getSegment(), segment.getFromServer(), toServer);
+    final SegmentId segmentId = segmentHolder.getSegment().getId();
+    ConcurrentMap<SegmentId, BalancerSegmentHolder> movingSegments =
+        currentlyMovingSegments.get(toServer.getServer().getTier());
+    movingSegments.put(segmentId, segmentHolder);
+    final LoadPeonCallback callback = moveSuccess -> movingSegments.remove(segmentId);
+    try {
+      boolean moveRequestSuccess = loadManager.moveSegment(
+          segmentHolder.getSegment(),
+          segmentHolder.getFromServer(),
+          toServer
+      );
+      if (!moveRequestSuccess) {
+        callback.execute(false);
+      }
+      return moveRequestSuccess;
+    }
+    catch (Exception e) {
+      log.makeAlert(e, "[%s] : Moving exception", segmentId).emit();
+      callback.execute(false);
+      return false;
+    }
   }
 }

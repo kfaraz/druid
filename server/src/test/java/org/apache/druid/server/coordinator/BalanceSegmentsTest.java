@@ -712,14 +712,6 @@ public class BalanceSegmentsTest
 
   private static void mockCoordinator(DruidCoordinator coordinator)
   {
-    coordinator.moveSegment(
-        EasyMock.anyObject(),
-        EasyMock.anyObject(),
-        EasyMock.anyObject(),
-        EasyMock.anyObject(),
-        EasyMock.anyObject()
-    );
-    EasyMock.expectLastCall().anyTimes();
     EasyMock.replay(coordinator);
   }
 
@@ -775,15 +767,6 @@ public class BalanceSegmentsTest
     {
       delegate.emitStats(tier, stats, serverHolderList);
     }
-  }
-
-  private BalancerSegmentHolder createSegmentHolder(
-      ImmutableDruidServer server,
-      LoadQueuePeon peon,
-      DataSegment segment
-  )
-  {
-    return new BalancerSegmentHolder(new ServerHolder(server, peon), segment);
   }
 
   private DruidCoordinatorRuntimeParams setupParamsForDecommissioningMaxPercentOfMaxSegmentsToMove(int percent)

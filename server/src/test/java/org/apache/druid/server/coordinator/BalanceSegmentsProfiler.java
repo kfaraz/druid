@@ -80,14 +80,6 @@ public class BalanceSegmentsProfiler
     EasyMock.expect(manager.getRulesWithDefault(EasyMock.anyObject())).andReturn(rules).anyTimes();
     EasyMock.replay(manager);
 
-    coordinator.moveSegment(
-        EasyMock.anyObject(),
-        EasyMock.anyObject(),
-        EasyMock.anyObject(),
-        EasyMock.anyObject(),
-        EasyMock.anyObject()
-    );
-    EasyMock.expectLastCall().anyTimes();
     EasyMock.replay(coordinator);
 
     Map<String, LoadQueuePeon> peonMap = new HashMap<>();
@@ -183,14 +175,6 @@ public class BalanceSegmentsProfiler
     EasyMock.expect(druidServer2.getSegment(EasyMock.anyObject())).andReturn(null).anyTimes();
     EasyMock.replay(druidServer2);
 
-    coordinator.moveSegment(
-        EasyMock.anyObject(),
-        EasyMock.anyObject(),
-        EasyMock.anyObject(),
-        EasyMock.anyObject(),
-        EasyMock.anyObject()
-    );
-    EasyMock.expectLastCall().anyTimes();
     EasyMock.replay(coordinator);
 
     DruidCoordinatorRuntimeParams params = CoordinatorRuntimeParamsTestHelpers

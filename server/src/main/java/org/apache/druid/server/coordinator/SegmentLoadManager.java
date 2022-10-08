@@ -20,8 +20,11 @@
 package org.apache.druid.server.coordinator;
 
 import com.google.common.collect.Sets;
+import it.unimi.dsi.fastutil.objects.Object2IntMaps;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import org.apache.druid.client.ServerInventoryView;
 import org.apache.druid.java.util.emitter.EmittingLogger;
+import org.apache.druid.metadata.SegmentsMetadataManager;
 import org.apache.druid.timeline.DataSegment;
 
 import java.util.ArrayList;
@@ -36,105 +39,59 @@ import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
+/**
+ * Manager for segment loading, balancing and broadcasting.
+ */
 public class SegmentLoadManager
 {
   // TODO:
-  //  1. balancing moves
-  //  2. replicant lookup
-  //  3. replication throttler
+  //  2. all callbacks
   //  4. load queue modes
   //  5. revise
   //  6. logs, metrics
   //  7. test
   //  8. revise
 
-  // Since there are certain APIs, there is definitely a requirement of the current state of things
-  // We could keep an atomic reference in here
-  // Which we update once the current run finishes, that should have the latest state of things
-  // Is it fine for this to be a snapshot??mreplica
-  // we will have to figure this out today!!!!
-
-
-  // Why is SLM not a duty
-  //  Because its lifecycle during coordinator downtime is very important.
-  //  It needs to keep up with the activity in the load queues.
-
-  /**
-   * TODO:
-   * how to get the current number of loading and loaded replicas
-   * segment replicant lookup has it, and is initialized at the start of the run
-   */
-
-  // TODO: More
-  //  top level method to skip balancing or replication altogether
-  //  logging and metrics
-  //  blacklist servers where segments are timing out
-  //  ensure there is no possible invalid state
-  //  dynamic config to enable new flow
-  //  easy way to count the values of the existing metrics so that we can work through maxNonPrimary
-  //  segments that are not required in a tier anymore should not be considered for balancing
-  //  I feel we would soon be combining balancing and loading
-  //  primary prioritization instead of replica throttling
-  //  figure out the underReplicated computation and simplify it
-
-  // TODO cases:
-  //  - items stuck in a queue
-  //  - server flickers
-  //  - cluster starting, only one server available
-  //  - prioritization: availability, fault tolerance, disk space, full replication
-
   private static final EmittingLogger log = new EmittingLogger(SegmentLoadManager.class);
-
-  private final AtomicBoolean runInProgress = new AtomicBoolean(false);
-
-  private volatile DruidCluster cluster;
-  private volatile BalancerStrategy balancerStrategy;
-  private volatile CoordinatorStats runStats;
 
   private final boolean isHttpLoading;
   private final ServerInventoryView serverInventoryView;
-
-  // TODO: this could even be present inside the ReplicationThrottler
-  private int totalReplicasAssignedInRun = 0;
+  private final SegmentsMetadataManager segmentsMetadataManager;
   private final ReplicationThrottler replicationThrottler = new ReplicationThrottler();
 
-  private volatile SegmentReplicantLookup replicantLookup;
+  private final AtomicBoolean runInProgress = new AtomicBoolean(false);
 
-  public SegmentLoadManager(ServerInventoryView serverInventoryView, boolean isHttpLoading)
+  // Fields tied to a single run
+  private volatile DruidCluster cluster;
+  private volatile CoordinatorStats runStats;
+  private volatile SegmentReplicantLookup replicantLookup;
+  private volatile DruidCoordinatorRuntimeParams runParams;
+
+  public SegmentLoadManager(
+      ServerInventoryView serverInventoryView,
+      SegmentsMetadataManager segmentsMetadataManager,
+      boolean isHttpLoading
+  )
   {
     this.serverInventoryView = serverInventoryView;
+    this.segmentsMetadataManager = segmentsMetadataManager;
     this.isHttpLoading = isHttpLoading;
   }
 
-  /**
-   * TODO: Should runInProgress even exist??
-   *
-   * @param cluster
-   */
-  public void prepareForRun(DruidCluster cluster, CoordinatorDynamicConfig dynamicConfig)
+  public void prepareForRun(DruidCoordinatorRuntimeParams runParams)
   {
-    // update currentlyMovingSegments
-    // update currentlyReplicatingSegments
-
     if (runInProgress.get()) {
       return;
     }
-
-    // We would also like to get the other snapshots here such as
-    // - the current replication state
-    // - current set of used segments
-    // - overshadowed segments (2 types?)
-
-    // create ReplicationThrottler?
-
-    this.cluster = cluster;
     runInProgress.set(true);
 
-    // Create a bunch of ServerHolders
+    this.runParams = runParams;
+    this.cluster = runParams.getDruidCluster();
+    this.runStats = new CoordinatorStats();
 
+    final CoordinatorDynamicConfig dynamicConfig = runParams.getCoordinatorDynamicConfig();
     this.replicantLookup = SegmentReplicantLookup
         .make(cluster, dynamicConfig.getReplicateAfterLoadTimeout());
-    this.runStats = new CoordinatorStats();
 
     replicationThrottler.resetParams(
         dynamicConfig.getReplicationThrottleLimit(),
@@ -144,44 +101,29 @@ public class SegmentLoadManager
     replicationThrottler.updateReplicationState(cluster.getTierNames());
   }
 
-  public CoordinatorStats finishRunAndGetStats()
+  public CoordinatorStats getRunStats()
   {
     runInProgress.set(false);
-    this.cluster = null;
-
     return runStats;
   }
 
   /**
-   * Gets the list of segments that are eligibile for balancing.
-   * - Exclude unused segments
-   * - Exclude overshadowed segments
-   * - Exclude broadcast segments
+   * Moves the given segment between two servers of the same tier.
+   * <p>
+   * See if we can move balancing here.
    */
-  public List<String> getSegmentsToBalance()
-  {
-    // Balancing should not try to move segment to a server where that segment
-    // is already in LOADING or LOADED or MOVING_TO state
-
-    return Collections.emptyList();
-  }
-
   public boolean moveSegment(DataSegment segment, ServerHolder fromServer, ServerHolder toServer)
   {
-    // TODO: The later condition will handle this, I feel
-    if (fromServer.getServer().getMetadata().equals(toServer.getServer().getMetadata())) {
+    if (!fromServer.getServer().getTier().equals(toServer.getServer().getTier())) {
+      return false;
+    } else if (fromServer.getServer().getMetadata().equals(toServer.getServer().getMetadata())) {
       return false;
     }
-
-    //  TODO: the segment should be used, not overshadowed, and not a broadcast segment
-    //    and not a segment that should not exist on this tier
-    //    this should be easy since BalanceSegments comes after RunRules
 
     // fromServer must be loading or serving the segment
     // and toServer must be able to load it
     final SegmentState stateOnSrc = fromServer.getSegmentState(segment);
-    if ((stateOnSrc != SegmentState.LOADING
-         && stateOnSrc != SegmentState.LOADED)
+    if ((stateOnSrc != SegmentState.LOADING && stateOnSrc != SegmentState.LOADED)
         || !toServer.canLoadSegment(segment)) {
       return false;
     }
@@ -289,6 +231,35 @@ public class SegmentLoadManager
         loadBroadcastSegment(segment, server);
       }
     }
+  }
+
+  public Map<String, Integer> getUnavailableSegmentCountPerDatasource()
+  {
+    if (replicantLookup == null) {
+      return Object2IntMaps.emptyMap();
+    }
+
+    final Object2IntOpenHashMap<String> numUnavailableSegments = new Object2IntOpenHashMap<>();
+
+    Iterable<DataSegment> dataSegments = segmentsMetadataManager.iterateAllUsedSegments();
+    for (DataSegment segment : dataSegments) {
+      if (replicantLookup.getLoadedReplicants(segment.getId()) == 0) {
+        numUnavailableSegments.addTo(segment.getDataSource(), 1);
+      } else {
+        numUnavailableSegments.addTo(segment.getDataSource(), 0);
+      }
+    }
+
+    return numUnavailableSegments;
+  }
+
+  /**
+   * Required temporarily until the computation of under-replicated segments is
+   * moved here from DruidCoordinator.
+   */
+  public SegmentReplicantLookup getReplicantLookup()
+  {
+    return replicantLookup;
   }
 
   private void loadBroadcastSegment(DataSegment segment, ServerHolder server)
@@ -439,9 +410,9 @@ public class SegmentLoadManager
     if (numToDrop > numDropsQueued) {
       remainingNumToDrop = numToDrop - numDropsQueued;
       Iterator<ServerHolder> serverIterator =
-          eligibleLiveServers.size() > remainingNumToDrop
+          eligibleLiveServers.size() >= remainingNumToDrop
           ? eligibleLiveServers.iterator()
-          : balancerStrategy.pickServersToDrop(segment, eligibleLiveServers);
+          : runParams.getBalancerStrategy().pickServersToDrop(segment, eligibleLiveServers);
       numDropsQueued += dropReplicas(remainingNumToDrop, segment, serverIterator);
     }
     if (numToDrop > numDropsQueued) {
@@ -484,7 +455,7 @@ public class SegmentLoadManager
                         .collect(Collectors.toList());
 
     final Iterator<ServerHolder> serverIterator =
-        balancerStrategy.findNewSegmentHomeReplicator(segment, eligibleServers);
+        runParams.getBalancerStrategy().findNewSegmentHomeReplicator(segment, eligibleServers);
     if (!serverIterator.hasNext()) {
       // TODO: some noise here!
     }

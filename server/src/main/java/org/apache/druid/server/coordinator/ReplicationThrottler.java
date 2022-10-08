@@ -24,6 +24,7 @@ import org.apache.druid.timeline.SegmentId;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -38,7 +39,11 @@ public class ReplicationThrottler
 {
   private static final EmittingLogger log = new EmittingLogger(ReplicationThrottler.class);
 
-  private final Map<String, Boolean> replicatingLookup = new HashMap<>();
+  /**
+   * Only tiers that are not already replicating segments are allowed to queue
+   * new ones for replication.
+   */
+  private final Set<String> allowedTiers = new HashSet<>();
   private final ReplicatorSegmentHolder currentlyReplicating = new ReplicatorSegmentHolder();
 
   private volatile int maxReplicasPerTier;
@@ -72,7 +77,6 @@ public class ReplicationThrottler
           holder.getCurrentlyProcessingSegmentsAndHosts(tier)
       );
       holder.reduceLifetime(tier);
-      replicatingLookup.put(tier, false);
 
       if (holder.getLifetime(tier) < 0) {
         log.makeAlert("[%s]: Replicant create queue stuck after %d+ runs!", tier, maxLifetime)
@@ -81,7 +85,7 @@ public class ReplicationThrottler
       }
     } else {
       log.info("[%s]: Replicant create queue is empty.", tier);
-      replicatingLookup.put(tier, true);
+      allowedTiers.add(tier);
       holder.resetLifetime(tier);
     }
 
@@ -90,7 +94,7 @@ public class ReplicationThrottler
   public boolean canCreateReplicant(String tier)
   {
     return numAssignedReplicas.get() < maxTotalReplicas
-           && replicatingLookup.get(tier)
+           && allowedTiers.contains(tier)
            && !currentlyReplicating.isAtMaxReplicants(tier);
   }
 

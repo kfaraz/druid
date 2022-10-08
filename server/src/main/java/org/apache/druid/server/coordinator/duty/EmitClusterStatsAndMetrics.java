@@ -19,7 +19,6 @@
 
 package org.apache.druid.server.coordinator.duty;
 
-import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import org.apache.druid.client.ImmutableDruidServer;
 import org.apache.druid.java.util.common.logger.Logger;
@@ -62,22 +61,7 @@ public class EmitClusterStatsAndMetrics implements CoordinatorDuty
       final ServiceEmitter emitter,
       final String metricName,
       final String tier,
-      final double value
-  )
-  {
-    emitter.emit(
-        new ServiceMetricEvent.Builder()
-            .setDimension(DruidMetrics.TIER, tier)
-            .setDimension(DruidMetrics.DUTY_GROUP, groupName)
-            .build(metricName, value)
-    );
-  }
-
-  private void emitTieredStat(
-      final ServiceEmitter emitter,
-      final String metricName,
-      final String tier,
-      final long value
+      final Number value
   )
   {
     emitter.emit(
@@ -322,18 +306,14 @@ public class EmitClusterStatsAndMetrics implements CoordinatorDuty
           );
         });
 
-    coordinator.computeNumsUnavailableUsedSegmentsPerDataSource().object2IntEntrySet().forEach(
-        (final Object2IntMap.Entry<String> entry) -> {
-          final String dataSource = entry.getKey();
-          final int numUnavailableUsedSegmentsInDataSource = entry.getIntValue();
-          emitter.emit(
-              new ServiceMetricEvent.Builder()
-                  .setDimension(DruidMetrics.DUTY_GROUP, groupName)
-                  .setDimension(DruidMetrics.DATASOURCE, dataSource).build(
-                  "segment/unavailable/count", numUnavailableUsedSegmentsInDataSource
-              )
-          );
-        }
+    coordinator.computeNumsUnavailableUsedSegmentsPerDataSource().forEach(
+        (dataSource, numUnavailableSegments) ->
+            emitter.emit(
+                new ServiceMetricEvent.Builder()
+                    .setDimension(DruidMetrics.DUTY_GROUP, groupName)
+                    .setDimension(DruidMetrics.DATASOURCE, dataSource)
+                    .build("segment/unavailable/count", numUnavailableSegments)
+            )
     );
 
     coordinator.computeUnderReplicationCountsPerDataSourcePerTier().forEach(
