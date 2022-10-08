@@ -107,7 +107,7 @@ public class SegmentLoader
    * Queues load or drop of replicas of the given segment to achieve the
    * target replication level in all the tiers.
    */
-  public void loadSegment(DataSegment segment, Map<String, Integer> tierToReplicaCount)
+  public void updateReplicas(DataSegment segment, Map<String, Integer> tierToReplicaCount)
   {
     // Handle every target tier
     final Set<String> targetTiers = tierToReplicaCount.keySet();
@@ -222,17 +222,6 @@ public class SegmentLoader
     }
 
     return true;
-  }
-
-  // Useful for
-  // - getting current status
-  // - count of underreplicated segments?
-  // inventory view gives count of segments already loaded
-  // this can also include count of segments that are in the queue, so a useful parameter
-  public Map<String, Integer> getCurrentReplicas(String segment)
-  {
-
-    return Collections.emptyMap();
   }
 
   private void updateReplicasOnTier(DataSegment segment, String tier, int targetCount)
@@ -382,12 +371,13 @@ public class SegmentLoader
     final Iterator<ServerHolder> serverIterator =
         strategy.findNewSegmentHomeReplicator(segment, eligibleServers);
     if (!serverIterator.hasNext()) {
-      // TODO: some noise here!
+      log.warn("No candidate server to load replica of segment [%s]", segment.getId());
+      return 0;
     }
 
     // Load the primary on this tier
     int numLoadsQueued = 0;
-    if (!primaryExists && serverIterator.hasNext()) {
+    if (!primaryExists) {
       numLoadsQueued += stateManager.loadSegment(segment, serverIterator.next(), true) ? 1 : 0;
     }
 

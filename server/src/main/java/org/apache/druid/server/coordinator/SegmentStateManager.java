@@ -34,18 +34,13 @@ public class SegmentStateManager
 {
   // TODO
   //  2. all callbacks
+  //  3. try - catch
   //  4. load queue modes
+  //
 
   // TODO:
-  //  replicant lookup
-  //  currently replicating segments
   //  currently moving segments
-  //  load queue peons?
   //  what about the callbacks to different load/drop actions?
-
-  //  this can report metrics
-  //  this should determine if servers are to be blacklisted??
-  //  this is where the problem starts and I feel like we are back where we started!
 
   private final boolean isHttpLoading;
   private final ServerInventoryView serverInventoryView;

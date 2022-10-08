@@ -70,7 +70,7 @@ public abstract class LoadRule implements Rule
   @Override
   public void run(DataSegment segment, SegmentLoader loader)
   {
-    loader.loadSegment(segment, getTieredReplicants());
+    loader.updateReplicas(segment, getTieredReplicants());
   }
 
   @Override
