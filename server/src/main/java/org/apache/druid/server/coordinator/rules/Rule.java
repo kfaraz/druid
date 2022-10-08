@@ -27,7 +27,7 @@ import org.apache.druid.server.coordinator.CoordinatorStats;
 import org.apache.druid.server.coordinator.DruidCluster;
 import org.apache.druid.server.coordinator.DruidCoordinator;
 import org.apache.druid.server.coordinator.DruidCoordinatorRuntimeParams;
-import org.apache.druid.server.coordinator.SegmentLoadManager;
+import org.apache.druid.server.coordinator.SegmentLoader;
 import org.apache.druid.server.coordinator.SegmentReplicantLookup;
 import org.apache.druid.timeline.DataSegment;
 import org.joda.time.DateTime;
@@ -109,5 +109,5 @@ public interface Rule
    */
   CoordinatorStats run(DruidCoordinator coordinator, DruidCoordinatorRuntimeParams params, DataSegment segment);
 
-  void run(DataSegment segment, SegmentLoadManager loadManager);
+  void run(DataSegment segment, SegmentLoader loader);
 }

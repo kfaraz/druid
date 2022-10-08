@@ -28,7 +28,6 @@ import org.apache.druid.server.coordinator.BalancerStrategy;
 import org.apache.druid.server.coordinator.CoordinatorStats;
 import org.apache.druid.server.coordinator.DruidCoordinatorRuntimeParams;
 import org.apache.druid.server.coordinator.LoadPeonCallback;
-import org.apache.druid.server.coordinator.SegmentLoadManager;
 import org.apache.druid.server.coordinator.ServerHolder;
 import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.timeline.SegmentId;
@@ -49,15 +48,8 @@ public class BalanceSegments implements CoordinatorDuty
 {
   protected static final EmittingLogger log = new EmittingLogger(BalanceSegments.class);
 
-  private final SegmentLoadManager loadManager;
-
   protected final Map<String, ConcurrentHashMap<SegmentId, BalancerSegmentHolder>> currentlyMovingSegments =
       new HashMap<>();
-
-  public BalanceSegments(SegmentLoadManager loadManager)
-  {
-    this.loadManager = loadManager;
-  }
 
   protected void reduceLifetimes(String tier)
   {
@@ -80,7 +72,7 @@ public class BalanceSegments implements CoordinatorDuty
       balanceTier(params, tier, servers, stats);
     });
 
-    stats.accumulate(loadManager.getRunStats());
+    stats.accumulate(params.getSegmentLoader().getStats());
     return params.buildFromExisting().withCoordinatorStats(stats).build();
   }
 
@@ -286,7 +278,7 @@ public class BalanceSegments implements CoordinatorDuty
     movingSegments.put(segmentId, segmentHolder);
     final LoadPeonCallback callback = moveSuccess -> movingSegments.remove(segmentId);
     try {
-      boolean moveRequestSuccess = loadManager.moveSegment(
+      boolean moveRequestSuccess = params.getSegmentLoader().moveSegment(
           segmentHolder.getSegment(),
           segmentHolder.getFromServer(),
           toServer

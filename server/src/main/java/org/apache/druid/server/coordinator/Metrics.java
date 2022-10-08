@@ -29,6 +29,17 @@ public class Metrics
     // no instantiation
   }
 
+  public static final String CANCELLED_MOVES = "cancelMoveCount";
+  public static final String CANCELLED_LOADS = "cancelLoadCount";
+  public static final String CANCELLED_DROPS = "cancelDropCount";
+  public static final String QUEUED_LOADS = "assignedCount";
+  public static final String QUEUED_DROPS = "droppedCount";
+  public static final String BROADCAST_LOADS = "broadcastLoadCount";
+  public static final String BROADCAST_DROPS = "broadcastDropCount";
+  public static final String DELETED_SEGMENTS = "deletedCount";
+
+  public static final String REQUIRED_CAPACITY = "requiredCapacity";
+
   public static class Segment
   {
     public static final String SIZE = "segment/size";

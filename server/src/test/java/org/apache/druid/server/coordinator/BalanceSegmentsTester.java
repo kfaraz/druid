@@ -30,7 +30,7 @@ public class BalanceSegmentsTester extends BalanceSegments
 
   public BalanceSegmentsTester(DruidCoordinator coordinator)
   {
-    super(coordinator.getSegmentLoadManager());
+    super(coordinator.getSegmentStateManager());
   }
 
   @Override

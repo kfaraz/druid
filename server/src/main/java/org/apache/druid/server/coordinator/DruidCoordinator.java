@@ -136,7 +136,7 @@ public class DruidCoordinator
   private final ScheduledExecutorService exec;
   private final LoadQueueTaskMaster taskMaster;
   private final Map<String, LoadQueuePeon> loadManagementPeons;
-  private final SegmentLoadManager segmentLoadManager;
+  private final SegmentStateManager segmentStateManager;
   private final ServiceAnnouncer serviceAnnouncer;
   private final DruidNode self;
   private final Set<CoordinatorDuty> indexingServiceDuties;
@@ -249,8 +249,8 @@ public class DruidCoordinator
     this.coordLeaderSelector = coordLeaderSelector;
     this.objectMapper = objectMapper;
     this.compactSegments = initializeCompactSegmentsDuty();
-    this.segmentLoadManager =
-        new SegmentLoadManager(serverInventoryView, segmentsMetadataManager, taskMaster.isHttpLoading());
+    this.segmentStateManager =
+        new SegmentStateManager(serverInventoryView, segmentsMetadataManager, taskMaster.isHttpLoading());
   }
 
   public boolean isLeader()
@@ -263,9 +263,9 @@ public class DruidCoordinator
     return loadManagementPeons;
   }
 
-  public SegmentLoadManager getSegmentLoadManager()
+  public SegmentStateManager getSegmentStateManager()
   {
-    return segmentLoadManager;
+    return segmentStateManager;
   }
 
   /**
@@ -318,7 +318,7 @@ public class DruidCoordinator
 
   public Map<String, Integer> computeNumsUnavailableUsedSegmentsPerDataSource()
   {
-    return segmentLoadManager.getUnavailableSegmentCountPerDatasource();
+    return segmentStateManager.getUnavailableSegmentCountPerDatasource();
   }
 
   public Map<String, Double> getLoadStatus()
@@ -464,7 +464,7 @@ public class DruidCoordinator
   {
     final Map<String, Object2LongMap<String>> underReplicationCountsPerDataSourcePerTier = new HashMap<>();
 
-    final SegmentReplicantLookup segmentReplicantLookup = segmentLoadManager.getReplicantLookup();
+    final SegmentReplicantLookup segmentReplicantLookup = segmentStateManager.getReplicantLookup();
     if (segmentReplicantLookup == null) {
       return underReplicationCountsPerDataSourcePerTier;
     }
@@ -625,10 +625,10 @@ public class DruidCoordinator
     return ImmutableList.of(
         new LogUsedSegments(),
         new UpdateCoordinatorStateAndPrepareCluster(),
-        new RunRules(segmentLoadManager),
+        new RunRules(),
         new UnloadUnusedSegments(),
         new MarkAsUnusedOvershadowedSegments(DruidCoordinator.this),
-        new BalanceSegments(segmentLoadManager)
+        new BalanceSegments()
     );
   }
 
@@ -866,13 +866,20 @@ public class DruidCoordinator
 
       stopPeonsForDisappearedServers(currentServers);
 
+      final SegmentReplicantLookup segmentReplicantLookup =
+          SegmentReplicantLookup.make(cluster, getDynamicConfigs().getReplicateAfterLoadTimeout());
       DruidCoordinatorRuntimeParams paramsWithCluster =
           params.buildFromExisting()
                 .withDruidCluster(cluster)
                 .withLoadManagementPeons(loadManagementPeons)
+                .withSegmentReplicantLookup(segmentReplicantLookup)
                 .build();
-      segmentLoadManager.prepareForRun(paramsWithCluster);
-      return paramsWithCluster;
+
+      segmentStateManager.prepareForRun(paramsWithCluster);
+      final SegmentLoader segmentLoader = new SegmentLoader(segmentStateManager, paramsWithCluster);
+      return paramsWithCluster.buildFromExisting()
+                              .withSegmentLoader(segmentLoader)
+                              .build();
     }
 
     List<ImmutableDruidServer> prepareCurrentServers()

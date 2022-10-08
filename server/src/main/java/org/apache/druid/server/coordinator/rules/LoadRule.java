@@ -32,7 +32,7 @@ import org.apache.druid.server.coordinator.DruidCluster;
 import org.apache.druid.server.coordinator.DruidCoordinator;
 import org.apache.druid.server.coordinator.DruidCoordinatorRuntimeParams;
 import org.apache.druid.server.coordinator.ReplicationThrottler;
-import org.apache.druid.server.coordinator.SegmentLoadManager;
+import org.apache.druid.server.coordinator.SegmentLoader;
 import org.apache.druid.server.coordinator.SegmentReplicantLookup;
 import org.apache.druid.server.coordinator.ServerHolder;
 import org.apache.druid.timeline.DataSegment;
@@ -68,9 +68,9 @@ public abstract class LoadRule implements Rule
   private final Map<String, ServerHolder> strategyCache = new HashMap<>();
 
   @Override
-  public void run(DataSegment segment, SegmentLoadManager loadManager)
+  public void run(DataSegment segment, SegmentLoader loader)
   {
-    loadManager.loadSegment(segment, getTieredReplicants());
+    loader.loadSegment(segment, getTieredReplicants());
   }
 
   @Override

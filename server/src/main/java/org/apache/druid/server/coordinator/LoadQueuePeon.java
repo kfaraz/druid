@@ -39,10 +39,9 @@ public interface LoadQueuePeon
 
   Set<DataSegment> getTimedOutSegments();
 
-  void unmarkSegmentToDrop(DataSegment segmentToLoad);
-
-
   void markSegmentToDrop(DataSegment segmentToLoad);
+  void unmarkSegmentToDrop(DataSegment segmentToLoad);
+  Set<DataSegment> getSegmentsMarkedToDrop();
 
   void loadSegment(DataSegment segment, LoadPeonCallback callback);
   void dropSegment(DataSegment segment, LoadPeonCallback callback);
@@ -52,7 +51,6 @@ public interface LoadQueuePeon
   int getAndResetFailedAssignCount();
 
   int getNumberOfSegmentsInQueue();
-  Set<DataSegment> getSegmentsMarkedToDrop();
 
   boolean cancelLoad(DataSegment segment);
   boolean cancelDrop(DataSegment segment);
