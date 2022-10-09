@@ -395,6 +395,10 @@ public class SegmentLoader
         candidateServers.stream()
                         .filter(server -> server.canLoadSegment(segment))
                         .collect(Collectors.toList());
+    if (eligibleServers.isEmpty()) {
+      log.warn("No eligible server to load replica of segment [%s]", segment.getId());
+      return 0;
+    }
 
     final Iterator<ServerHolder> serverIterator =
         strategy.findNewSegmentHomeReplicator(segment, eligibleServers);
@@ -415,7 +419,7 @@ public class SegmentLoader
     }
 
     if (numToLoad > numLoadsQueued) {
-      log.warn("I have no servers serving [%s]?", segment.getId());
+      log.warn("Queued only %d of %d loads of segment [%s].", numToLoad, numLoadsQueued, segment.getId());
     }
 
     return numLoadsQueued;
