@@ -27,6 +27,7 @@ import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.inject.Inject;
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
@@ -314,7 +315,7 @@ public class DruidCoordinator
     return computeUnderReplicationCountsPerDataSourcePerTierForSegmentsInternal(dataSegments, true);
   }
 
-  public Map<String, Integer> computeNumsUnavailableUsedSegmentsPerDataSource()
+  public Object2IntMap<String> computeNumsUnavailableUsedSegmentsPerDataSource()
   {
     if (segmentReplicantLookup == null) {
       return Object2IntMaps.emptyMap();

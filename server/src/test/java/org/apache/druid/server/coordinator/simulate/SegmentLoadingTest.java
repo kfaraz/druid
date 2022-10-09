@@ -116,13 +116,13 @@ public class SegmentLoadingTest extends CoordinatorSimulationBaseTest
   @Test
   public void testDropHappensAfterTargetReplicationOnEveryTier()
   {
-    // maxNonPrimaryReplicants = 33 ensures that all target replicas (total 4)
+    // replicationThrottleLimit = 5 ensures that all target replicas (total 4)
     // are assigned for some segments in the first run itself (pigeon-hole)
     CoordinatorDynamicConfig dynamicConfig =
         CoordinatorDynamicConfig.builder()
                                 .withMaxSegmentsToMove(0)
-                                .withReplicationThrottleLimit(10)
-                                .withMaxNonPrimaryReplicantsToLoad(33)
+                                .withReplicationThrottleLimit(2)
+                                //.withMaxNonPrimaryReplicantsToLoad(33)
                                 .build();
 
     // historicals = 1(in T1) + 2(in T2) + 2(in T3)

@@ -41,13 +41,6 @@ import java.util.stream.Collectors;
  */
 public class SegmentLoader
 {
-  // TODO:
-  //  4. replication log
-  //  5. revise
-  //  6. logs, emit and connect metrics
-  //  7. test
-  //  8. publish, self-review
-
   private static final EmittingLogger log = new EmittingLogger(SegmentLoader.class);
 
   private final SegmentStateManager stateManager;
@@ -282,45 +275,83 @@ public class SegmentLoader
     }
 
     if (targetCount > currentCount) {
-      int numReplicasToLoad = targetCount - currentCount;
-      final int cancelledDrops = cancelOperations(
-          SegmentState.DROPPING,
-          segment,
-          serversByState.get(SegmentState.DROPPING),
-          numReplicasToLoad
-      );
-      stats.addToTieredStat(Metrics.CANCELLED_DROPS, tier, cancelledDrops);
-
-      numReplicasToLoad -= cancelledDrops;
-      int numLoaded = serversByState.get(SegmentState.LOADED).size();
-      boolean primaryExists = numLoaded + cancelledDrops > 0;
-      if (numReplicasToLoad > 0) {
-        int successfulLoadsQueued = loadReplicas(
-            numReplicasToLoad,
-            segment,
-            serversByState.get(SegmentState.NONE),
-            primaryExists
-        );
-        stats.addToTieredStat(Metrics.QUEUED_LOADS, tier, successfulLoadsQueued);
-      }
+      cancelDropOrLoadReplicas(targetCount - currentCount, segment, tier, serversByState);
     } else {
-      int numReplicasToDrop = currentCount - targetCount;
-      final int cancelledLoads = cancelOperations(
-          SegmentState.LOADING,
-          segment,
-          serversByState.get(SegmentState.LOADING),
-          numReplicasToDrop
-      );
-      stats.addToTieredStat(Metrics.CANCELLED_LOADS, tier, cancelledLoads);
+      cancelLoadOrDropReplicas(currentCount - targetCount, segment, tier, serversByState);
+    }
+  }
 
-      numReplicasToDrop -= cancelledLoads;
-      if (numReplicasToDrop > 0) {
-        final int successfulDropsQueued = dropReplicas(
-            numReplicasToDrop,
-            segment,
-            serversByState.get(SegmentState.LOADED)
+  private void cancelDropOrLoadReplicas(
+      int numReplicasToLoad,
+      DataSegment segment,
+      String tier,
+      Map<SegmentState, List<ServerHolder>> serversByState
+  )
+  {
+    final int cancelledDrops = cancelOperations(
+        SegmentState.DROPPING,
+        segment,
+        serversByState.get(SegmentState.DROPPING),
+        numReplicasToLoad
+    );
+    stats.addToTieredStat(Metrics.CANCELLED_DROPS, tier, cancelledDrops);
+
+    numReplicasToLoad -= cancelledDrops;
+    int numLoaded = serversByState.get(SegmentState.LOADED).size();
+    boolean primaryExists = numLoaded + cancelledDrops > 0;
+    if (numReplicasToLoad > 0) {
+      int successfulLoadsQueued = loadReplicas(
+          numReplicasToLoad,
+          segment,
+          serversByState.get(SegmentState.NONE),
+          primaryExists
+      );
+
+      stats.addToTieredStat(Metrics.QUEUED_LOADS, tier, successfulLoadsQueued);
+      if (numReplicasToLoad > successfulLoadsQueued) {
+        log.warn(
+            "Queued %d of %d loads of segment [%s] on tier [%s].",
+            successfulLoadsQueued,
+            numReplicasToLoad,
+            segment.getId(),
+            tier
         );
-        stats.addToTieredStat(Metrics.QUEUED_DROPS, tier, successfulDropsQueued);
+      }
+    }
+  }
+
+  private void cancelLoadOrDropReplicas(
+      int numReplicasToDrop,
+      DataSegment segment,
+      String tier,
+      Map<SegmentState, List<ServerHolder>> serversByState
+  )
+  {
+    final int cancelledLoads = cancelOperations(
+        SegmentState.LOADING,
+        segment,
+        serversByState.get(SegmentState.LOADING),
+        numReplicasToDrop
+    );
+    stats.addToTieredStat(Metrics.CANCELLED_LOADS, tier, cancelledLoads);
+
+    numReplicasToDrop -= cancelledLoads;
+    if (numReplicasToDrop > 0) {
+      final int successfulDropsQueued = dropReplicas(
+          numReplicasToDrop,
+          segment,
+          serversByState.get(SegmentState.LOADED)
+      );
+
+      stats.addToTieredStat(Metrics.QUEUED_DROPS, tier, successfulDropsQueued);
+      if (numReplicasToDrop > successfulDropsQueued) {
+        log.warn(
+            "Queued %d of %d loads of segment [%s] on tier [%s].",
+            successfulDropsQueued,
+            numReplicasToDrop,
+            segment.getId(),
+            tier
+        );
       }
     }
   }
@@ -359,7 +390,7 @@ public class SegmentLoader
       numDropsQueued += dropReplicas(remainingNumToDrop, segment, serverIterator);
     }
     if (numToDrop > numDropsQueued) {
-      log.warn("Queued only %d of %d drops of segment [%s].", numToDrop, numDropsQueued, segment.getId());
+      log.warn("Queued only %d of %d drops of segment [%s].", numDropsQueued, numToDrop, segment.getId());
     }
 
     return numDropsQueued;
@@ -417,11 +448,6 @@ public class SegmentLoader
     while (numLoadsQueued < numToLoad && serverIterator.hasNext()) {
       numLoadsQueued += stateManager.loadSegment(segment, serverIterator.next(), false) ? 1 : 0;
     }
-
-    if (numToLoad > numLoadsQueued) {
-      log.warn("Queued only %d of %d loads of segment [%s].", numToLoad, numLoadsQueued, segment.getId());
-    }
-
     return numLoadsQueued;
   }
 
