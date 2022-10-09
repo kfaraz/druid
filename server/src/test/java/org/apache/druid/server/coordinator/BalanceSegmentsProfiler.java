@@ -146,7 +146,7 @@ public class BalanceSegmentsProfiler
         .build();
 
     BalanceSegmentsTester tester = new BalanceSegmentsTester(coordinator);
-    RunRules runner = new RunRules(coordinator.getSegmentStateManager());
+    RunRules runner = new RunRules();
     watch.start();
     DruidCoordinatorRuntimeParams balanceParams = tester.run(params);
     DruidCoordinatorRuntimeParams assignParams = runner.run(params);

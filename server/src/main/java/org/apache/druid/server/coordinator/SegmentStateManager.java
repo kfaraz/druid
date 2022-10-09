@@ -22,25 +22,27 @@ package org.apache.druid.server.coordinator;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import org.apache.druid.client.ServerInventoryView;
+import org.apache.druid.java.util.emitter.EmittingLogger;
 import org.apache.druid.metadata.SegmentsMetadataManager;
 import org.apache.druid.timeline.DataSegment;
+import org.apache.druid.timeline.SegmentId;
 
+import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * Manages state of segments being loaded.
  */
 public class SegmentStateManager
 {
+  private static final EmittingLogger log = new EmittingLogger(SegmentStateManager.class);
   // TODO
+  //  1. currently moving
+  //  4. load queue modes
   //  2. all callbacks
   //  3. try - catch
-  //  4. load queue modes
-  //
-
-  // TODO:
-  //  currently moving segments
-  //  what about the callbacks to different load/drop actions?
 
   private final boolean isHttpLoading;
   private final ServerInventoryView serverInventoryView;
@@ -48,6 +50,11 @@ public class SegmentStateManager
   private final ReplicationThrottler replicationThrottler = new ReplicationThrottler();
 
   private volatile SegmentReplicantLookup replicantLookup;
+
+  // This should be merged with currently replicating segments as they use the
+  // same lifetime expiration logic
+  private final Map<String, ConcurrentHashMap<SegmentId, BalancerSegmentHolder>>
+      currentlyMovingSegments = new HashMap<>();
 
   public SegmentStateManager(
       ServerInventoryView serverInventoryView,
@@ -60,6 +67,10 @@ public class SegmentStateManager
     this.isHttpLoading = isHttpLoading;
   }
 
+  /**
+   * Resets the state of the ReplicationThrottler and updates the lifetime of
+   * balancing and replicating segments in the queue.
+   */
   public void prepareForRun(DruidCoordinatorRuntimeParams runtimeParams)
   {
     final CoordinatorDynamicConfig dynamicConfig = runtimeParams.getCoordinatorDynamicConfig();
@@ -69,6 +80,7 @@ public class SegmentStateManager
         dynamicConfig.getMaxNonPrimaryReplicantsToLoad()
     );
     replicationThrottler.updateReplicationState(runtimeParams.getDruidCluster().getTierNames());
+    updateMovingSegmentLifetimes();
 
     this.replicantLookup = runtimeParams.getSegmentReplicantLookup();
   }
@@ -107,19 +119,21 @@ public class SegmentStateManager
       ServerHolder toServer
   )
   {
+    final ConcurrentMap<SegmentId, BalancerSegmentHolder> segmentsMovingInTier = currentlyMovingSegments
+        .computeIfAbsent(toServer.getServer().getTier(), t -> new ConcurrentHashMap<>());
     final LoadQueuePeon dropPeon = fromServer.getPeon();
-    final LoadPeonCallback loadPeonCallback = success -> {
+    final LoadPeonCallback moveFinishCallback = success -> {
       dropPeon.unmarkSegmentToDrop(segment);
-      // TODO: update currentlyMovingSegments here
+      segmentsMovingInTier.remove(segment.getId());
     };
 
     // mark segment to drop before it is actually loaded on server
     // to be able to account for this information in BalancerStrategy immediately
-    // TODO: add to currentlyMovingSegments here
     dropPeon.markSegmentToDrop(segment);
+    segmentsMovingInTier.put(segment.getId(), new BalancerSegmentHolder(fromServer, segment));
 
     final LoadQueuePeon loadPeon = toServer.getPeon();
-    final String destServerName = toServer.getServer().getName();
+    final String toServerName = toServer.getServer().getName();
     try {
       loadPeon.loadSegment(
           segment,
@@ -135,16 +149,16 @@ public class SegmentStateManager
             if (success
                 && !dropPeon.getSegmentsToDrop().contains(segment)
                 && (isHttpLoading
-                    || serverInventoryView.isSegmentLoadedByServer(destServerName, segment))) {
-              dropPeon.dropSegment(segment, loadPeonCallback);
+                    || serverInventoryView.isSegmentLoadedByServer(toServerName, segment))) {
+              dropPeon.dropSegment(segment, moveFinishCallback);
             } else {
-              loadPeonCallback.execute(success);
+              moveFinishCallback.execute(success);
             }
           }
       );
     }
     catch (Exception e) {
-      dropPeon.unmarkSegmentToDrop(segment);
+      moveFinishCallback.execute(false);
       throw new RuntimeException(e);
     }
 
@@ -168,6 +182,9 @@ public class SegmentStateManager
     return replicantLookup;
   }
 
+  /**
+   * Gets a Map from datasource to the number of unavailable segments.
+   */
   public Map<String, Integer> getUnavailableSegmentCountPerDatasource()
   {
     if (replicantLookup == null) {
@@ -186,6 +203,53 @@ public class SegmentStateManager
     }
 
     return numUnavailableSegments;
+  }
+
+  /**
+   * Gets the number of segments currently being moved in this tier.
+   */
+  public int getNumMovingSegments(String tier)
+  {
+    ConcurrentHashMap<SegmentId, BalancerSegmentHolder> segmentsMovingInTier
+        = currentlyMovingSegments.get(tier);
+    return segmentsMovingInTier == null ? 0 : segmentsMovingInTier.size();
+  }
+
+  public boolean cancelOperation(
+      SegmentState currentState,
+      DataSegment segment,
+      ServerHolder server
+  )
+  {
+    SegmentState observedState = server.getSegmentState(segment);
+    if (observedState != currentState) {
+      return false;
+    }
+
+    if (server.getPeon()) {
+      server.cancelSegmentOperation(currentState, segment);
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+  /**
+   * Updates the lifetimes of the the segments being moved in all the tiers.
+   */
+  private void updateMovingSegmentLifetimes()
+  {
+    for (String tier : currentlyMovingSegments.keySet()) {
+      for (BalancerSegmentHolder holder : currentlyMovingSegments.get(tier).values()) {
+        holder.reduceLifetime();
+        if (holder.getLifetime() <= 0) {
+          log.makeAlert("[%s]: Balancer move segments queue has a segment stuck", tier)
+             .addData("segment", holder.getSegment().getId())
+             .addData("server", holder.getFromServer().getServer().getMetadata())
+             .emit();
+        }
+      }
+    }
   }
 
 }

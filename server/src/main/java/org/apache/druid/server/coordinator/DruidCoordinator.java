@@ -628,7 +628,7 @@ public class DruidCoordinator
         new RunRules(),
         new UnloadUnusedSegments(),
         new MarkAsUnusedOvershadowedSegments(DruidCoordinator.this),
-        new BalanceSegments()
+        new BalanceSegments(segmentStateManager)
     );
   }
 

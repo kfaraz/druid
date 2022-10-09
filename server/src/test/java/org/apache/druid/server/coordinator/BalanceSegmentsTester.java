@@ -65,7 +65,7 @@ public class BalanceSegmentsTester extends BalanceSegments
         final LoadQueuePeon dropPeon = params.getLoadManagementPeons().get(fromServerName);
         dropPeon.markSegmentToDrop(segment.getSegment());
 
-        currentlyMovingSegments.get("normal").put(segmentId, segment);
+        // TODO: currentlyMovingSegments.get("normal").put(segmentId, segment);
         return true;
       }
       catch (Exception e) {

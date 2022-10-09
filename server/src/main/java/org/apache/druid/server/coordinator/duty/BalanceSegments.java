@@ -27,19 +27,15 @@ import org.apache.druid.server.coordinator.BalancerSegmentHolder;
 import org.apache.druid.server.coordinator.BalancerStrategy;
 import org.apache.druid.server.coordinator.CoordinatorStats;
 import org.apache.druid.server.coordinator.DruidCoordinatorRuntimeParams;
-import org.apache.druid.server.coordinator.LoadPeonCallback;
+import org.apache.druid.server.coordinator.SegmentStateManager;
 import org.apache.druid.server.coordinator.ServerHolder;
 import org.apache.druid.timeline.DataSegment;
-import org.apache.druid.timeline.SegmentId;
 
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableSet;
 import java.util.SortedSet;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Collectors;
 
 /**
@@ -47,21 +43,11 @@ import java.util.stream.Collectors;
 public class BalanceSegments implements CoordinatorDuty
 {
   protected static final EmittingLogger log = new EmittingLogger(BalanceSegments.class);
+  private final SegmentStateManager stateManager;
 
-  protected final Map<String, ConcurrentHashMap<SegmentId, BalancerSegmentHolder>> currentlyMovingSegments =
-      new HashMap<>();
-
-  protected void reduceLifetimes(String tier)
+  public BalanceSegments(SegmentStateManager stateManager)
   {
-    for (BalancerSegmentHolder holder : currentlyMovingSegments.get(tier).values()) {
-      holder.reduceLifetime();
-      if (holder.getLifetime() <= 0) {
-        log.makeAlert("[%s]: Balancer move segments queue has a segment stuck", tier)
-           .addData("segment", holder.getSegment().getId())
-           .addData("server", holder.getFromServer().getServer().getMetadata())
-           .emit();
-      }
-    }
+    this.stateManager = stateManager;
   }
 
   @Override
@@ -90,14 +76,13 @@ public class BalanceSegments implements CoordinatorDuty
       // suppress emit zero stats
       return;
     }
-    currentlyMovingSegments.computeIfAbsent(tier, t -> new ConcurrentHashMap<>());
 
-    if (!currentlyMovingSegments.get(tier).isEmpty()) {
-      reduceLifetimes(tier);
+    final int numSegmentsMovingInTier = stateManager.getNumMovingSegments(tier);
+    if (numSegmentsMovingInTier > 0) {
       log.info(
           "[%s]: Still waiting on %,d segments to be moved. Skipping balance.",
           tier,
-          currentlyMovingSegments.get(tier).size()
+          numSegmentsMovingInTier
       );
       // suppress emit zero stats
       return;
@@ -272,25 +257,14 @@ public class BalanceSegments implements CoordinatorDuty
       final DruidCoordinatorRuntimeParams params
   )
   {
-    final SegmentId segmentId = segmentHolder.getSegment().getId();
-    ConcurrentMap<SegmentId, BalancerSegmentHolder> movingSegments =
-        currentlyMovingSegments.get(toServer.getServer().getTier());
-    movingSegments.put(segmentId, segmentHolder);
-    final LoadPeonCallback callback = moveSuccess -> movingSegments.remove(segmentId);
     try {
-      boolean moveRequestSuccess = params.getSegmentLoader().moveSegment(
+      return params.getSegmentLoader().moveSegment(
           segmentHolder.getSegment(),
           segmentHolder.getFromServer(),
           toServer
       );
-      if (!moveRequestSuccess) {
-        callback.execute(false);
-      }
-      return moveRequestSuccess;
     }
     catch (Exception e) {
-      log.makeAlert(e, "[%s] : Moving exception", segmentId).emit();
-      callback.execute(false);
       return false;
     }
   }

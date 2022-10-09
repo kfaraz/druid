@@ -21,6 +21,7 @@ package org.apache.druid.server.coordinator;
 
 import org.apache.druid.timeline.DataSegment;
 
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -31,19 +32,27 @@ import java.util.Set;
 public interface LoadQueuePeon
 {
   void start();
+
   void stop();
 
   Set<DataSegment> getSegmentsToLoad();
+
+  Map<DataSegment, SegmentAction> getSegmentsInQueue();
 
   Set<DataSegment> getSegmentsToDrop();
 
   Set<DataSegment> getTimedOutSegments();
 
   void markSegmentToDrop(DataSegment segmentToLoad);
+
   void unmarkSegmentToDrop(DataSegment segmentToLoad);
+
   Set<DataSegment> getSegmentsMarkedToDrop();
 
   void loadSegment(DataSegment segment, LoadPeonCallback callback);
+
+  void loadSegment(DataSegment segment, SegmentAction action, LoadPeonCallback callback);
+
   void dropSegment(DataSegment segment, LoadPeonCallback callback);
 
   long getLoadQueueSize();
@@ -53,6 +62,7 @@ public interface LoadQueuePeon
   int getNumberOfSegmentsInQueue();
 
   boolean cancelLoad(DataSegment segment);
+
   boolean cancelDrop(DataSegment segment);
 
 }

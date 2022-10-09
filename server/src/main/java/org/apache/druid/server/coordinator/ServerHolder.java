@@ -67,12 +67,24 @@ public class ServerHolder implements Comparable<ServerHolder>
     this.isDecommissioning = isDecommissioning;
     this.maxLoadQueueSize = maxLoadQueueSize;
 
-    for (DataSegment segment : peon.getSegmentsToLoad()) {
-      segmentStates.put(segment.getId(), SegmentState.LOADING);
-      sizeOfLoadingSegments += segment.getSize();
-    }
-    for (DataSegment segment : peon.getSegmentsToDrop()) {
-      segmentStates.put(segment.getId(), SegmentState.DROPPING);
+    peon.getSegmentsInQueue().forEach((segment, action) -> {
+      segmentStates.put(segment.getId(), toState(action));
+      sizeOfLoadingSegments += action == SegmentAction.DROP ? 0L : segment.getSize();
+    });
+  }
+
+  private static SegmentState toState(SegmentAction action)
+  {
+    switch (action) {
+      case DROP:
+        return SegmentState.DROPPING;
+      case LOAD_AS_PRIMARY:
+      case LOAD_AS_REPLICA:
+        return SegmentState.LOADING;
+      case MOVE_TO:
+        return SegmentState.MOVING_TO;
+      default:
+        return SegmentState.NONE;
     }
   }
 
@@ -176,71 +188,23 @@ public class ServerHolder implements Comparable<ServerHolder>
     return getSegmentState(segment) == SegmentState.DROPPING;
   }
 
-  public void loadSegment(DataSegment segment)
+  public void cancelSegmentOperation(SegmentState currentState, DataSegment segment)
   {
-    if (!canLoadSegment(segment)) {
-      throw new ISE("Cannot load segment because ...");
+    if (getSegmentState(segment) != currentState) {
+      return;
     }
 
-    segmentStates.put(segment.getId(), SegmentState.LOADING);
-    peon.loadSegment(segment, null);
-
-    sizeOfLoadingSegments += segment.getSize();
-    segmentsQueuedForLoad++;
-  }
-
-  public void moveSegment(DataSegment segment)
-  {
-    if (!canLoadSegment(segment)) {
-      throw new ISE("Cannot load segment because ...");
+    final SegmentState newState;
+    if (currentState == SegmentState.LOADING || currentState == SegmentState.MOVING_TO) {
+      sizeOfLoadingSegments -= segment.getSize();
+      newState = SegmentState.NONE;
+    } else if (currentState == SegmentState.DROPPING) {
+      newState = SegmentState.LOADED;
+    } else {
+      newState = SegmentState.NONE;
     }
 
-    segmentStates.put(segment.getId(), SegmentState.MOVING_TO);
-    peon.loadSegment(segment, null);
-
-    sizeOfLoadingSegments += segment.getSize();
-    segmentsQueuedForLoad++;
-  }
-
-  /**
-   * Let's assume that this was not called in a callback of balancing.
-   * TODO: We will handle this later.
-   */
-  public void dropSegment(DataSegment segment)
-  {
-    if (!isServingSegment(segment)) {
-      throw new ISE("Only a loaded segment can be queued for drop");
-    }
-
-    segmentStates.put(segment.getId(), SegmentState.DROPPING);
-    peon.dropSegment(segment, success ->
-        segmentStates.put(
-            segment.getId(),
-            success ? SegmentState.NONE : SegmentState.LOADED
-        )
-    );
-  }
-
-  public boolean cancelSegmentOperation(SegmentState expectedState, DataSegment segment)
-  {
-    SegmentState currentState = segmentStates.get(segment.getId());
-    if (currentState != expectedState) {
-      return false;
-    }
-
-    final boolean success;
-    switch (expectedState) {
-      case LOADING:
-      case MOVING_TO:
-        success = peon.cancelLoad(segment);
-        break;
-      case DROPPING:
-        success = peon.cancelDrop(segment);
-        break;
-      default:
-        success = false;
-    }
-    return success;
+    segmentStates.put(segment.getId(), newState);
   }
 
   public int getNumberOfSegmentsInQueue()

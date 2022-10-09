@@ -22,6 +22,7 @@ package org.apache.druid.server.coordinator;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Iterators;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
@@ -51,6 +52,7 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -83,10 +85,10 @@ public class HttpLoadQueuePeon implements LoadQueuePeon
   private final AtomicLong queuedSize = new AtomicLong(0);
   private final AtomicInteger failedAssignCount = new AtomicInteger(0);
 
-  private final ConcurrentSkipListMap<DataSegment, SegmentHolder> segmentsToLoad = new ConcurrentSkipListMap<>(
+  private final ConcurrentSkipListMap<DataSegment, QueuedSegment> segmentsToLoad = new ConcurrentSkipListMap<>(
       DruidCoordinator.SEGMENT_COMPARATOR_RECENT_FIRST
   );
-  private final ConcurrentSkipListMap<DataSegment, SegmentHolder> segmentsToDrop = new ConcurrentSkipListMap<>(
+  private final ConcurrentSkipListMap<DataSegment, QueuedSegment> segmentsToDrop = new ConcurrentSkipListMap<>(
       DruidCoordinator.SEGMENT_COMPARATOR_RECENT_FIRST
   );
   private final ConcurrentSkipListSet<DataSegment> segmentsMarkedToDrop = new ConcurrentSkipListSet<>(
@@ -155,14 +157,14 @@ public class HttpLoadQueuePeon implements LoadQueuePeon
     final List<DataSegmentChangeRequest> newRequests = new ArrayList<>(batchSize);
 
     synchronized (lock) {
-      Iterator<Map.Entry<DataSegment, SegmentHolder>> iter = Iterators.concat(
+      Iterator<Map.Entry<DataSegment, QueuedSegment>> iter = Iterators.concat(
           segmentsToDrop.entrySet().iterator(),
           segmentsToLoad.entrySet().iterator()
       );
 
       activeRequestSegments.clear();
       while (newRequests.size() < batchSize && iter.hasNext()) {
-        Map.Entry<DataSegment, SegmentHolder> entry = iter.next();
+        Map.Entry<DataSegment, QueuedSegment> entry = iter.next();
         if (entry.getValue().hasTimedOut()) {
           entry.getValue().requestFailed("timed out");
           iter.remove();
@@ -371,8 +373,9 @@ public class HttpLoadQueuePeon implements LoadQueuePeon
   }
 
   @Override
-  public void loadSegment(DataSegment segment, LoadPeonCallback callback)
+  public void loadSegment(DataSegment segment, SegmentAction action, LoadPeonCallback callback)
   {
+    Preconditions.checkArgument(action != SegmentAction.DROP);
     synchronized (lock) {
       if (stopped) {
         log.warn(
@@ -437,6 +440,15 @@ public class HttpLoadQueuePeon implements LoadQueuePeon
   public Set<DataSegment> getTimedOutSegments()
   {
     return Collections.emptySet();
+  }
+
+  @Override
+  public Map<DataSegment, SegmentAction> getSegmentsInQueue()
+  {
+    final Map<DataSegment, SegmentAction> segmentsInQueue = new HashMap<>();
+    segmentsToLoad.values().forEach(s -> segmentsInQueue.put(s.getSegment(), s.getAction()));
+    segmentsToDrop.values().forEach(s -> segmentsInQueue.put(s.getSegment(), s.getAction()));
+    return segmentsInQueue;
   }
 
   @Override

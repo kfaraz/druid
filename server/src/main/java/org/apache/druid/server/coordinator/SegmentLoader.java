@@ -25,7 +25,6 @@ import org.apache.druid.timeline.DataSegment;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.EnumMap;
 import java.util.Iterator;
 import java.util.List;
@@ -43,9 +42,9 @@ public class SegmentLoader
 {
   // TODO:
   //  5. revise
-  //  6. logs, metrics
+  //  6. logs, emit and connect metrics
   //  7. test
-  //  8. revise
+  //  8. publish, self-review
 
   private static final EmittingLogger log = new EmittingLogger(SegmentLoader.class);
 
@@ -90,7 +89,7 @@ public class SegmentLoader
     }
 
     final boolean cancelSuccess = stateOnSrc == SegmentState.LOADING
-                                  && fromServer.cancelSegmentOperation(SegmentState.LOADING, segment);
+                                  && stateManager.cancelOperation(SegmentState.LOADING, segment, fromServer);
 
     if (cancelSuccess) {
       int loadedCountOnTier = replicantLookup
@@ -181,7 +180,7 @@ public class SegmentLoader
     }
 
     boolean dropCancelled = state == SegmentState.DROPPING
-                            && server.cancelSegmentOperation(SegmentState.DROPPING, segment);
+                            && stateManager.cancelOperation(SegmentState.DROPPING, segment, server);
 
     final String tier = server.getServer().getTier();
     if (dropCancelled) {
@@ -210,7 +209,7 @@ public class SegmentLoader
     }
 
     boolean loadCancelled = state == SegmentState.LOADING
-                            && server.cancelSegmentOperation(SegmentState.LOADING, segment);
+                            && stateManager.cancelOperation(SegmentState.LOADING, segment, server);
 
     final String tier = server.getServer().getTier();
     if (loadCancelled) {
@@ -402,8 +401,7 @@ public class SegmentLoader
   {
     int numCancelled = 0;
     for (int i = 0; i < servers.size() && numCancelled < maxNumToCancel; ++i) {
-      numCancelled += servers.get(i).cancelSegmentOperation(state, segment)
-                      ? 1 : 0;
+      numCancelled += stateManager.cancelOperation(state, segment, servers.get(i)) ? 1 : 0;
     }
     return numCancelled;
   }
