@@ -421,7 +421,7 @@ public class CuratorLoadQueuePeon implements LoadQueuePeon
 
   private void executeCallbacks(QueuedSegment holder, boolean success)
   {
-    for (LoadPeonCallback callback : holder.snapshotCallbacks()) {
+    for (LoadPeonCallback callback : holder.getCallbacks()) {
       callBackExecutor.submit(() -> callback.execute(success));
     }
   }

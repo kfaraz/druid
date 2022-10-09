@@ -20,7 +20,6 @@
 package org.apache.druid.server.coordinator;
 
 import org.apache.druid.client.ImmutableDruidServer;
-import org.apache.druid.java.util.common.ISE;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.timeline.SegmentId;
@@ -188,23 +187,33 @@ public class ServerHolder implements Comparable<ServerHolder>
     return getSegmentState(segment) == SegmentState.DROPPING;
   }
 
-  public void cancelSegmentOperation(SegmentState currentState, DataSegment segment)
+  public boolean startOperation(DataSegment segment, SegmentState newState)
   {
-    if (getSegmentState(segment) != currentState) {
-      return;
+    if (segmentStates.containsKey(segment.getId())) {
+      return false;
     }
 
-    final SegmentState newState;
-    if (currentState == SegmentState.LOADING || currentState == SegmentState.MOVING_TO) {
-      sizeOfLoadingSegments -= segment.getSize();
-      newState = SegmentState.NONE;
-    } else if (currentState == SegmentState.DROPPING) {
-      newState = SegmentState.LOADED;
-    } else {
-      newState = SegmentState.NONE;
+    if (newState == SegmentState.LOADING || newState == SegmentState.MOVING_TO) {
+      ++segmentsQueuedForLoad;
+      sizeOfLoadingSegments += segment.getSize();
     }
-
     segmentStates.put(segment.getId(), newState);
+    return true;
+  }
+
+  public boolean cancelOperation(DataSegment segment, SegmentState currentState)
+  {
+    SegmentState observedState = segmentStates.get(segment.getId());
+    if (observedState != currentState) {
+      return false;
+    }
+
+    if (currentState == SegmentState.LOADING || currentState == SegmentState.MOVING_TO) {
+      --segmentsQueuedForLoad;
+      sizeOfLoadingSegments -= segment.getSize();
+    }
+    segmentStates.remove(segment.getId());
+    return true;
   }
 
   public int getNumberOfSegmentsInQueue()

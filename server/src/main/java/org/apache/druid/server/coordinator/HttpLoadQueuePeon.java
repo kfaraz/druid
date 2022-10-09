@@ -305,7 +305,7 @@ public class HttpLoadQueuePeon implements LoadQueuePeon
             updateSuccessOrFailureInHolder(segmentsToDrop.remove(segment), status);
           }
 
-          private void updateSuccessOrFailureInHolder(SegmentHolder holder, SegmentLoadDropHandler.Status status)
+          private void updateSuccessOrFailureInHolder(QueuedSegment holder, SegmentLoadDropHandler.Status status)
           {
             if (holder == null) {
               return;
@@ -357,11 +357,11 @@ public class HttpLoadQueuePeon implements LoadQueuePeon
 
       stopped = true;
 
-      for (SegmentHolder holder : segmentsToDrop.values()) {
+      for (QueuedSegment holder : segmentsToDrop.values()) {
         holder.requestFailed("Stopping load queue peon.");
       }
 
-      for (SegmentHolder holder : segmentsToLoad.values()) {
+      for (QueuedSegment holder : segmentsToLoad.values()) {
         holder.requestFailed("Stopping load queue peon.");
       }
 
@@ -387,16 +387,22 @@ public class HttpLoadQueuePeon implements LoadQueuePeon
         return;
       }
 
-      SegmentHolder holder = segmentsToLoad.get(segment);
-
+      QueuedSegment holder = segmentsToLoad.get(segment);
       if (holder == null) {
         log.trace("Server[%s] to load segment[%s] queued.", serverId, segment.getId());
-        segmentsToLoad.put(segment, new LoadSegmentHolder(segment, callback));
+        queuedSize.addAndGet(segment.getSize());
+        segmentsToLoad.put(segment, new QueuedSegment(segment, action, callback));
         processingExecutor.execute(this::doSegmentManagement);
       } else {
         holder.addCallback(callback);
       }
     }
+  }
+
+  @Override
+  public void loadSegment(DataSegment segment, LoadPeonCallback callback)
+  {
+    loadSegment(segment, SegmentAction.LOAD_AS_REPLICA, callback);
   }
 
   @Override
@@ -412,11 +418,11 @@ public class HttpLoadQueuePeon implements LoadQueuePeon
         callback.execute(false);
         return;
       }
-      SegmentHolder holder = segmentsToDrop.get(segment);
+      QueuedSegment holder = segmentsToDrop.get(segment);
 
       if (holder == null) {
         log.trace("Server[%s] to drop segment[%s] queued.", serverId, segment.getId());
-        segmentsToDrop.put(segment, new DropSegmentHolder(segment, callback));
+        segmentsToDrop.put(segment, new QueuedSegment(segment, SegmentAction.DROP, callback));
         processingExecutor.execute(this::doSegmentManagement);
       } else {
         holder.addCallback(callback);
@@ -598,37 +604,6 @@ public class HttpLoadQueuePeon implements LoadQueuePeon
     }
   }
 
-  private class LoadSegmentHolder extends SegmentHolder
-  {
-    public LoadSegmentHolder(DataSegment segment, LoadPeonCallback callback)
-    {
-      super(segment, new SegmentChangeRequestLoad(segment), callback);
-      queuedSize.addAndGet(segment.getSize());
-    }
-
-    @Override
-    public void requestSucceeded()
-    {
-      queuedSize.addAndGet(-getSegment().getSize());
-      super.requestSucceeded();
-    }
-
-    @Override
-    public void requestFailed(String failureCause)
-    {
-      queuedSize.addAndGet(-getSegment().getSize());
-      super.requestFailed(failureCause);
-    }
-  }
-
-  private class DropSegmentHolder extends SegmentHolder
-  {
-    public DropSegmentHolder(DataSegment segment, LoadPeonCallback callback)
-    {
-      super(segment, new SegmentChangeRequestDrop(segment), callback);
-    }
-  }
-
   @Override
   public boolean cancelDrop(DataSegment segment)
   {
@@ -652,7 +627,7 @@ public class HttpLoadQueuePeon implements LoadQueuePeon
         return false;
       }
 
-      final SegmentHolder holder = isLoad ? segmentsToLoad.remove(segment)
+      final QueuedSegment holder = isLoad ? segmentsToLoad.remove(segment)
                                           : segmentsToDrop.remove(segment);
       if (holder == null) {
         return false;

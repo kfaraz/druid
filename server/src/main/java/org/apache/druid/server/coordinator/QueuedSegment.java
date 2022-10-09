@@ -29,11 +29,16 @@ import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Represents a segment queued for a load or drop operation in a LoadQueuePeon.
+ */
 public class QueuedSegment
 {
   private final DataSegment segment;
   private final DataSegmentChangeRequest changeRequest;
   private final SegmentAction action;
+  private final boolean isLoad;
+
   // Guaranteed to store only non-null elements
   private final List<LoadPeonCallback> callbacks = new ArrayList<>();
 
@@ -48,6 +53,7 @@ public class QueuedSegment
     this.changeRequest = (action == SegmentAction.DROP)
                          ? new SegmentChangeRequestDrop(segment)
                          : new SegmentChangeRequestLoad(segment);
+    this.isLoad = action != SegmentAction.DROP;
     if (callback != null) {
       callbacks.add(callback);
     }
@@ -61,6 +67,11 @@ public class QueuedSegment
   public SegmentAction getAction()
   {
     return action;
+  }
+
+  public boolean isLoad()
+  {
+    return isLoad;
   }
 
   public String getSegmentIdentifier()
@@ -82,10 +93,12 @@ public class QueuedSegment
     }
   }
 
-  List<LoadPeonCallback> snapshotCallbacks()
+  /**
+   * Returns an immutable copy of the callbacks.
+   */
+  public List<LoadPeonCallback> getCallbacks()
   {
     synchronized (callbacks) {
-      // Return an immutable copy so that callers don't have to worry about concurrent modification
       return ImmutableList.copyOf(callbacks);
     }
   }

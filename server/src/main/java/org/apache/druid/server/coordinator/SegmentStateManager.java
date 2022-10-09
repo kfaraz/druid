@@ -38,11 +38,6 @@ import java.util.concurrent.ConcurrentMap;
 public class SegmentStateManager
 {
   private static final EmittingLogger log = new EmittingLogger(SegmentStateManager.class);
-  // TODO
-  //  1. currently moving
-  //  4. load queue modes
-  //  2. all callbacks
-  //  3. try - catch
 
   private final boolean isHttpLoading;
   private final ServerInventoryView serverInventoryView;
@@ -99,18 +94,32 @@ public class SegmentStateManager
       return false;
     }
 
-    // TODO: update state in serverholder
-    // TODO: unregister replicant creation
-    server.getPeon().loadSegment(segment, null);
-    return true;
+    try {
+      server.startOperation(segment, SegmentState.LOADING);
+      server.getPeon().loadSegment(
+          segment,
+          isPrimary ? SegmentAction.LOAD_AS_PRIMARY : SegmentAction.LOAD_AS_REPLICA,
+          success -> replicationThrottler.unregisterReplicantCreation(tier, segment.getId())
+      );
+      return true;
+    }
+    catch (Exception e) {
+      server.cancelOperation(segment, SegmentState.LOADING);
+      return false;
+    }
   }
 
   public boolean dropSegment(DataSegment segment, ServerHolder server)
   {
-    // TODO: update state in serverHolder
-    server.getPeon().dropSegment(segment, null);
-    // TODO: callbacks, if any
-    return true;
+    try {
+      server.startOperation(segment, SegmentState.DROPPING);
+      server.getPeon().dropSegment(segment, null);
+      return true;
+    }
+    catch (Exception e) {
+      server.cancelOperation(segment, SegmentState.DROPPING);
+      return false;
+    }
   }
 
   public boolean moveSegment(
@@ -121,22 +130,24 @@ public class SegmentStateManager
   {
     final ConcurrentMap<SegmentId, BalancerSegmentHolder> segmentsMovingInTier = currentlyMovingSegments
         .computeIfAbsent(toServer.getServer().getTier(), t -> new ConcurrentHashMap<>());
-    final LoadQueuePeon dropPeon = fromServer.getPeon();
+    final LoadQueuePeon fromServerPeon = fromServer.getPeon();
     final LoadPeonCallback moveFinishCallback = success -> {
-      dropPeon.unmarkSegmentToDrop(segment);
+      fromServerPeon.unmarkSegmentToDrop(segment);
       segmentsMovingInTier.remove(segment.getId());
     };
 
     // mark segment to drop before it is actually loaded on server
     // to be able to account for this information in BalancerStrategy immediately
-    dropPeon.markSegmentToDrop(segment);
+    toServer.startOperation(segment, SegmentState.MOVING_TO);
+    fromServerPeon.markSegmentToDrop(segment);
     segmentsMovingInTier.put(segment.getId(), new BalancerSegmentHolder(fromServer, segment));
 
-    final LoadQueuePeon loadPeon = toServer.getPeon();
+    final LoadQueuePeon toServerPeon = toServer.getPeon();
     final String toServerName = toServer.getServer().getName();
     try {
-      loadPeon.loadSegment(
+      toServerPeon.loadSegment(
           segment,
+          SegmentAction.MOVE_TO,
           success -> {
             // Drop segment only if:
             // (1) segment load was successful on toServer
@@ -147,10 +158,10 @@ public class SegmentStateManager
             // Do not check the inventory with http loading as the HTTP
             // response is enough to determine load success or failure
             if (success
-                && !dropPeon.getSegmentsToDrop().contains(segment)
+                && !fromServerPeon.getSegmentsToDrop().contains(segment)
                 && (isHttpLoading
                     || serverInventoryView.isSegmentLoadedByServer(toServerName, segment))) {
-              dropPeon.dropSegment(segment, moveFinishCallback);
+              fromServerPeon.dropSegment(segment, moveFinishCallback);
             } else {
               moveFinishCallback.execute(success);
             }
@@ -158,6 +169,7 @@ public class SegmentStateManager
       );
     }
     catch (Exception e) {
+      toServer.cancelOperation(segment, SegmentState.MOVING_TO);
       moveFinishCallback.execute(false);
       throw new RuntimeException(e);
     }
@@ -215,22 +227,29 @@ public class SegmentStateManager
     return segmentsMovingInTier == null ? 0 : segmentsMovingInTier.size();
   }
 
+  /**
+   * Cancels the segment operation being performed on a server if the state of
+   * the segment on this server matches the given currentState.
+   */
   public boolean cancelOperation(
       SegmentState currentState,
       DataSegment segment,
       ServerHolder server
   )
   {
-    SegmentState observedState = server.getSegmentState(segment);
-    if (observedState != currentState) {
+    if (!server.cancelOperation(segment, currentState)) {
       return false;
     }
 
-    if (server.getPeon()) {
-      server.cancelSegmentOperation(currentState, segment);
-      return true;
-    } else {
-      return false;
+    final LoadQueuePeon peon = server.getPeon();
+    switch (currentState) {
+      case DROPPING:
+        return peon.cancelDrop(segment);
+      case MOVING_TO:
+      case LOADING:
+        return peon.cancelLoad(segment);
+      default:
+        return false;
     }
   }
 
