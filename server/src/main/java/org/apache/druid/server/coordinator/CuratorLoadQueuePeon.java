@@ -419,13 +419,6 @@ public class CuratorLoadQueuePeon implements LoadQueuePeon
     }
   }
 
-  private void executeCallbacks(QueuedSegment holder, boolean success)
-  {
-    for (LoadPeonCallback callback : holder.getCallbacks()) {
-      callBackExecutor.submit(() -> callback.execute(success));
-    }
-  }
-
   @Override
   public boolean cancelDrop(DataSegment segment)
   {
@@ -436,5 +429,12 @@ public class CuratorLoadQueuePeon implements LoadQueuePeon
   public boolean cancelLoad(DataSegment segment)
   {
     return false;
+  }
+
+  private void executeCallbacks(QueuedSegment holder, boolean success)
+  {
+    for (LoadPeonCallback callback : holder.getCallbacks()) {
+      callBackExecutor.submit(() -> callback.execute(success));
+    }
   }
 }

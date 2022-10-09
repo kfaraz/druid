@@ -54,6 +54,7 @@ public class SegmentLoader
   private final CoordinatorStats stats = new CoordinatorStats();
   private final SegmentReplicantLookup replicantLookup;
   private final BalancerStrategy strategy;
+  private final int maxLoadQueueSize;
 
   public SegmentLoader(SegmentStateManager stateManager, DruidCoordinatorRuntimeParams runParams)
   {
@@ -61,6 +62,8 @@ public class SegmentLoader
     this.strategy = runParams.getBalancerStrategy();
     this.cluster = runParams.getDruidCluster();
     this.replicantLookup = runParams.getSegmentReplicantLookup();
+    this.maxLoadQueueSize = runParams.getCoordinatorDynamicConfig()
+                                     .getMaxSegmentsInNodeLoadingQueue();
   }
 
   public CoordinatorStats getStats()
@@ -77,9 +80,9 @@ public class SegmentLoader
   {
     if (!fromServer.getServer().getTier().equals(toServer.getServer().getTier())) {
       return false;
-    } else if (fromServer.getServer().getMetadata().equals(toServer.getServer().getMetadata())) {
+    }/* else if (fromServer.getServer().getMetadata().equals(toServer.getServer().getMetadata())) {
       return false;
-    }
+    }*/
 
     // fromServer must be loading or serving the segment
     // and toServer must be able to load it
@@ -171,6 +174,23 @@ public class SegmentLoader
   {
     stateManager.deleteSegment(segment);
     stats.addToGlobalStat(Metrics.DELETED_SEGMENTS, 1);
+  }
+
+  /**
+   * Checks if the server can load the given segment.
+   * <p>
+   * A load is possible only if the server meets all of the following criteria:
+   * <ul>
+   *   <li>is not already serving or loading the segment</li>
+   *   <li>is not being decommissioned</li>
+   *   <li>has not already exceeded the load queue limit in this run</li>
+   *   <li>has available disk space</li>
+   * </ul>
+   */
+  public boolean canLoadSegment(ServerHolder server, DataSegment segment)
+  {
+    return server.canLoadSegment(segment)
+           && (maxLoadQueueSize == 0 || maxLoadQueueSize > server.getSegmentsQueuedForLoad());
   }
 
   private boolean loadBroadcastSegment(DataSegment segment, ServerHolder server)

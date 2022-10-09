@@ -28,6 +28,7 @@ import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.emitter.EmittingLogger;
 import org.apache.druid.java.util.emitter.service.ServiceEmitter;
 import org.apache.druid.metadata.MetadataRuleManager;
+import org.apache.druid.server.coordinator.duty.BalanceSegments;
 import org.apache.druid.server.coordinator.duty.RunRules;
 import org.apache.druid.server.coordinator.rules.PeriodLoadRule;
 import org.apache.druid.server.coordinator.rules.Rule;
@@ -145,7 +146,7 @@ public class BalanceSegmentsProfiler
         .withReplicationManager(replicationThrottler)
         .build();
 
-    BalanceSegmentsTester tester = new BalanceSegmentsTester(coordinator);
+    BalanceSegments tester = new BalanceSegments(coordinator.getSegmentStateManager());
     RunRules runner = new RunRules(coordinator.getSegmentStateManager());
     watch.start();
     DruidCoordinatorRuntimeParams balanceParams = tester.run(params);
@@ -193,7 +194,7 @@ public class BalanceSegmentsProfiler
         .withUsedSegmentsInTest(segments)
         .withDynamicConfigs(CoordinatorDynamicConfig.builder().withMaxSegmentsToMove(MAX_SEGMENTS_TO_MOVE).build())
         .build();
-    BalanceSegmentsTester tester = new BalanceSegmentsTester(coordinator);
+    BalanceSegments tester = new BalanceSegments(coordinator.getSegmentStateManager());
     watch.start();
     DruidCoordinatorRuntimeParams balanceParams = tester.run(params);
     System.out.println(watch.stop());

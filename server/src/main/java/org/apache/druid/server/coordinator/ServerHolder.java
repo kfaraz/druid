@@ -20,7 +20,6 @@
 package org.apache.druid.server.coordinator;
 
 import org.apache.druid.client.ImmutableDruidServer;
-import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.timeline.SegmentId;
 
@@ -33,10 +32,8 @@ import java.util.concurrent.ConcurrentMap;
  */
 public class ServerHolder implements Comparable<ServerHolder>
 {
-  private static final Logger log = new Logger(ServerHolder.class);
   private final ImmutableDruidServer server;
   private final LoadQueuePeon peon;
-  private final int maxLoadQueueSize;
   private final boolean isDecommissioning;
 
   private int segmentsQueuedForLoad;
@@ -46,25 +43,18 @@ public class ServerHolder implements Comparable<ServerHolder>
 
   public ServerHolder(ImmutableDruidServer server, LoadQueuePeon peon)
   {
-    this(server, peon, false, 0);
-  }
-
-  public ServerHolder(ImmutableDruidServer server, LoadQueuePeon peon, boolean isDecommissioning)
-  {
-    this(server, peon, isDecommissioning, 0);
+    this(server, peon, false);
   }
 
   public ServerHolder(
       ImmutableDruidServer server,
       LoadQueuePeon peon,
-      boolean isDecommissioning,
-      int maxLoadQueueSize
+      boolean isDecommissioning
   )
   {
     this.server = server;
     this.peon = peon;
     this.isDecommissioning = isDecommissioning;
-    this.maxLoadQueueSize = maxLoadQueueSize;
 
     peon.getSegmentsInQueue().forEach((segment, action) -> {
       segmentStates.put(segment.getId(), toState(action));
@@ -140,23 +130,10 @@ public class ServerHolder implements Comparable<ServerHolder>
     return getMaxSize() - getSizeUsed();
   }
 
-  /**
-   * Checks if this server can load the specified segment.
-   * <p>
-   * A load is possible only if the server meets all of the following criteria:
-   * <ul>
-   *   <li>is not already serving or loading the segment</li>
-   *   <li>is not being decommissioned</li>
-   *   <li>has not already exceeded the load queue limit in this run</li>
-   *   <li>has available disk space</li>
-   * </ul>
-   */
   public boolean canLoadSegment(DataSegment segment)
   {
     final SegmentState state = getSegmentState(segment);
-
     return !isDecommissioning
-           && (maxLoadQueueSize == 0 || maxLoadQueueSize > segmentsQueuedForLoad)
            && getAvailableSize() >= segment.getSize()
            && state == SegmentState.NONE;
   }
@@ -169,6 +146,11 @@ public class ServerHolder implements Comparable<ServerHolder>
     }
 
     return isServingSegment(segment) ? SegmentState.LOADED : SegmentState.NONE;
+  }
+
+  public int getSegmentsQueuedForLoad()
+  {
+    return segmentsQueuedForLoad;
   }
 
   public boolean isServingSegment(DataSegment segment)

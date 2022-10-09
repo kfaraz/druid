@@ -72,7 +72,6 @@ public class BalanceSegments implements CoordinatorDuty
       SegmentLoader loader
   )
   {
-
     log.info("Balancing segments in tier [%s]", tier);
     if (params.getUsedSegments().size() == 0) {
       log.info("Metadata segments are not available. Cannot balance.");
@@ -219,7 +218,7 @@ public class BalanceSegments implements CoordinatorDuty
         final List<ServerHolder> toMoveToWithLoadQueueCapacityAndNotServingSegment =
             toMoveTo.stream()
                     .filter(s -> s.getServer().equals(fromServer)
-                                 || s.canLoadSegment(segmentToMove))
+                                 || loader.canLoadSegment(s, segmentToMove))
                     .collect(Collectors.toList());
 
         if (toMoveToWithLoadQueueCapacityAndNotServingSegment.size() > 0) {
@@ -269,6 +268,7 @@ public class BalanceSegments implements CoordinatorDuty
       );
     }
     catch (Exception e) {
+      log.makeAlert(e, "[%s] : Moving exception", segmentHolder.getSegment().getId()).emit();
       return false;
     }
   }

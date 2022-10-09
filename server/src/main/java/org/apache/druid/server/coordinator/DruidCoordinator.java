@@ -923,8 +923,7 @@ public class DruidCoordinator
             new ServerHolder(
                 server,
                 loadManagementPeons.get(server.getName()),
-                decommissioningServers.contains(server.getHost()),
-                params.getCoordinatorDynamicConfig().getMaxSegmentsInNodeLoadingQueue()
+                decommissioningServers.contains(server.getHost())
             )
         );
       }
