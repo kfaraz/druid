@@ -87,7 +87,7 @@ public class SegmentLoader
     // and toServer must be able to load it
     final SegmentState stateOnSrc = fromServer.getSegmentState(segment);
     if ((stateOnSrc != SegmentState.LOADING && stateOnSrc != SegmentState.LOADED)
-        || !toServer.canLoadSegment(segment)) {
+        || !canLoadSegment(toServer, segment)) {
       return false;
     }
 
@@ -207,7 +207,7 @@ public class SegmentLoader
     final String tier = server.getServer().getTier();
     if (dropCancelled) {
       stats.addToTieredStat(Metrics.CANCELLED_DROPS, tier, 1);
-    } else if (server.canLoadSegment(segment)
+    } else if (canLoadSegment(server, segment)
                && stateManager.loadSegment(segment, server, false)) {
       stats.addToTieredStat(Metrics.QUEUED_LOADS, tier, 1);
     } else {
@@ -393,7 +393,7 @@ public class SegmentLoader
   {
     final List<ServerHolder> eligibleServers =
         candidateServers.stream()
-                        .filter(server -> server.canLoadSegment(segment))
+                        .filter(server -> canLoadSegment(server, segment))
                         .collect(Collectors.toList());
     if (eligibleServers.isEmpty()) {
       log.warn("No eligible server to load replica of segment [%s]", segment.getId());

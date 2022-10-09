@@ -29,6 +29,7 @@ import org.apache.druid.server.coordinator.DruidCoordinator;
 import org.apache.druid.server.coordinator.DruidCoordinatorRuntimeParams;
 import org.apache.druid.server.coordinator.SegmentLoader;
 import org.apache.druid.server.coordinator.SegmentReplicantLookup;
+import org.apache.druid.server.coordinator.SegmentState;
 import org.apache.druid.server.coordinator.ServerHolder;
 import org.apache.druid.timeline.DataSegment;
 
@@ -148,6 +149,7 @@ public abstract class BroadcastDistributionRule implements Rule
            .emit();
       } else {
         if (!holder.isLoadingSegment(segment)) {
+          holder.startOperation(segment, SegmentState.LOADING);
           holder.getPeon().loadSegment(
               segment,
               null
