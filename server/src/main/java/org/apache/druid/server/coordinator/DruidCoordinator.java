@@ -266,11 +266,6 @@ public class DruidCoordinator
     return loadManagementPeons;
   }
 
-  public SegmentStateManager getSegmentStateManager()
-  {
-    return segmentStateManager;
-  }
-
   /**
    * @return tier -> { dataSource -> underReplicationCount } map
    */

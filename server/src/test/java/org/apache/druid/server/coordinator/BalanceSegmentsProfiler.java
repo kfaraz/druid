@@ -51,7 +51,7 @@ import java.util.Map;
 public class BalanceSegmentsProfiler
 {
   private static final int MAX_SEGMENTS_TO_MOVE = 5;
-  private DruidCoordinator coordinator;
+  private SegmentStateManager stateManager;
   private ImmutableDruidServer druidServer1;
   private ImmutableDruidServer druidServer2;
   List<DataSegment> segments = new ArrayList<>();
@@ -63,7 +63,7 @@ public class BalanceSegmentsProfiler
   @Before
   public void setUp()
   {
-    coordinator = EasyMock.createMock(DruidCoordinator.class);
+    stateManager = new SegmentStateManager(null, null, true);
     druidServer1 = EasyMock.createMock(ImmutableDruidServer.class);
     druidServer2 = EasyMock.createMock(ImmutableDruidServer.class);
     emitter = EasyMock.createMock(ServiceEmitter.class);
@@ -80,8 +80,6 @@ public class BalanceSegmentsProfiler
     EasyMock.expect(manager.getRules(EasyMock.anyObject())).andReturn(rules).anyTimes();
     EasyMock.expect(manager.getRulesWithDefault(EasyMock.anyObject())).andReturn(rules).anyTimes();
     EasyMock.replay(manager);
-
-    EasyMock.replay(coordinator);
 
     Map<String, LoadQueuePeon> peonMap = new HashMap<>();
     List<ServerHolder> serverHolderList = new ArrayList<>();
@@ -146,8 +144,8 @@ public class BalanceSegmentsProfiler
         .withReplicationManager(replicationThrottler)
         .build();
 
-    BalanceSegments tester = new BalanceSegments(coordinator.getSegmentStateManager());
-    RunRules runner = new RunRules(coordinator.getSegmentStateManager());
+    BalanceSegments tester = new BalanceSegments(stateManager);
+    RunRules runner = new RunRules(stateManager);
     watch.start();
     DruidCoordinatorRuntimeParams balanceParams = tester.run(params);
     DruidCoordinatorRuntimeParams assignParams = runner.run(params);
@@ -176,8 +174,6 @@ public class BalanceSegmentsProfiler
     EasyMock.expect(druidServer2.getSegment(EasyMock.anyObject())).andReturn(null).anyTimes();
     EasyMock.replay(druidServer2);
 
-    EasyMock.replay(coordinator);
-
     DruidCoordinatorRuntimeParams params = CoordinatorRuntimeParamsTestHelpers
         .newBuilder()
         .withDruidCluster(
@@ -194,7 +190,7 @@ public class BalanceSegmentsProfiler
         .withUsedSegmentsInTest(segments)
         .withDynamicConfigs(CoordinatorDynamicConfig.builder().withMaxSegmentsToMove(MAX_SEGMENTS_TO_MOVE).build())
         .build();
-    BalanceSegments tester = new BalanceSegments(coordinator.getSegmentStateManager());
+    BalanceSegments tester = new BalanceSegments(stateManager);
     watch.start();
     DruidCoordinatorRuntimeParams balanceParams = tester.run(params);
     System.out.println(watch.stop());
