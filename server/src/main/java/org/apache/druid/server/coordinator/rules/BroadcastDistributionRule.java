@@ -96,7 +96,8 @@ public abstract class BroadcastDistributionRule implements Rule
       DataSegment segment
   )
   {
-    Object2LongMap<String> underReplicatedBroadcastTiers = segmentReplicantLookup.getBroadcastUnderReplication(segment.getId());
+    Object2LongMap<String> underReplicatedBroadcastTiers =
+        segmentReplicantLookup.getBroadcastUnderReplication(segment.getId());
     for (final Object2LongMap.Entry<String> entry : underReplicatedBroadcastTiers.object2LongEntrySet()) {
       final String tier = entry.getKey();
       final long underReplicatedCount = entry.getLongValue();

@@ -57,9 +57,7 @@ public class LoadQueuePeonTester extends CuratorLoadQueuePeon
   }
 
   @Override
-  public void loadSegment(
-      DataSegment segment, SegmentAction action, @Nullable LoadPeonCallback callback
-  )
+  public void loadSegment(DataSegment segment, SegmentAction action, @Nullable LoadPeonCallback callback)
   {
     segmentsToLoad.add(segment);
   }

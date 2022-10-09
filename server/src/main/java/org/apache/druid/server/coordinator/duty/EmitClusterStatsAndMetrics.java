@@ -218,35 +218,39 @@ public class EmitClusterStatsAndMetrics implements CoordinatorDuty
         }
     );
 
+    // Log load queue status of all replication or broadcast targets
     log.info("Load Queues:");
-    for (Iterable<ServerHolder> serverHolders : cluster.getSortedHistoricalsByTier()) {
-      for (ServerHolder serverHolder : serverHolders) {
-        ImmutableDruidServer server = serverHolder.getServer();
-        LoadQueuePeon queuePeon = serverHolder.getPeon();
-        log.info(
-            "Server[%s, %s, %s] has %,d left to load, %,d left to drop, %,d served, %,d bytes queued, %,d bytes served.",
-            server.getName(),
-            server.getType().toString(),
-            server.getTier(),
-            queuePeon.getSegmentsToLoad().size(),
-            queuePeon.getSegmentsToDrop().size(),
-            server.getNumSegments(),
-            queuePeon.getLoadQueueSize(),
-            server.getCurrSize()
-        );
-        if (log.isDebugEnabled()) {
-          for (DataSegment segment : queuePeon.getSegmentsToLoad()) {
-            log.debug("Segment to load[%s]", segment);
-          }
-          for (DataSegment segment : queuePeon.getSegmentsToDrop()) {
-            log.debug("Segment to drop[%s]", segment);
-          }
+    for (ServerHolder serverHolder : cluster.getAllServers()) {
+      ImmutableDruidServer server = serverHolder.getServer();
+      LoadQueuePeon queuePeon = serverHolder.getPeon();
+      log.info(
+          "Server[%s, %s, %s] has %,d left to load, %,d left to drop, %,d served, %,d bytes queued, %,d bytes served.",
+          server.getName(),
+          server.getType().toString(),
+          server.getTier(),
+          queuePeon.getSegmentsToLoad().size(),
+          queuePeon.getSegmentsToDrop().size(),
+          server.getNumSegments(),
+          queuePeon.getLoadQueueSize(),
+          server.getCurrSize()
+      );
+      if (log.isDebugEnabled()) {
+        for (DataSegment segment : queuePeon.getSegmentsToLoad()) {
+          log.debug("Segment to load[%s]", segment);
         }
+        for (DataSegment segment : queuePeon.getSegmentsToDrop()) {
+          log.debug("Segment to drop[%s]", segment);
+        }
+      }
+    }
+
+    for (Iterable<ServerHolder> historicalTier : cluster.getSortedHistoricalsByTier()) {
+      for (ServerHolder historical : historicalTier) {
+        final ImmutableDruidServer server = historical.getServer();
         stats.addToTieredStat(TOTAL_CAPACITY, server.getTier(), server.getMaxSize());
         stats.addToTieredStat(TOTAL_HISTORICAL_COUNT, server.getTier(), 1);
       }
     }
-
 
     params.getDatabaseRuleManager()
           .getAllRules()

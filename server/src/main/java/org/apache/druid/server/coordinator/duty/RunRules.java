@@ -24,7 +24,6 @@ import org.apache.druid.client.ImmutableDruidDataSource;
 import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.emitter.EmittingLogger;
 import org.apache.druid.metadata.MetadataRuleManager;
-import org.apache.druid.server.coordinator.CoordinatorStats;
 import org.apache.druid.server.coordinator.DruidCluster;
 import org.apache.druid.server.coordinator.DruidCoordinatorRuntimeParams;
 import org.apache.druid.server.coordinator.SegmentLoader;
@@ -56,7 +55,6 @@ public class RunRules implements CoordinatorDuty
   @Override
   public DruidCoordinatorRuntimeParams run(DruidCoordinatorRuntimeParams params)
   {
-    CoordinatorStats stats = new CoordinatorStats();
     DruidCluster cluster = params.getDruidCluster();
 
     if (cluster.isEmpty()) {
@@ -123,7 +121,7 @@ public class RunRules implements CoordinatorDuty
     }
 
     return params.buildFromExisting()
-                 .withCoordinatorStats(stats)
+                 .withCoordinatorStats(segmentLoader.getStats())
                  .withBroadcastDatasources(broadcastDatasources)
                  .build();
   }

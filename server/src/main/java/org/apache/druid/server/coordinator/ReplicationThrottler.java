@@ -53,17 +53,17 @@ public class ReplicationThrottler
   /**
    * Resets the replication throttling parameters for a new coordinator run.
    *
-   * @param maxReplicasPerTier     Maximum number of replicas that can be
-   *                               actively loading on a tier at any given time.
-   * @param maxLifetime            Number of coordinator runs after which
-   *                               replica remaining in the queue is considered
-   *                               to be stuck and causes an alert.
-   * @param maxTotalReplicasPerRun Maximum number of replicas that can be
-   *                               assigned for loading in a single coordinator run.
+   * @param replicationThrottleLimit Maximum number of replicas that can be
+   *                                 actively loading on a tier at any given time.
+   * @param maxLifetime              Number of coordinator runs after which
+   *                                 replica remaining in the queue is considered
+   *                                 to be stuck and causes an alert.
+   * @param maxTotalReplicasPerRun   Maximum number of replicas that can be
+   *                                 assigned for loading in a single coordinator run.
    */
-  public void resetParams(int maxReplicasPerTier, int maxLifetime, int maxTotalReplicasPerRun)
+  public void resetParams(int replicationThrottleLimit, int maxLifetime, int maxTotalReplicasPerRun)
   {
-    this.maxReplicasPerTier = maxReplicasPerTier;
+    this.maxReplicasPerTier = replicationThrottleLimit;
     this.maxLifetime = maxLifetime;
     this.maxTotalReplicasPerRun = maxTotalReplicasPerRun;
     this.numAssignedReplicas.set(0);

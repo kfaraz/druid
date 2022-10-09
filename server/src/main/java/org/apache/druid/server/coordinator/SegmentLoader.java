@@ -42,6 +42,7 @@ import java.util.stream.Collectors;
 public class SegmentLoader
 {
   // TODO:
+  //  4. replication log
   //  5. revise
   //  6. logs, emit and connect metrics
   //  7. test
@@ -80,9 +81,7 @@ public class SegmentLoader
   {
     if (!fromServer.getServer().getTier().equals(toServer.getServer().getTier())) {
       return false;
-    }/* else if (fromServer.getServer().getMetadata().equals(toServer.getServer().getMetadata())) {
-      return false;
-    }*/
+    }
 
     // fromServer must be loading or serving the segment
     // and toServer must be able to load it
@@ -161,9 +160,11 @@ public class SegmentLoader
 
     if (broadcastLoadCount > 0) {
       stats.addToDataSourceStat(Metrics.BROADCAST_LOADS, segment.getDataSource(), broadcastLoadCount);
+      log.debug("Broadcast load of segment [%s] to [%d] servers.", segment.getId(), broadcastLoadCount);
     }
     if (broadcastDropCount > 0) {
       stats.addToDataSourceStat(Metrics.BROADCAST_DROPS, segment.getDataSource(), broadcastDropCount);
+      log.debug("Broadcast drop of segment [%s] to [%d] servers.", segment.getId(), broadcastDropCount);
     }
   }
 
@@ -249,7 +250,14 @@ public class SegmentLoader
     final Map<SegmentState, List<ServerHolder>> serversByState = new EnumMap<>(SegmentState.class);
     Arrays.stream(SegmentState.values())
           .forEach(state -> serversByState.put(state, new ArrayList<>()));
-    cluster.getHistoricalsByTier(tier).forEach(
+
+    Set<ServerHolder> historicals = cluster.getHistoricalsByTier(tier);
+    if (historicals == null || historicals.isEmpty()) {
+      log.makeAlert("Tier [%s] has no servers! Check your cluster configuration.", tier).emit();
+      return;
+    }
+
+    historicals.forEach(
         serverHolder -> serversByState
             .get(serverHolder.getSegmentState(segment))
             .add(serverHolder)

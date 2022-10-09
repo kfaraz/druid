@@ -24,7 +24,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.ListeningExecutorService;
-import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.recipes.cache.PathChildrenCache;
@@ -517,7 +516,6 @@ public class DruidCoordinatorTest extends CuratorTestBase
     final String coldTierName = "cold";
     final String tierName1 = "tier1";
     final String tierName2 = "tier2";
-    final Rule broadcastDistributionRule = new ForeverBroadcastDistributionRule();
     final String loadPathCold = "/druid/loadqueue/cold:1234";
     final String loadPathBroker1 = "/druid/loadqueue/broker1:1234";
     final String loadPathBroker2 = "/druid/loadqueue/broker2:1234";
@@ -622,6 +620,7 @@ public class DruidCoordinatorTest extends CuratorTestBase
 
     setupSegmentsMetadataMock(druidDataSources[0]);
 
+    final Rule broadcastDistributionRule = new ForeverBroadcastDistributionRule();
     EasyMock.expect(metadataRuleManager.getRulesWithDefault(EasyMock.anyString()))
             .andReturn(ImmutableList.of(broadcastDistributionRule)).atLeastOnce();
     EasyMock.expect(metadataRuleManager.getAllRules())
