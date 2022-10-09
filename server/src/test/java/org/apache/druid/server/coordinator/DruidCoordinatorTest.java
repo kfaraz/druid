@@ -123,6 +123,9 @@ public class DruidCoordinatorTest extends CuratorTestBase
     coordinatorRuntimeParams = EasyMock.createNiceMock(DruidCoordinatorRuntimeParams.class);
     metadataRuleManager = EasyMock.createNiceMock(MetadataRuleManager.class);
     loadQueueTaskMaster = EasyMock.createMock(LoadQueueTaskMaster.class);
+    EasyMock.expect(loadQueueTaskMaster.isHttpLoading()).andReturn(false).anyTimes();
+    EasyMock.replay(loadQueueTaskMaster);
+
     JacksonConfigManager configManager = EasyMock.createNiceMock(JacksonConfigManager.class);
     EasyMock.expect(
         configManager.watch(
@@ -268,9 +271,6 @@ public class DruidCoordinatorTest extends CuratorTestBase
 
     EasyMock.expect(serverInventoryView.isSegmentLoadedByServer("to", segment)).andReturn(true).once();
     EasyMock.replay(serverInventoryView);
-
-    EasyMock.expect(loadQueueTaskMaster.isHttpLoading()).andReturn(false).anyTimes();
-    EasyMock.replay(loadQueueTaskMaster);
 
     mockCoordinatorRuntimeParams();
 
@@ -692,7 +692,7 @@ public class DruidCoordinatorTest extends CuratorTestBase
             EasyMock.anyObject(Class.class),
             EasyMock.anyObject()
         )
-    ).andReturn(new AtomicReference(dynamicConfig)).anyTimes();
+    ).andReturn(new AtomicReference<>(dynamicConfig)).anyTimes();
 
     ScheduledExecutorFactory scheduledExecutorFactory = EasyMock.createNiceMock(ScheduledExecutorFactory.class);
     EasyMock.replay(configManager, dynamicConfig, scheduledExecutorFactory);
@@ -706,7 +706,7 @@ public class DruidCoordinatorTest extends CuratorTestBase
         null,
         scheduledExecutorFactory,
         null,
-        null,
+        loadQueueTaskMaster,
         null,
         null,
         null,
@@ -725,7 +725,6 @@ public class DruidCoordinatorTest extends CuratorTestBase
 
     // first initialization
     duty.initBalancerExecutor();
-    System.out.println("c.getCachedBalancerThreadNumber(): " + c.getCachedBalancerThreadNumber());
     Assert.assertEquals(5, c.getCachedBalancerThreadNumber());
     ListeningExecutorService firstExec = c.getBalancerExec();
     Assert.assertNotNull(firstExec);
@@ -735,15 +734,15 @@ public class DruidCoordinatorTest extends CuratorTestBase
     Assert.assertEquals(5, c.getCachedBalancerThreadNumber());
     ListeningExecutorService secondExec = c.getBalancerExec();
     Assert.assertNotNull(secondExec);
-    Assert.assertTrue(firstExec == secondExec);
+    Assert.assertSame(firstExec, secondExec);
 
     // third initialization, expect executor recreated as cachedBalancerThreadNumber is changed to 10
     duty.initBalancerExecutor();
     Assert.assertEquals(10, c.getCachedBalancerThreadNumber());
     ListeningExecutorService thirdExec = c.getBalancerExec();
     Assert.assertNotNull(thirdExec);
-    Assert.assertFalse(secondExec == thirdExec);
-    Assert.assertFalse(firstExec == thirdExec);
+    Assert.assertNotSame(secondExec, thirdExec);
+    Assert.assertNotSame(firstExec, thirdExec);
   }
 
   @Test
@@ -759,7 +758,7 @@ public class DruidCoordinatorTest extends CuratorTestBase
         serviceEmitter,
         scheduledExecutorFactory,
         null,
-        null,
+        loadQueueTaskMaster,
         new LatchableServiceAnnouncer(leaderAnnouncerLatch, leaderUnannouncerLatch),
         druidNode,
         loadManagementPeons,
@@ -799,7 +798,7 @@ public class DruidCoordinatorTest extends CuratorTestBase
         serviceEmitter,
         scheduledExecutorFactory,
         null,
-        null,
+        loadQueueTaskMaster,
         new LatchableServiceAnnouncer(leaderAnnouncerLatch, leaderUnannouncerLatch),
         druidNode,
         loadManagementPeons,
@@ -848,7 +847,7 @@ public class DruidCoordinatorTest extends CuratorTestBase
         serviceEmitter,
         scheduledExecutorFactory,
         null,
-        null,
+        loadQueueTaskMaster,
         new LatchableServiceAnnouncer(leaderAnnouncerLatch, leaderUnannouncerLatch),
         druidNode,
         loadManagementPeons,
@@ -957,7 +956,7 @@ public class DruidCoordinatorTest extends CuratorTestBase
         serviceEmitter,
         scheduledExecutorFactory,
         null,
-        null,
+        loadQueueTaskMaster,
         new LatchableServiceAnnouncer(leaderAnnouncerLatch, leaderUnannouncerLatch),
         druidNode,
         loadManagementPeons,
