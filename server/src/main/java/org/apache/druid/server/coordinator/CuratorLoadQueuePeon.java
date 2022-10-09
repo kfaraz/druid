@@ -338,7 +338,7 @@ public class CuratorLoadQueuePeon implements LoadQueuePeon
         // null value will be returned at the second time in which case queueSize may be negative.
         // See https://github.com/apache/druid/pull/10362 for more details.
         if (null != segmentsToLoad.remove(segmentHolder.getSegment())) {
-          queuedSize.addAndGet(-segmentHolder.getSegmentSize());
+          queuedSize.addAndGet(-segmentHolder.getSegment().getSize());
           timedOutSegments.remove(segmentHolder.getSegment());
         }
         break;

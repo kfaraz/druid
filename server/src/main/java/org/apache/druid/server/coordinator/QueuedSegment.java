@@ -28,6 +28,7 @@ import org.apache.druid.timeline.DataSegment;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Represents a segment queued for a load or drop operation in a LoadQueuePeon.
@@ -41,6 +42,7 @@ public class QueuedSegment
 
   // Guaranteed to store only non-null elements
   private final List<LoadPeonCallback> callbacks = new ArrayList<>();
+  private final AtomicLong firstRequestMillis = new AtomicLong(0);
 
   QueuedSegment(
       DataSegment segment,
@@ -74,14 +76,14 @@ public class QueuedSegment
     return isLoad;
   }
 
+  public DataSegmentChangeRequest getChangeRequest()
+  {
+    return changeRequest;
+  }
+
   public String getSegmentIdentifier()
   {
     return segment.getId().toString();
-  }
-
-  public long getSegmentSize()
-  {
-    return segment.getSize();
   }
 
   public void addCallback(@Nullable LoadPeonCallback callback)
@@ -94,7 +96,7 @@ public class QueuedSegment
   }
 
   /**
-   * Returns an immutable copy of the callbacks.
+   * Returns an immutable copy of all non-null callbacks for this queued segment.
    */
   public List<LoadPeonCallback> getCallbacks()
   {
@@ -103,9 +105,10 @@ public class QueuedSegment
     }
   }
 
-  public DataSegmentChangeRequest getChangeRequest()
+  public long getFirstRequestTimeMillis()
   {
-    return changeRequest;
+    firstRequestMillis.compareAndSet(0L, System.currentTimeMillis());
+    return firstRequestMillis.get();
   }
 
   @Override
