@@ -27,6 +27,8 @@ import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.inject.Inject;
+import it.unimi.dsi.fastutil.objects.Object2IntMaps;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import org.apache.druid.client.DataSourcesSnapshot;
 import org.apache.druid.client.DruidDataSource;
@@ -149,6 +151,7 @@ public class DruidCoordinator
   private final CompactSegments compactSegments;
 
   private volatile boolean started = false;
+  private volatile SegmentReplicantLookup segmentReplicantLookup = null;
   private volatile DruidCluster cluster = null;
 
   private int cachedBalancerThreadNumber;
@@ -318,7 +321,23 @@ public class DruidCoordinator
 
   public Map<String, Integer> computeNumsUnavailableUsedSegmentsPerDataSource()
   {
-    return segmentStateManager.getUnavailableSegmentCountPerDatasource();
+    if (segmentReplicantLookup == null) {
+      return Object2IntMaps.emptyMap();
+    }
+
+    final Object2IntOpenHashMap<String> numsUnavailableUsedSegmentsPerDataSource = new Object2IntOpenHashMap<>();
+
+    final Iterable<DataSegment> dataSegments = segmentsMetadataManager.iterateAllUsedSegments();
+
+    for (DataSegment segment : dataSegments) {
+      if (segmentReplicantLookup.getLoadedReplicants(segment.getId()) == 0) {
+        numsUnavailableUsedSegmentsPerDataSource.addTo(segment.getDataSource(), 1);
+      } else {
+        numsUnavailableUsedSegmentsPerDataSource.addTo(segment.getDataSource(), 0);
+      }
+    }
+
+    return numsUnavailableUsedSegmentsPerDataSource;
   }
 
   public Map<String, Double> getLoadStatus()
@@ -464,7 +483,6 @@ public class DruidCoordinator
   {
     final Map<String, Object2LongMap<String>> underReplicationCountsPerDataSourcePerTier = new HashMap<>();
 
-    final SegmentReplicantLookup segmentReplicantLookup = segmentStateManager.getReplicantLookup();
     if (segmentReplicantLookup == null) {
       return underReplicationCountsPerDataSourcePerTier;
     }
@@ -863,20 +881,16 @@ public class DruidCoordinator
       startPeonsForNewServers(currentServers);
 
       cluster = prepareCluster(params, currentServers);
+      segmentReplicantLookup = SegmentReplicantLookup.make(cluster, getDynamicConfigs().getReplicateAfterLoadTimeout());
 
       stopPeonsForDisappearedServers(currentServers);
 
-      final SegmentReplicantLookup segmentReplicantLookup =
-          SegmentReplicantLookup.make(cluster, getDynamicConfigs().getReplicateAfterLoadTimeout());
-      DruidCoordinatorRuntimeParams paramsWithCluster =
-          params.buildFromExisting()
-                .withDruidCluster(cluster)
-                .withLoadManagementPeons(loadManagementPeons)
-                .withSegmentReplicantLookup(segmentReplicantLookup)
-                .build();
-
-      segmentStateManager.prepareForRun(paramsWithCluster);
-      return paramsWithCluster;
+      segmentStateManager.prepareForRun(params);
+      return params.buildFromExisting()
+                   .withDruidCluster(cluster)
+                   .withLoadManagementPeons(loadManagementPeons)
+                   .withSegmentReplicantLookup(segmentReplicantLookup)
+                   .build();
     }
 
     List<ImmutableDruidServer> prepareCurrentServers()

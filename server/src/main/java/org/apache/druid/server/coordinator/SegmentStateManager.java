@@ -19,8 +19,6 @@
 
 package org.apache.druid.server.coordinator;
 
-import it.unimi.dsi.fastutil.objects.Object2IntMaps;
-import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import org.apache.druid.client.ServerInventoryView;
 import org.apache.druid.java.util.emitter.EmittingLogger;
 import org.apache.druid.metadata.SegmentsMetadataManager;
@@ -43,8 +41,6 @@ public class SegmentStateManager
   private final ServerInventoryView serverInventoryView;
   private final SegmentsMetadataManager segmentsMetadataManager;
   private final ReplicationThrottler replicationThrottler = new ReplicationThrottler();
-
-  private volatile SegmentReplicantLookup replicantLookup;
 
   // This should be merged with currently replicating segments as they use the
   // same lifetime expiration logic
@@ -76,8 +72,6 @@ public class SegmentStateManager
     );
     replicationThrottler.updateReplicationState();
     updateMovingSegmentLifetimes();
-
-    this.replicantLookup = runtimeParams.getSegmentReplicantLookup();
   }
 
   /**
@@ -183,38 +177,6 @@ public class SegmentStateManager
   public boolean deleteSegment(DataSegment segment)
   {
     return segmentsMetadataManager.markSegmentAsUnused(segment.getId());
-  }
-
-  /**
-   * Required temporarily until the computation of under-replicated segments is
-   * moved here from DruidCoordinator.
-   */
-  public SegmentReplicantLookup getReplicantLookup()
-  {
-    return replicantLookup;
-  }
-
-  /**
-   * Gets a Map from datasource to the number of unavailable segments.
-   */
-  public Map<String, Integer> getUnavailableSegmentCountPerDatasource()
-  {
-    if (replicantLookup == null) {
-      return Object2IntMaps.emptyMap();
-    }
-
-    final Object2IntOpenHashMap<String> numUnavailableSegments = new Object2IntOpenHashMap<>();
-
-    final Iterable<DataSegment> dataSegments = segmentsMetadataManager.iterateAllUsedSegments();
-    for (DataSegment segment : dataSegments) {
-      if (replicantLookup.getLoadedReplicants(segment.getId()) == 0) {
-        numUnavailableSegments.addTo(segment.getDataSource(), 1);
-      } else {
-        numUnavailableSegments.addTo(segment.getDataSource(), 0);
-      }
-    }
-
-    return numUnavailableSegments;
   }
 
   /**
