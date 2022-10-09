@@ -625,7 +625,7 @@ public class DruidCoordinator
     return ImmutableList.of(
         new LogUsedSegments(),
         new UpdateCoordinatorStateAndPrepareCluster(),
-        new RunRules(),
+        new RunRules(segmentStateManager),
         new UnloadUnusedSegments(),
         new MarkAsUnusedOvershadowedSegments(DruidCoordinator.this),
         new BalanceSegments(segmentStateManager)
@@ -876,10 +876,7 @@ public class DruidCoordinator
                 .build();
 
       segmentStateManager.prepareForRun(paramsWithCluster);
-      final SegmentLoader segmentLoader = new SegmentLoader(segmentStateManager, paramsWithCluster);
-      return paramsWithCluster.buildFromExisting()
-                              .withSegmentLoader(segmentLoader)
-                              .build();
+      return paramsWithCluster;
     }
 
     List<ImmutableDruidServer> prepareCurrentServers()

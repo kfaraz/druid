@@ -27,6 +27,7 @@ import org.apache.druid.server.coordinator.BalancerSegmentHolder;
 import org.apache.druid.server.coordinator.BalancerStrategy;
 import org.apache.druid.server.coordinator.CoordinatorStats;
 import org.apache.druid.server.coordinator.DruidCoordinatorRuntimeParams;
+import org.apache.druid.server.coordinator.SegmentLoader;
 import org.apache.druid.server.coordinator.SegmentStateManager;
 import org.apache.druid.server.coordinator.ServerHolder;
 import org.apache.druid.timeline.DataSegment;
@@ -54,11 +55,12 @@ public class BalanceSegments implements CoordinatorDuty
   public DruidCoordinatorRuntimeParams run(DruidCoordinatorRuntimeParams params)
   {
     final CoordinatorStats stats = new CoordinatorStats();
+    final SegmentLoader loader = new SegmentLoader(stateManager, params);
     params.getDruidCluster().getHistoricals().forEach((String tier, NavigableSet<ServerHolder> servers) -> {
-      balanceTier(params, tier, servers, stats);
+      balanceTier(params, tier, servers, stats, loader);
     });
 
-    stats.accumulate(params.getSegmentLoader().getStats());
+    stats.accumulate(loader.getStats());
     return params.buildFromExisting().withCoordinatorStats(stats).build();
   }
 
@@ -66,7 +68,8 @@ public class BalanceSegments implements CoordinatorDuty
       DruidCoordinatorRuntimeParams params,
       String tier,
       SortedSet<ServerHolder> servers,
-      CoordinatorStats stats
+      CoordinatorStats stats,
+      SegmentLoader loader
   )
   {
 
@@ -131,13 +134,13 @@ public class BalanceSegments implements CoordinatorDuty
         maxSegmentsToMoveFromDecommissioningNodes
     );
     Pair<Integer, Integer> decommissioningResult =
-        balanceServers(params, decommissioningServers, activeServers, maxSegmentsToMoveFromDecommissioningNodes);
+        balanceServers(params, decommissioningServers, activeServers, maxSegmentsToMoveFromDecommissioningNodes, loader);
 
     // After moving segments from decomissioning servers, move the remaining segments from the rest of the servers.
     int maxGeneralSegmentsToMove = maxSegmentsToMove - decommissioningResult.lhs;
     log.info("Processing %d segments for balancing between active servers", maxGeneralSegmentsToMove);
     Pair<Integer, Integer> generalResult =
-        balanceServers(params, activeServers, activeServers, maxGeneralSegmentsToMove);
+        balanceServers(params, activeServers, activeServers, maxGeneralSegmentsToMove, loader);
 
     int moved = generalResult.lhs + decommissioningResult.lhs;
     int unmoved = generalResult.rhs + decommissioningResult.rhs;
@@ -159,7 +162,8 @@ public class BalanceSegments implements CoordinatorDuty
       DruidCoordinatorRuntimeParams params,
       List<ServerHolder> toMoveFrom,
       List<ServerHolder> toMoveTo,
-      int maxSegmentsToMove
+      int maxSegmentsToMove,
+      SegmentLoader loader
   )
   {
     if (maxSegmentsToMove <= 0) {
@@ -223,7 +227,7 @@ public class BalanceSegments implements CoordinatorDuty
               strategy.findNewSegmentHomeBalancer(segmentToMove, toMoveToWithLoadQueueCapacityAndNotServingSegment);
 
           if (destinationHolder != null && !destinationHolder.getServer().equals(fromServer)) {
-            if (moveSegment(segmentToMoveHolder, destinationHolder, params)) {
+            if (moveSegment(segmentToMoveHolder, destinationHolder, loader)) {
               moved++;
             } else {
               unmoved++;
@@ -254,11 +258,11 @@ public class BalanceSegments implements CoordinatorDuty
   protected boolean moveSegment(
       final BalancerSegmentHolder segmentHolder,
       final ServerHolder toServer,
-      final DruidCoordinatorRuntimeParams params
+      final SegmentLoader loader
   )
   {
     try {
-      return params.getSegmentLoader().moveSegment(
+      return loader.moveSegment(
           segmentHolder.getSegment(),
           segmentHolder.getFromServer(),
           toServer

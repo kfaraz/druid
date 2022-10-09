@@ -60,7 +60,6 @@ public class DruidCoordinatorRuntimeParams
   private final DruidCluster druidCluster;
   private final MetadataRuleManager databaseRuleManager;
   private final SegmentReplicantLookup segmentReplicantLookup;
-  private final SegmentLoader segmentLoader;
   private final @Nullable TreeSet<DataSegment> usedSegments;
   private final @Nullable DataSourcesSnapshot dataSourcesSnapshot;
   private final Map<String, LoadQueuePeon> loadManagementPeons;
@@ -77,7 +76,6 @@ public class DruidCoordinatorRuntimeParams
       DruidCluster druidCluster,
       MetadataRuleManager databaseRuleManager,
       SegmentReplicantLookup segmentReplicantLookup,
-      SegmentLoader segmentLoader,
       @Nullable TreeSet<DataSegment> usedSegments,
       @Nullable DataSourcesSnapshot dataSourcesSnapshot,
       Map<String, LoadQueuePeon> loadManagementPeons,
@@ -94,7 +92,6 @@ public class DruidCoordinatorRuntimeParams
     this.druidCluster = druidCluster;
     this.databaseRuleManager = databaseRuleManager;
     this.segmentReplicantLookup = segmentReplicantLookup;
-    this.segmentLoader = segmentLoader;
     this.usedSegments = usedSegments;
     this.dataSourcesSnapshot = dataSourcesSnapshot;
     this.loadManagementPeons = loadManagementPeons;
@@ -151,11 +148,6 @@ public class DruidCoordinatorRuntimeParams
   public ReplicationThrottler getReplicationManager()
   {
     return replicationManager;
-  }
-
-  public SegmentLoader getSegmentLoader()
-  {
-    return segmentLoader;
   }
 
   public ServiceEmitter getEmitter()
@@ -254,7 +246,6 @@ public class DruidCoordinatorRuntimeParams
     private DruidCluster druidCluster;
     private MetadataRuleManager databaseRuleManager;
     private SegmentReplicantLookup segmentReplicantLookup;
-    private SegmentLoader segmentLoader;
     private @Nullable TreeSet<DataSegment> usedSegments;
     private @Nullable DataSourcesSnapshot dataSourcesSnapshot;
     private final Map<String, LoadQueuePeon> loadManagementPeons;
@@ -324,7 +315,6 @@ public class DruidCoordinatorRuntimeParams
           druidCluster,
           databaseRuleManager,
           segmentReplicantLookup,
-          segmentLoader,
           usedSegments,
           dataSourcesSnapshot,
           loadManagementPeons,
@@ -359,12 +349,6 @@ public class DruidCoordinatorRuntimeParams
     public Builder withSegmentReplicantLookup(SegmentReplicantLookup lookup)
     {
       this.segmentReplicantLookup = lookup;
-      return this;
-    }
-
-    public Builder withSegmentLoader(SegmentLoader loader)
-    {
-      this.segmentLoader = loader;
       return this;
     }
 

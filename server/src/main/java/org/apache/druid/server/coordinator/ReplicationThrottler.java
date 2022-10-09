@@ -40,10 +40,9 @@ public class ReplicationThrottler
   private static final EmittingLogger log = new EmittingLogger(ReplicationThrottler.class);
 
   /**
-   * Only tiers that are not already replicating segments are allowed to queue
-   * new ones for replication.
+   * Tiers that are already replicating segments are not allowed to queue new items.
    */
-  private final Set<String> allowedTiers = new HashSet<>();
+  private final Set<String> busyTiers = new HashSet<>();
   private final ReplicatorSegmentHolder currentlyReplicating = new ReplicatorSegmentHolder();
 
   private volatile int maxReplicasPerTier;
@@ -71,18 +70,20 @@ public class ReplicationThrottler
   }
 
   /**
-   * Updates the replication state for the given historical tiers for a new
-   * coordinator run. This involves:
+   * Updates the replication state for all the tiers for a new coordinator run.
+   * This involves:
    * <ul>
    *   <li>Sending alerts for tiers that have a replica stuck in the load queue.</li>
-   *   <li>Identifying the tiers that do not have any active replication in
-   *   progress. Only these tiers will be considered eligible for replication
+   *   <li>Identifying the tiers that already have some active replication in
+   *   progress. These tiers will not be considered eligible for replication
    *   in this run.</li>
    * </ul>
    */
-  public void updateReplicationState(Set<String> tiers)
+  public void updateReplicationState()
   {
-    tiers.forEach(this::updateReplicationState);
+    busyTiers.clear();
+    currentlyReplicating.currentlyProcessingSegments
+        .keySet().forEach(this::updateReplicationState);
   }
 
   private void updateReplicationState(String tier)
@@ -104,9 +105,9 @@ public class ReplicationThrottler
            .addData("segments", holder.getCurrentlyProcessingSegmentsAndHosts(tier))
            .emit();
       }
+      busyTiers.add(tier);
     } else {
       log.info("[%s]: Replicant create queue is empty.", tier);
-      allowedTiers.add(tier);
       holder.resetLifetime(tier);
     }
   }
@@ -114,7 +115,7 @@ public class ReplicationThrottler
   public boolean canCreateReplicant(String tier)
   {
     return numAssignedReplicas.get() < maxTotalReplicasPerRun
-           && allowedTiers.contains(tier)
+           && !busyTiers.contains(tier)
            && !currentlyReplicating.isAtMaxReplicants(tier);
   }
 

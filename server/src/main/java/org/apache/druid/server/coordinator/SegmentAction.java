@@ -20,7 +20,9 @@
 package org.apache.druid.server.coordinator;
 
 /**
- * Represents actions that can be performed on a segment with respect to a server.
+ * Represents actions that can be performed on a server for a single segment.
+ * <p>
+ * The different action types can be used to prioritize items in a LoadQueuePeon.
  */
 public enum SegmentAction
 {

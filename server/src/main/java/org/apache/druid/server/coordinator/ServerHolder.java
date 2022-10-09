@@ -153,7 +153,6 @@ public class ServerHolder implements Comparable<ServerHolder>
    */
   public boolean canLoadSegment(DataSegment segment)
   {
-    // TODO: can we load a segment that is in DROPPING state?
     final SegmentState state = getSegmentState(segment);
 
     return !isDecommissioning

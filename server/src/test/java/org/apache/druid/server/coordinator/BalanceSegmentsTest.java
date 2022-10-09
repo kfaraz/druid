@@ -712,6 +712,9 @@ public class BalanceSegmentsTest
 
   private static void mockCoordinator(DruidCoordinator coordinator)
   {
+    SegmentStateManager stateManager = EasyMock.createMock(SegmentStateManager.class);
+    EasyMock.expect(coordinator.getSegmentStateManager())
+            .andReturn(stateManager).anyTimes();
     EasyMock.replay(coordinator);
   }
 

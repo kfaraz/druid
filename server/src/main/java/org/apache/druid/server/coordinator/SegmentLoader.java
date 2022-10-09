@@ -34,7 +34,8 @@ import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 /**
- * Interface for segment loading, dropping, balancing and broadcasting.
+ * Used by the coordinator in each run for segment loading, dropping, balancing
+ * and broadcasting.
  * <p>
  * An instance of this class is freshly created for each coordinator run.
  */

@@ -28,6 +28,7 @@ import org.apache.druid.server.coordinator.CoordinatorStats;
 import org.apache.druid.server.coordinator.DruidCluster;
 import org.apache.druid.server.coordinator.DruidCoordinatorRuntimeParams;
 import org.apache.druid.server.coordinator.SegmentLoader;
+import org.apache.druid.server.coordinator.SegmentStateManager;
 import org.apache.druid.server.coordinator.rules.BroadcastDistributionRule;
 import org.apache.druid.server.coordinator.rules.Rule;
 import org.apache.druid.timeline.DataSegment;
@@ -44,6 +45,13 @@ public class RunRules implements CoordinatorDuty
 {
   private static final EmittingLogger log = new EmittingLogger(RunRules.class);
   private static final int MAX_MISSING_RULES = 10;
+
+  private final SegmentStateManager stateManager;
+
+  public RunRules(SegmentStateManager stateManager)
+  {
+    this.stateManager = stateManager;
+  }
 
   @Override
   public DruidCoordinatorRuntimeParams run(DruidCoordinatorRuntimeParams params)
@@ -83,7 +91,7 @@ public class RunRules implements CoordinatorDuty
       }
     }
 
-    final SegmentLoader loader = params.getSegmentLoader();
+    final SegmentLoader segmentLoader = new SegmentLoader(stateManager, params);
     for (DataSegment segment : params.getUsedSegments()) {
       if (overshadowed.contains(segment.getId())) {
         // Skipping overshadowed segments
@@ -93,7 +101,7 @@ public class RunRules implements CoordinatorDuty
       boolean foundMatchingRule = false;
       for (Rule rule : rules) {
         if (rule.appliesTo(segment, now)) {
-          rule.run(segment, loader);
+          rule.run(segment, segmentLoader);
           foundMatchingRule = true;
           break;
         }

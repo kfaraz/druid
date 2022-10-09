@@ -74,7 +74,7 @@ public class SegmentStateManager
         dynamicConfig.getReplicantLifetime(),
         dynamicConfig.getMaxNonPrimaryReplicantsToLoad()
     );
-    replicationThrottler.updateReplicationState(runtimeParams.getDruidCluster().getTierNames());
+    replicationThrottler.updateReplicationState();
     updateMovingSegmentLifetimes();
 
     this.replicantLookup = runtimeParams.getSegmentReplicantLookup();

@@ -908,8 +908,9 @@ public class LoadRuleTest
   private static LoadQueuePeon createEmptyPeon()
   {
     final LoadQueuePeon mockPeon = EasyMock.createMock(LoadQueuePeon.class);
-    EasyMock.expect(mockPeon.getSegmentsToLoad()).andReturn(new HashSet<>()).anyTimes();
-    EasyMock.expect(mockPeon.getSegmentsMarkedToDrop()).andReturn(new HashSet<>()).anyTimes();
+    EasyMock.expect(mockPeon.getSegmentsToLoad()).andReturn(Collections.emptySet()).anyTimes();
+    EasyMock.expect(mockPeon.getSegmentsInQueue()).andReturn(Collections.emptyMap()).anyTimes();
+    EasyMock.expect(mockPeon.getSegmentsMarkedToDrop()).andReturn(Collections.emptySet()).anyTimes();
     EasyMock.expect(mockPeon.getLoadQueueSize()).andReturn(0L).anyTimes();
     EasyMock.expect(mockPeon.getNumberOfSegmentsInQueue()).andReturn(0).anyTimes();
 
