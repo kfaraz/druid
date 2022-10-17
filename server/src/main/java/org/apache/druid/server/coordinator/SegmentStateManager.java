@@ -65,14 +65,13 @@ public class SegmentStateManager
   public boolean loadSegment(
       DataSegment segment,
       ServerHolder server,
-      boolean isPrimary,
+      boolean canThrottle,
       ReplicationThrottler throttler
   )
   {
     final String tier = server.getServer().getTier();
     final LoadPeonCallback callback;
-    if (isPrimary) {
-      // Primary replicas are not subject to throttling
+    if (canThrottle) {
       callback = null;
     } else if (canLoadReplica(tier, throttler)) {
       throttler.incrementAssignedReplicas(tier);
@@ -93,7 +92,7 @@ public class SegmentStateManager
 
       server.getPeon().loadSegment(
           segment,
-          isPrimary ? SegmentAction.LOAD_AS_PRIMARY : SegmentAction.LOAD_AS_REPLICA,
+          canThrottle ? SegmentAction.PRIORITY_LOAD : SegmentAction.LOAD,
           callback
       );
       return true;

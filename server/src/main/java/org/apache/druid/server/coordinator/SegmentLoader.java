@@ -105,7 +105,7 @@ public class SegmentLoader
     if (loadCancelledOnFromServer) {
       stats.addToTieredStat(CoordinatorStats.CANCELLED_LOADS, tier, 1);
       int loadedCountOnTier = replicantLookup.getLoadedReplicants(segment.getId(), tier);
-      return stateManager.loadSegment(segment, toServer, loadedCountOnTier < 1, replicationThrottler);
+      return stateManager.loadSegment(segment, toServer, loadedCountOnTier >= 1, replicationThrottler);
     } else {
       return stateManager.moveSegment(segment, fromServer, toServer, replicationThrottler.getMaxLifetime());
     }
@@ -203,7 +203,7 @@ public class SegmentLoader
     }
 
     if (server.canLoadSegment(segment)
-        && stateManager.loadSegment(segment, server, true, replicationThrottler)) {
+        && stateManager.loadSegment(segment, server, false, replicationThrottler)) {
       return true;
     } else {
       log.makeAlert("Failed to assign broadcast segment for datasource [%s]", segment.getDataSource())
@@ -502,14 +502,14 @@ public class SegmentLoader
     int numLoadsQueued = 0;
     if (!isSegmentAvailableOnTier) {
       boolean queueSuccess =
-          stateManager.loadSegment(segment, serverIterator.next(), true, replicationThrottler);
+          stateManager.loadSegment(segment, serverIterator.next(), false, replicationThrottler);
       numLoadsQueued += queueSuccess ? 1 : 0;
     }
 
     // Load the remaining replicas
     while (numLoadsQueued < numToLoad && serverIterator.hasNext()) {
       boolean queueSuccess =
-          stateManager.loadSegment(segment, serverIterator.next(), false, replicationThrottler);
+          stateManager.loadSegment(segment, serverIterator.next(), true, replicationThrottler);
       numLoadsQueued += queueSuccess ? 1 : 0;
     }
     return numLoadsQueued;
