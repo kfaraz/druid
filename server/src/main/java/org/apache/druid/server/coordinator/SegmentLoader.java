@@ -33,7 +33,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.stream.Collectors;
 
 /**
  * Used by the coordinator in each run for segment loading, dropping, balancing
@@ -52,6 +51,8 @@ public class SegmentLoader
   private final ReplicationThrottler replicationThrottler;
   private final BalancerStrategy strategy;
 
+  private final RoundRobinServerSelector serverSelector;
+
   private final Set<String> emptyTiers = new HashSet<>();
 
   public SegmentLoader(
@@ -62,11 +63,12 @@ public class SegmentLoader
       BalancerStrategy strategy
   )
   {
-    this.stateManager = stateManager;
     this.cluster = cluster;
+    this.strategy = strategy;
+    this.stateManager = stateManager;
     this.replicantLookup = replicantLookup;
     this.replicationThrottler = replicationThrottler;
-    this.strategy = strategy;
+    this.serverSelector = new RoundRobinServerSelector(cluster);
   }
 
   public CoordinatorStats getStats()
@@ -105,7 +107,7 @@ public class SegmentLoader
     if (loadCancelledOnFromServer) {
       stats.addToTieredStat(CoordinatorStats.CANCELLED_LOADS, tier, 1);
       int loadedCountOnTier = replicantLookup.getLoadedReplicants(segment.getId(), tier);
-      return stateManager.loadSegment(segment, toServer, loadedCountOnTier >= 1, replicationThrottler);
+      return stateManager.loadSegment(segment, toServer, loadedCountOnTier < 1, replicationThrottler);
     } else {
       return stateManager.moveSegment(segment, fromServer, toServer, replicationThrottler.getMaxLifetime());
     }
@@ -203,7 +205,7 @@ public class SegmentLoader
     }
 
     if (server.canLoadSegment(segment)
-        && stateManager.loadSegment(segment, server, false, replicationThrottler)) {
+        && stateManager.loadSegment(segment, server, true, replicationThrottler)) {
       return true;
     } else {
       log.makeAlert("Failed to assign broadcast segment for datasource [%s]", segment.getDataSource())
@@ -339,14 +341,10 @@ public class SegmentLoader
                               + serversByState.get(SegmentState.LOADING).size()
                               + cancelledDrops;
     if (numReplicasToLoad > 0) {
-      int successfulLoadsQueued = loadReplicas(
-          numReplicasToLoad,
-          segment,
-          serversByState.get(SegmentState.NONE),
-          totalReplicas > 0
-      );
-
+      int successfulLoadsQueued =
+          loadReplicas(numReplicasToLoad, segment, tier, totalReplicas < 1);
       stats.addToTieredStat(CoordinatorStats.ASSIGNED_COUNT, tier, successfulLoadsQueued);
+
       if (numReplicasToLoad > successfulLoadsQueued) {
         stats.addToTieredStat(CoordinatorStats.ASSIGN_SKIP_COUNT, tier, numReplicasToLoad - successfulLoadsQueued);
         log.debug(
@@ -392,8 +390,8 @@ public class SegmentLoader
           segment,
           serversByState.get(SegmentState.LOADED)
       );
-
       stats.addToTieredStat(CoordinatorStats.DROPPED_COUNT, tier, successfulDropsQueued);
+
       if (numReplicasToDrop > successfulDropsQueued) {
         stats.addToTieredStat(CoordinatorStats.DROP_SKIP_COUNT, tier, 1L);
         log.debug(
@@ -471,45 +469,29 @@ public class SegmentLoader
   /**
    * Queues load of {@code numToLoad} replicas of the segment on a tier.
    *
-   * @param isSegmentAvailableOnTier true if there is atleast one replica of the
-   *                                 segment already loaded on this tier.
+   * @param isFirstLoadOnTier true if there is atleast one replica of the
+   *                          segment already loaded on this tier.
    * @return The number of successfully queued load operations.
    */
   private int loadReplicas(
       int numToLoad,
       DataSegment segment,
-      List<ServerHolder> candidateServers,
-      boolean isSegmentAvailableOnTier
+      String tier,
+      boolean isFirstLoadOnTier
   )
   {
-    final List<ServerHolder> eligibleServers =
-        candidateServers.stream()
-                        .filter(server -> server.canLoadSegment(segment))
-                        .collect(Collectors.toList());
-    if (eligibleServers.isEmpty()) {
-      log.warn("No eligible server to load replica of segment [%s]", segment.getId());
-      return 0;
-    }
-
     final Iterator<ServerHolder> serverIterator =
-        strategy.findNewSegmentHomeReplicator(segment, eligibleServers);
+        serverSelector.getServersInTierToLoadSegment(tier, segment);
     if (!serverIterator.hasNext()) {
       log.warn("No candidate server to load replica of segment [%s]", segment.getId());
       return 0;
     }
 
-    // Load the primary on this tier
+    // Load the replicas on this tier
     int numLoadsQueued = 0;
-    if (!isSegmentAvailableOnTier) {
-      boolean queueSuccess =
-          stateManager.loadSegment(segment, serverIterator.next(), false, replicationThrottler);
-      numLoadsQueued += queueSuccess ? 1 : 0;
-    }
-
-    // Load the remaining replicas
     while (numLoadsQueued < numToLoad && serverIterator.hasNext()) {
       boolean queueSuccess =
-          stateManager.loadSegment(segment, serverIterator.next(), true, replicationThrottler);
+          stateManager.loadSegment(segment, serverIterator.next(), isFirstLoadOnTier, replicationThrottler);
       numLoadsQueued += queueSuccess ? 1 : 0;
     }
     return numLoadsQueued;

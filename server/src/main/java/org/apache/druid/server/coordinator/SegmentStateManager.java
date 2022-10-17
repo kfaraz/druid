@@ -60,41 +60,42 @@ public class SegmentStateManager
   }
 
   /**
-   * Queues load of a replica of the segment on the given server.
+   * Queues load of the segment on the given server.
    */
   public boolean loadSegment(
       DataSegment segment,
       ServerHolder server,
-      boolean canThrottle,
+      boolean isFirstLoad,
       ReplicationThrottler throttler
   )
   {
+    // Check if this is a replica load and has to be throttled
     final String tier = server.getServer().getTier();
-    final LoadPeonCallback callback;
-    if (canThrottle) {
-      callback = null;
-    } else if (canLoadReplica(tier, throttler)) {
-      throttler.incrementAssignedReplicas(tier);
-
-      final TierLoadingState replicatingInTier = currentlyReplicatingSegments
-          .computeIfAbsent(tier, t -> new TierLoadingState(throttler.getMaxLifetime()));
-      replicatingInTier.addSegment(segment.getId(), server.getServer().getHost());
-      callback = success -> replicatingInTier.removeSegment(segment.getId());
-    } else {
+    if (!isFirstLoad && !canLoadReplica(tier, throttler)) {
       throttler.incrementThrottledReplicas(tier);
       return false;
     }
 
     try {
-      if (!server.startOperation(segment, SegmentState.LOADING)) {
+      if (!server.canLoadSegment(segment)
+          || !server.startOperation(segment, SegmentState.LOADING)) {
         return false;
       }
 
-      server.getPeon().loadSegment(
-          segment,
-          canThrottle ? SegmentAction.PRIORITY_LOAD : SegmentAction.LOAD,
-          callback
-      );
+      final LoadPeonCallback callback;
+      if (isFirstLoad) {
+        callback = null;
+      } else {
+        throttler.incrementAssignedReplicas(tier);
+
+        final TierLoadingState replicatingInTier = currentlyReplicatingSegments
+            .computeIfAbsent(tier, t -> new TierLoadingState(throttler.getMaxLifetime()));
+        replicatingInTier.addSegment(segment.getId(), server.getServer().getHost());
+        callback = success -> replicatingInTier.removeSegment(segment.getId());
+      }
+
+      SegmentAction loadType = isFirstLoad ? SegmentAction.PRIORITY_LOAD : SegmentAction.LOAD;
+      server.getPeon().loadSegment(segment, loadType, callback);
       return true;
     }
     catch (Exception e) {
