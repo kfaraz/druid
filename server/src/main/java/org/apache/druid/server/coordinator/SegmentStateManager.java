@@ -21,7 +21,6 @@ package org.apache.druid.server.coordinator;
 
 import com.google.inject.Inject;
 import org.apache.druid.client.ServerInventoryView;
-import org.apache.druid.java.util.emitter.EmittingLogger;
 import org.apache.druid.metadata.SegmentsMetadataManager;
 import org.apache.druid.timeline.DataSegment;
 
@@ -36,8 +35,6 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class SegmentStateManager
 {
-  private static final EmittingLogger log = new EmittingLogger(SegmentStateManager.class);
-
   private final LoadQueueTaskMaster taskMaster;
   private final ServerInventoryView serverInventoryView;
   private final SegmentsMetadataManager segmentsMetadataManager;
