@@ -160,12 +160,13 @@ public class HttpLoadQueuePeon implements LoadQueuePeon
       while (newRequests.size() < batchSize && iter.hasNext()) {
         SegmentHolder holder = iter.next();
         if (hasRequestTimedOut(holder)) {
-          onRequestFailed(holder, "timed out");
+          iter.remove();
           if (holder.isLoad()) {
             segmentsToLoad.remove(holder.getSegment());
           } else {
             segmentsToDrop.remove(holder.getSegment());
           }
+          onRequestFailed(holder, "timed out");
         } else {
           newRequests.add(holder.getChangeRequest());
           holder.markRequestSentToServer();
@@ -309,6 +310,7 @@ public class HttpLoadQueuePeon implements LoadQueuePeon
               return;
             }
 
+            queuedSegments.remove(holder);
             if (status.getState() == SegmentLoadDropHandler.Status.STATE.FAILED) {
               onRequestFailed(holder, status.getFailureCause());
             } else {
@@ -517,7 +519,6 @@ public class HttpLoadQueuePeon implements LoadQueuePeon
         holder.getAction()
     );
 
-    queuedSegments.remove(holder);
     if (holder.isLoad()) {
       queuedSize.addAndGet(-holder.getSegment().getSize());
     }
@@ -535,7 +536,6 @@ public class HttpLoadQueuePeon implements LoadQueuePeon
     );
 
     failedAssignCount.getAndIncrement();
-    queuedSegments.remove(holder);
     if (holder.isLoad()) {
       queuedSize.addAndGet(-holder.getSegment().getSize());
     }
@@ -544,7 +544,6 @@ public class HttpLoadQueuePeon implements LoadQueuePeon
 
   private void onRequestCancelled(SegmentHolder holder)
   {
-    queuedSegments.remove(holder);
     if (holder.isLoad()) {
       queuedSize.addAndGet(-holder.getSegment().getSize());
     }
@@ -589,6 +588,7 @@ public class HttpLoadQueuePeon implements LoadQueuePeon
         return false;
       }
 
+      queuedSegments.remove(holder);
       onRequestCancelled(holder);
       return true;
     }
