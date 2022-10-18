@@ -43,12 +43,12 @@ import java.util.Set;
  */
 public class RoundRobinServerSelector
 {
-  private final Map<String, CircularServerIterator> tierToServers = new HashMap<>();
+  private final Map<String, CircularServerList> tierToServers = new HashMap<>();
 
   public RoundRobinServerSelector(DruidCluster cluster)
   {
     cluster.getHistoricals().forEach(
-        (tier, servers) -> tierToServers.put(tier, new CircularServerIterator(servers))
+        (tier, servers) -> tierToServers.put(tier, new CircularServerList(servers))
     );
   }
 
@@ -58,7 +58,7 @@ public class RoundRobinServerSelector
    */
   public Iterator<ServerHolder> getServersInTierToLoadSegment(String tier, DataSegment segment)
   {
-    final CircularServerIterator iterator = tierToServers.get(tier);
+    final CircularServerList iterator = tierToServers.get(tier);
     if (iterator == null) {
       return Collections.emptyIterator();
     }
@@ -71,18 +71,18 @@ public class RoundRobinServerSelector
    */
   private static class EligibleServerIterator implements Iterator<ServerHolder>
   {
-    final CircularServerIterator delegate;
+    final CircularServerList delegate;
     final DataSegment segment;
 
     ServerHolder nextEligible;
+    int remainingIterations;
 
-    EligibleServerIterator(DataSegment segment, CircularServerIterator delegate)
+    EligibleServerIterator(DataSegment segment, CircularServerList delegate)
     {
       this.delegate = delegate;
       this.segment = segment;
-
-      delegate.reset();
-      this.nextEligible = search();
+      this.remainingIterations = delegate.servers.size();
+      nextEligible = search();
     }
 
     @Override
@@ -99,14 +99,15 @@ public class RoundRobinServerSelector
       }
 
       ServerHolder previous = nextEligible;
+      delegate.advanceCursor();
       nextEligible = search();
       return previous;
     }
 
     ServerHolder search()
     {
-      while (delegate.hasNext()) {
-        ServerHolder nextServer = delegate.next();
+      while (remainingIterations-- > 0) {
+        ServerHolder nextServer = delegate.peekNext();
         if (nextServer.canLoadSegment(segment)) {
           return nextServer;
         }
@@ -117,52 +118,31 @@ public class RoundRobinServerSelector
   }
 
   /**
-   * Circular iterator over all servers in a tier. A single instance of this is
+   * Circular list over all servers in a tier. A single instance of this is
    * maintained for each tier.
    */
-  private static class CircularServerIterator implements Iterator<ServerHolder>
+  private static class CircularServerList
   {
     final List<ServerHolder> servers = new ArrayList<>();
     int currentPosition;
-    int searchLength = 0;
 
-    CircularServerIterator(Set<ServerHolder> servers)
+    CircularServerList(Set<ServerHolder> servers)
     {
       this.servers.addAll(servers);
-      this.currentPosition = servers.size() - 1;
       //Collections.shuffle(this.servers);
     }
 
-    void reset()
-    {
-      searchLength = 0;
-      if (--currentPosition < 0) {
-        currentPosition = servers.size() - 1;
-      }
-    }
-
-    @Override
-    public boolean hasNext()
-    {
-      return servers.size() > searchLength;
-    }
-
-    @Override
-    public ServerHolder next()
-    {
-      if (!hasNext()) {
-        throw new NoSuchElementException();
-      }
-      ++searchLength;
-      return servers.get(getNextPosition());
-    }
-
-    private int getNextPosition()
+    void advanceCursor()
     {
       if (++currentPosition >= servers.size()) {
         currentPosition = 0;
       }
-      return currentPosition;
+    }
+
+    ServerHolder peekNext()
+    {
+      int nextPosition = currentPosition < servers.size() ? currentPosition : 0;
+      return servers.get(nextPosition);
     }
   }
 

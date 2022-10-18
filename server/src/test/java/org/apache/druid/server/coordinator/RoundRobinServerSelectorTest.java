@@ -26,7 +26,6 @@ import org.apache.druid.server.coordination.ServerType;
 import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.timeline.partition.NumberedShardSpec;
 import org.junit.Assert;
-import org.junit.Before;
 import org.junit.Test;
 
 import java.util.Collections;
@@ -34,7 +33,6 @@ import java.util.Iterator;
 
 public class RoundRobinServerSelectorTest
 {
-
   private static final String TIER = "normal";
 
   private final DataSegment segment = new DataSegment(
@@ -48,12 +46,6 @@ public class RoundRobinServerSelectorTest
       IndexIO.CURRENT_VERSION_ID,
       100
   );
-
-  @Before
-  public void setUp()
-  {
-
-  }
 
   @Test
   public void testSingleIterator()
@@ -104,6 +96,7 @@ public class RoundRobinServerSelectorTest
     Assert.assertTrue(eligibleServers.hasNext());
     Assert.assertEquals(1000, eligibleServers.next().getAvailableSize());
 
+    // Second iterator picks up from previous position
     eligibleServers = selector.getServersInTierToLoadSegment(TIER, segment);
     Assert.assertTrue(eligibleServers.hasNext());
     Assert.assertEquals(900, eligibleServers.next().getAvailableSize());
@@ -117,13 +110,34 @@ public class RoundRobinServerSelectorTest
   @Test
   public void testNoServersInTier()
   {
+    DruidCluster cluster = DruidClusterBuilder
+        .newBuilder()
+        .addTier(TIER)
+        .build();
+    final RoundRobinServerSelector selector = new RoundRobinServerSelector(cluster);
 
+    Iterator<ServerHolder> eligibleServers = selector.getServersInTierToLoadSegment(TIER, segment);
+    Assert.assertFalse(eligibleServers.hasNext());
   }
 
   @Test
   public void testNoEligibleServerInTier()
   {
+    DruidCluster cluster = DruidClusterBuilder
+        .newBuilder()
+        .addTier(
+            TIER,
+            createHistorical("server1", 40),
+            createHistorical("server2", 30),
+            createHistorical("server3", 10),
+            createHistorical("server4", 20)
+        )
+        .build();
+    final RoundRobinServerSelector selector = new RoundRobinServerSelector(cluster);
 
+    // Verify that only eligible servers are returned in order of available size
+    Iterator<ServerHolder> eligibleServers = selector.getServersInTierToLoadSegment(TIER, segment);
+    Assert.assertFalse(eligibleServers.hasNext());
   }
 
   private ServerHolder createHistorical(String name, long size)
