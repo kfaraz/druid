@@ -151,28 +151,16 @@ public class HttpLoadQueuePeonTest
   public void testPriorityOfSegmentAction()
   {
     // Shuffle the segments for the same day
-    final List<DataSegment> expectedSegmentOrder = new ArrayList<>(segments);
-    Collections.shuffle(expectedSegmentOrder);
+    final List<DataSegment> segmentsDay1 = new ArrayList<>(segments);
+    Collections.shuffle(segmentsDay1);
 
     // Assign segments to the actions in their order of priority
     // Order: drop, priorityLoad, load, move
     final List<QueueAction> actions = Arrays.asList(
-        QueueAction.of(
-            expectedSegmentOrder.get(0),
-            s -> httpLoadQueuePeon.dropSegment(s, null)
-        ),
-        QueueAction.of(
-            expectedSegmentOrder.get(1),
-            s -> httpLoadQueuePeon.loadSegment(s, SegmentAction.PRIORITY_LOAD, null)
-        ),
-        QueueAction.of(
-            expectedSegmentOrder.get(2),
-            s -> httpLoadQueuePeon.loadSegment(s, SegmentAction.LOAD, null)
-        ),
-        QueueAction.of(
-            expectedSegmentOrder.get(3),
-            s -> httpLoadQueuePeon.loadSegment(s, SegmentAction.MOVE_TO, null)
-        )
+        QueueAction.of(segmentsDay1.get(0), s -> httpLoadQueuePeon.dropSegment(s, null)),
+        QueueAction.of(segmentsDay1.get(1), s -> httpLoadQueuePeon.loadSegment(s, SegmentAction.PRIORITY_LOAD, null)),
+        QueueAction.of(segmentsDay1.get(2), s -> httpLoadQueuePeon.loadSegment(s, SegmentAction.LOAD, null)),
+        QueueAction.of(segmentsDay1.get(3), s -> httpLoadQueuePeon.loadSegment(s, SegmentAction.MOVE_TO, null))
     );
 
     // Queue the actions on the peon in a random order
@@ -183,7 +171,7 @@ public class HttpLoadQueuePeonTest
     processingExecutor.finishAllPendingTasks();
 
     // Verify that all segments are sent to the server in the expected order
-    Assert.assertEquals(expectedSegmentOrder, httpClient.segmentsSentToServer);
+    Assert.assertEquals(segmentsDay1, httpClient.segmentsSentToServer);
   }
 
   @Test
@@ -226,6 +214,74 @@ public class HttpLoadQueuePeonTest
 
     // Verify that all segments are sent to the server in the expected order
     Assert.assertEquals(expectedSegmentOrder, httpClient.segmentsSentToServer);
+  }
+
+  @Test
+  public void testCancelLoad()
+  {
+    final DataSegment segment = segments.get(0);
+    httpLoadQueuePeon.loadSegment(segment, SegmentAction.LOAD, markSegmentProcessed(segment));
+    Assert.assertEquals(1, httpLoadQueuePeon.getNumberOfSegmentsInQueue());
+
+    boolean cancelled = httpLoadQueuePeon.cancelLoad(segment);
+    Assert.assertTrue(cancelled);
+    Assert.assertEquals(0, httpLoadQueuePeon.getNumberOfSegmentsInQueue());
+
+    Assert.assertTrue(processedSegments.isEmpty());
+  }
+
+  @Test
+  public void testCancelDrop()
+  {
+    final DataSegment segment = segments.get(0);
+    httpLoadQueuePeon.dropSegment(segment, markSegmentProcessed(segment));
+    Assert.assertEquals(1, httpLoadQueuePeon.getSegmentsToDrop().size());
+
+    boolean cancelled = httpLoadQueuePeon.cancelDrop(segment);
+    Assert.assertTrue(cancelled);
+    Assert.assertTrue(httpLoadQueuePeon.getSegmentsToDrop().isEmpty());
+
+    Assert.assertTrue(processedSegments.isEmpty());
+  }
+
+  @Test
+  public void testCannotCancelRequestSentToServer()
+  {
+    final DataSegment segment = segments.get(0);
+    httpLoadQueuePeon.loadSegment(segment, SegmentAction.LOAD, markSegmentProcessed(segment));
+    Assert.assertTrue(httpLoadQueuePeon.getSegmentsToLoad().contains(segment));
+
+    // Send the request to the server
+    processingExecutor.finishNextPendingTask();
+    Assert.assertTrue(httpClient.segmentsSentToServer.contains(segment));
+
+    // Segment is still in queue but operation cannot be cancelled
+    Assert.assertTrue(httpLoadQueuePeon.getSegmentsToLoad().contains(segment));
+    boolean cancelled = httpLoadQueuePeon.cancelLoad(segment);
+    Assert.assertFalse(cancelled);
+
+    // Handle response from server
+    processingExecutor.finishNextPendingTask();
+
+    // Segment has been removed from queue
+    Assert.assertTrue(httpLoadQueuePeon.getSegmentsToLoad().isEmpty());
+    cancelled = httpLoadQueuePeon.cancelLoad(segment);
+    Assert.assertFalse(cancelled);
+
+    // Execute callbacks and verify segment is fully processed
+    callbackExecutor.finishAllPendingTasks();
+    Assert.assertTrue(processedSegments.contains(segment));
+  }
+
+  @Test
+  public void testCannotCancelDropOfLoadingSegment()
+  {
+    final DataSegment segment = segments.get(0);
+    httpLoadQueuePeon.loadSegment(segment, SegmentAction.LOAD, markSegmentProcessed(segment));
+    Assert.assertTrue(httpLoadQueuePeon.getSegmentsToLoad().contains(segment));
+
+    // Try to cancel drop of segment, even though it is actually loading
+    Assert.assertFalse(httpLoadQueuePeon.cancelDrop(segment));
   }
 
   private LoadPeonCallback markSegmentProcessed(DataSegment segment)
