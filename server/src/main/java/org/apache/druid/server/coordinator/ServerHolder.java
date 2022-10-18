@@ -23,9 +23,11 @@ import org.apache.druid.client.ImmutableDruidServer;
 import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.timeline.SegmentId;
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
+import java.util.stream.Collectors;
 
 /**
  *
@@ -40,7 +42,17 @@ public class ServerHolder implements Comparable<ServerHolder>
   private int segmentsQueuedForLoad;
   private long sizeOfLoadingSegments;
 
-  private final ConcurrentMap<SegmentId, SegmentState> queuedSegments = new ConcurrentHashMap<>();
+  /**
+   * Contains segments that:
+   * <ul>
+   * <li>were present in the load or drop queue when the current coordinator run
+   * started</li>
+   * <li>have been added to the load or drop queue during the current run</li>
+   * </ul>
+   * Once added, segments are removed only if the operation is cancelled.
+   * Load/drop success or failure does not update this map.
+   */
+  private final Map<SegmentId, SegmentState> queuedSegments = new HashMap<>();
 
   public ServerHolder(ImmutableDruidServer server, LoadQueuePeon peon)
   {
@@ -183,6 +195,19 @@ public class ServerHolder implements Comparable<ServerHolder>
     return getSegmentState(segment) == SegmentState.DROPPING;
   }
 
+  /**
+   * Returns the list of segments currently being loaded on this server,
+   * excluding segments that are being moved to this server.
+   */
+  public List<DataSegment> getLoadingSegments()
+  {
+    // Return loading segments as seen by the peon and not based on queuedSegments
+    // map as it may contain segments that have already been loaded
+    return peon.getSegmentsToLoad().stream()
+               .filter(segment -> getSegmentState(segment) != SegmentState.MOVING_TO)
+               .collect(Collectors.toList());
+  }
+
   public boolean startOperation(DataSegment segment, SegmentState newState)
   {
     if (queuedSegments.containsKey(segment.getId())) {
@@ -210,11 +235,6 @@ public class ServerHolder implements Comparable<ServerHolder>
     }
     queuedSegments.remove(segment.getId());
     return true;
-  }
-
-  public int getNumberOfSegmentsInQueue()
-  {
-    return peon.getNumberOfSegmentsInQueue();
   }
 
   public boolean isServingSegment(SegmentId segmentId)

@@ -93,22 +93,24 @@ public class SegmentLoader
       return false;
     }
 
-    // fromServer must be loading or serving the segment
-    // and toServer must be able to load it
-    if (!(fromServer.isLoadingSegment(segment) || fromServer.isServingSegment(segment))
-        || !toServer.canLoadSegment(segment)) {
+    if (fromServer.isServingSegment(segment)) {
+      // Segment is loaded on fromServer, move it to toServer
+      return stateManager.moveSegment(segment, fromServer, toServer, replicationThrottler.getMaxLifetime());
+    } else if (!fromServer.isLoadingSegment(segment)) {
+      // Cannot move if fromServer is neither loading nor serving the segment
       return false;
     }
 
+    // Cancel the load on fromServer and load on toServer instead
     final boolean loadCancelledOnFromServer =
         stateManager.cancelOperation(SegmentState.LOADING, segment, fromServer);
     if (loadCancelledOnFromServer) {
       stats.addToTieredStat(CoordinatorStats.CANCELLED_LOADS, tier, 1);
       int loadedCountOnTier = replicantLookup.getLoadedReplicants(segment.getId(), tier);
       return stateManager.loadSegment(segment, toServer, loadedCountOnTier < 1, replicationThrottler);
-    } else {
-      return stateManager.moveSegment(segment, fromServer, toServer, replicationThrottler.getMaxLifetime());
     }
+
+    return false;
   }
 
   /**

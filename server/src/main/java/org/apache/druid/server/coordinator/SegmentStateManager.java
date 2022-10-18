@@ -128,21 +128,26 @@ public class SegmentStateManager
         toServer.getServer().getTier(),
         t -> new TierLoadingState(maxLifetimeInBalancingQueue)
     );
+
     final LoadQueuePeon fromServerPeon = fromServer.getPeon();
     final LoadPeonCallback moveFinishCallback = success -> {
       fromServerPeon.unmarkSegmentToDrop(segment);
       segmentsMovingInTier.markCompleted(segment.getId());
     };
 
-    // mark segment to drop before it is actually loaded on server
-    // to be able to account for this information in BalancerStrategy immediately
-    toServer.startOperation(segment, SegmentState.MOVING_TO);
-    fromServerPeon.markSegmentToDrop(segment);
-    segmentsMovingInTier.markStarted(segment.getId(), fromServer.getServer().getHost());
-
     final LoadQueuePeon toServerPeon = toServer.getPeon();
     final String toServerName = toServer.getServer().getName();
     try {
+      if (!toServer.canLoadSegment(segment)
+          || !toServer.startOperation(segment, SegmentState.MOVING_TO)) {
+        return false;
+      }
+
+      // mark segment to drop before it is actually loaded on server
+      // to be able to account for this information in BalancerStrategy immediately
+      fromServerPeon.markSegmentToDrop(segment);
+      segmentsMovingInTier.markStarted(segment.getId(), fromServer.getServer().getHost());
+
       toServerPeon.loadSegment(
           segment,
           SegmentAction.MOVE_TO,
