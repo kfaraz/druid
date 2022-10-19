@@ -157,7 +157,7 @@ public class BalanceSegments implements CoordinatorDuty
     }
 
     if (numSegments == 0) {
-      log.info("Skipping balance for tier [%s] as there are no served or loading segments.", tier);
+      log.info("Skipping balance for tier [%s] as there are no loaded or loading segments.", tier);
       // suppress emit zero stats
       return;
     }

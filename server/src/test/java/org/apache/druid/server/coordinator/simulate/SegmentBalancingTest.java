@@ -190,7 +190,7 @@ public class SegmentBalancingTest extends CoordinatorSimulationBaseTest
     verifyValue(Metric.ASSIGNED_COUNT, 10L);
     verifyValue(Metric.LOAD_QUEUE_COUNT, filter(DruidMetrics.SERVER, historicalT11.getName()), 10);
 
-    // Run 2: Add new server, some segments will be moved to queue of second server
+    // Run 2: Add new historical, some segments in the queue will be moved
     addServer(historicalT12);
     runCoordinatorCycle();
     verifyNoEvent(Metric.ASSIGNED_COUNT);
