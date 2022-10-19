@@ -50,61 +50,60 @@ public class RoundRobinServerSelectorTest
   @Test
   public void testSingleIterator()
   {
+    final ServerHolder serverXL = createHistorical("serverXL", 1000);
+    final ServerHolder serverL = createHistorical("serverXL", 900);
+    final ServerHolder serverM = createHistorical("serverXL", 800);
+
+    // This server is too small to house the segment
+    final ServerHolder serverXS = createHistorical("serverXL", 10);
+
     DruidCluster cluster = DruidClusterBuilder
         .newBuilder()
-        .addTier(
-            TIER,
-            createHistorical("server1", 1000),
-            createHistorical("server2", 900),
-            createHistorical("server3", 10),
-            createHistorical("server4", 800)
-        )
+        .addTier(TIER, serverXL, serverM, serverXS, serverL)
         .build();
     final RoundRobinServerSelector selector = new RoundRobinServerSelector(cluster);
 
     // Verify that only eligible servers are returned in order of available size
-    Iterator<ServerHolder> eligibleServers = selector.getServersInTierToLoadSegment(TIER, segment);
-    Assert.assertTrue(eligibleServers.hasNext());
-    Assert.assertEquals(1000, eligibleServers.next().getAvailableSize());
+    Iterator<ServerHolder> pickedServers = selector.getServersInTierToLoadSegment(TIER, segment);
 
-    Assert.assertTrue(eligibleServers.hasNext());
-    Assert.assertEquals(900, eligibleServers.next().getAvailableSize());
+    Assert.assertTrue(pickedServers.hasNext());
+    Assert.assertEquals(serverXL, pickedServers.next());
+    Assert.assertEquals(serverL, pickedServers.next());
+    Assert.assertEquals(serverM, pickedServers.next());
 
-    Assert.assertTrue(eligibleServers.hasNext());
-    Assert.assertEquals(800, eligibleServers.next().getAvailableSize());
-
-    Assert.assertFalse(eligibleServers.hasNext());
+    Assert.assertFalse(pickedServers.hasNext());
   }
 
   @Test
   public void testNextIteratorContinuesFromSamePosition()
   {
+    final ServerHolder serverXL = createHistorical("serverXL", 1000);
+    final ServerHolder serverL = createHistorical("serverXL", 900);
+    final ServerHolder serverM = createHistorical("serverXL", 800);
+
+    // This server is too small to house the segment
+    final ServerHolder serverXS = createHistorical("serverXL", 10);
+
     DruidCluster cluster = DruidClusterBuilder
         .newBuilder()
-        .addTier(
-            TIER,
-            createHistorical("server1", 1000),
-            createHistorical("server2", 900),
-            createHistorical("server3", 10),
-            createHistorical("server4", 800)
-        )
+        .addTier(TIER, serverXL, serverM, serverXS, serverL)
         .build();
     final RoundRobinServerSelector selector = new RoundRobinServerSelector(cluster);
 
     // Verify that only eligible servers are returned in order of available size
-    Iterator<ServerHolder> eligibleServers = selector.getServersInTierToLoadSegment(TIER, segment);
-    Assert.assertTrue(eligibleServers.hasNext());
-    Assert.assertEquals(1000, eligibleServers.next().getAvailableSize());
+    Iterator<ServerHolder> pickedServers = selector.getServersInTierToLoadSegment(TIER, segment);
+    Assert.assertTrue(pickedServers.hasNext());
+    Assert.assertEquals(serverXL, pickedServers.next());
 
-    // Second iterator picks up from previous position
-    eligibleServers = selector.getServersInTierToLoadSegment(TIER, segment);
-    Assert.assertTrue(eligibleServers.hasNext());
-    Assert.assertEquals(900, eligibleServers.next().getAvailableSize());
+    // Second iterator starts from previous position but resets allowed number of iterations
+    pickedServers = selector.getServersInTierToLoadSegment(TIER, segment);
+    Assert.assertTrue(pickedServers.hasNext());
 
-    Assert.assertTrue(eligibleServers.hasNext());
-    Assert.assertEquals(800, eligibleServers.next().getAvailableSize());
+    Assert.assertEquals(serverL, pickedServers.next());
+    Assert.assertEquals(serverM, pickedServers.next());
+    Assert.assertEquals(serverXL, pickedServers.next());
 
-    Assert.assertFalse(eligibleServers.hasNext());
+    Assert.assertFalse(pickedServers.hasNext());
   }
 
   @Test

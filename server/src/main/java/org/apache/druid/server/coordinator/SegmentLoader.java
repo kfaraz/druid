@@ -33,7 +33,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.stream.Collectors;
 
 /**
  * Used by the coordinator in each run for segment loading, dropping, balancing
@@ -50,6 +49,7 @@ public class SegmentLoader
   private final CoordinatorStats stats = new CoordinatorStats();
   private final SegmentReplicantLookup replicantLookup;
   private final ReplicationThrottler replicationThrottler;
+  private final RoundRobinServerSelector serverSelector;
   private final BalancerStrategy strategy;
 
   private final Set<String> emptyTiers = new HashSet<>();
@@ -67,6 +67,7 @@ public class SegmentLoader
     this.stateManager = stateManager;
     this.replicantLookup = replicantLookup;
     this.replicationThrottler = replicationThrottler;
+    this.serverSelector = new RoundRobinServerSelector(cluster);
   }
 
   public CoordinatorStats getStats()
@@ -344,7 +345,7 @@ public class SegmentLoader
       int successfulLoadsQueued = loadReplicas(
           numReplicasToLoad,
           segment,
-          serversByState.get(SegmentState.NONE),
+          tier,
           totalReplicas < 1
       );
 
@@ -479,21 +480,12 @@ public class SegmentLoader
   private int loadReplicas(
       int numToLoad,
       DataSegment segment,
-      List<ServerHolder> candidateServers,
+      String tier,
       boolean isFirstLoadOnTier
   )
   {
-    final List<ServerHolder> eligibleServers =
-        candidateServers.stream()
-                        .filter(server -> server.canLoadSegment(segment))
-                        .collect(Collectors.toList());
-    if (eligibleServers.isEmpty()) {
-      log.warn("No eligible server to load replica of segment [%s]", segment.getId());
-      return 0;
-    }
-
     final Iterator<ServerHolder> serverIterator =
-        strategy.findNewSegmentHomeReplicator(segment, eligibleServers);
+        serverSelector.getServersInTierToLoadSegment(tier, segment);
     if (!serverIterator.hasNext()) {
       log.warn("No candidate server to load replica of segment [%s]", segment.getId());
       return 0;

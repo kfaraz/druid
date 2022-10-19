@@ -110,6 +110,8 @@ public class RoundRobinServerSelector
         ServerHolder nextServer = delegate.peekNext();
         if (nextServer.canLoadSegment(segment)) {
           return nextServer;
+        } else {
+          delegate.advanceCursor();
         }
       }
 
