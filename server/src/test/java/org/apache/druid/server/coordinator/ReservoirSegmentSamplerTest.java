@@ -34,6 +34,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public class ReservoirSegmentSamplerTest
 {
@@ -53,7 +54,7 @@ public class ReservoirSegmentSamplerTest
   {
   }
 
-  //checks if every segment is selected at least once out of 100 trials
+  //checks if every segment is selected at least once out of 50 trials
   @Test
   public void testEverySegmentGetsPickedAtleastOnce()
   {
@@ -117,7 +118,22 @@ public class ReservoirSegmentSamplerTest
   @Test
   public void testLoadingSegmentGetsPicked()
   {
+    final List<DataSegment> loadedSegments = Arrays.asList(segments.get(0), segments.get(1));
+    final List<DataSegment> loadingSegments = Arrays.asList(segments.get(2), segments.get(3));
 
+    final ServerHolder server1 = createHistorical("server1", loadedSegments.get(0));
+    server1.getPeon().loadSegment(loadingSegments.get(0), SegmentAction.LOAD, null);
+
+    final ServerHolder server2 = createHistorical("server2", loadedSegments.get(1));
+    server2.getPeon().loadSegment(loadingSegments.get(1), SegmentAction.LOAD, null);
+
+    Set<DataSegment> pickedSegments = ReservoirSegmentSampler
+        .getRandomBalancerSegmentHolders(Arrays.asList(server1, server2), Collections.emptySet(), 10)
+        .stream().map(BalancerSegmentHolder::getSegment).collect(Collectors.toSet());
+
+    // Verify that both loaded and loading segments are picked
+    Assert.assertTrue(pickedSegments.containsAll(loadedSegments));
+    Assert.assertTrue(pickedSegments.containsAll(loadingSegments));
   }
 
   @Test
