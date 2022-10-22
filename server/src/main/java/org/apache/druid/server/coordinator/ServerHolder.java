@@ -49,8 +49,9 @@ public class ServerHolder implements Comparable<ServerHolder>
    * started</li>
    * <li>have been added to the load or drop queue during the current run</li>
    * </ul>
-   * Once added, segments are removed only if the operation is cancelled.
-   * Load/drop success or failure does not update this map.
+   * Once added, segments are removed from the map only if the operation is
+   * cancelled during the run. Load/drop success or failure that happens during
+   * the run does not update this map.
    */
   private final Map<SegmentId, SegmentState> queuedSegments = new HashMap<>();
 
