@@ -23,6 +23,7 @@ import org.apache.druid.client.ImmutableDruidServer;
 import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.timeline.SegmentId;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -207,6 +208,11 @@ public class ServerHolder implements Comparable<ServerHolder>
     return peon.getSegmentsToLoad().stream()
                .filter(segment -> getSegmentState(segment) != SegmentState.MOVING_TO)
                .collect(Collectors.toList());
+  }
+
+  public Map<SegmentId, SegmentState> getQueuedSegments()
+  {
+    return Collections.unmodifiableMap(queuedSegments);
   }
 
   public boolean startOperation(DataSegment segment, SegmentState newState)

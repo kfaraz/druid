@@ -105,7 +105,7 @@ public class SegmentLoader
         stateManager.cancelOperation(SegmentState.LOADING, segment, fromServer);
     if (loadCancelledOnFromServer) {
       stats.addToTieredStat(CoordinatorStats.CANCELLED_LOADS, tier, 1);
-      int loadedCountOnTier = replicantLookup.getLoadedReplicants(segment.getId(), tier);
+      int loadedCountOnTier = replicantLookup.getLoadedReplicas(segment.getId(), tier);
       return stateManager.loadSegment(segment, toServer, loadedCountOnTier < 1, replicationThrottler);
     }
 
@@ -130,22 +130,21 @@ public class SegmentLoader
       }
     });
 
-    // Get the current status of this segment in the cluster
-    final SegmentClusterStatus segmentStatus = new SegmentClusterStatus(segment, cluster);
     final int totalOverReplication =
-        segmentStatus.getTotalLoadedReplicas() - requiredTotalReplicas.get();
+        replicantLookup.getTotalLoadedReplicas(segment.getId()) - requiredTotalReplicas.get();
 
     // Update replicas in every tier
+    final long updateStart = System.currentTimeMillis();
     int totalDropsQueued = 0;
     for (String tier : allTiers) {
       totalDropsQueued += updateReplicasInTier(
           segment,
           tier,
-          segmentStatus,
           tierToReplicaCount.getOrDefault(tier, 0),
           totalOverReplication - totalDropsQueued
       );
     }
+    stats.addToDutyStat("adhoc", "updateReplicasInTier", System.currentTimeMillis() - updateStart);
   }
 
   /**
@@ -161,17 +160,27 @@ public class SegmentLoader
   private int updateReplicasInTier(
       DataSegment segment,
       String tier,
-      SegmentClusterStatus segmentStatus,
       int requiredReplicas,
       int maxReplicasToDrop
   )
   {
-    final int projectedReplicas = segmentStatus.getProjectedReplicas(tier);
+    final int projectedReplicas = replicantLookup.getProjectedReplicas(segment.getId(), tier);
+    final int movingReplicas = replicantLookup.getMovingReplicas(segment.getId(), tier);
+    final boolean shouldCancelMoves = requiredReplicas == 0 && movingReplicas > 0;
+
+    // Check if there is any action required on this tier
+    if (projectedReplicas == requiredReplicas && !shouldCancelMoves) {
+      return 0;
+    }
+
+    final long createStart = System.currentTimeMillis();
+    SegmentTierStatus segmentStatus = new SegmentTierStatus(segment, cluster.getHistoricalsByTier(tier));
+    stats.addToDutyStat("adhoc", "createSegmentStatus", System.currentTimeMillis() - createStart);
 
     // Cancel all moves in this tier if it does not need to have replicas
-    if (requiredReplicas == 0) {
+    if (shouldCancelMoves) {
       int cancelledMoves =
-          cancelOperations(0, SegmentState.MOVING_TO, segment, tier, segmentStatus);
+          cancelOperations(movingReplicas, SegmentState.MOVING_TO, segment, segmentStatus);
       stats.addToTieredStat(CoordinatorStats.CANCELLED_MOVES, tier, cancelledMoves);
     }
 
@@ -179,12 +188,13 @@ public class SegmentLoader
     if (projectedReplicas < requiredReplicas) {
       int replicaDeficit = requiredReplicas - projectedReplicas;
       int cancelledDrops =
-          cancelOperations(replicaDeficit, SegmentState.DROPPING, segment, tier, segmentStatus);
+          cancelOperations(replicaDeficit, SegmentState.DROPPING, segment, segmentStatus);
 
       // Cancelled drops can be counted as loaded replicas, thus reducing deficit
       int numReplicasToLoad = replicaDeficit - cancelledDrops;
       if (numReplicasToLoad > 0) {
-        boolean isFirstLoadOnTier = segmentStatus.getLoadedReplicas(tier) + cancelledDrops < 1;
+        boolean isFirstLoadOnTier = replicantLookup.getLoadedReplicas(segment.getId(), tier)
+                                    + cancelledDrops < 1;
         int numLoadsQueued = loadReplicas(numReplicasToLoad, segment, tier, segmentStatus, isFirstLoadOnTier);
         stats.addToTieredStat(CoordinatorStats.ASSIGNED_COUNT, tier, numLoadsQueued);
       }
@@ -194,7 +204,7 @@ public class SegmentLoader
     if (projectedReplicas > requiredReplicas) {
       int replicaSurplus = projectedReplicas - requiredReplicas;
       int cancelledLoads =
-          cancelOperations(replicaSurplus, SegmentState.LOADING, segment, tier, segmentStatus);
+          cancelOperations(replicaSurplus, SegmentState.LOADING, segment, segmentStatus);
       stats.addToTieredStat(CoordinatorStats.CANCELLED_LOADS, tier, cancelledLoads);
 
       int numReplicasToDrop = Math.min(replicaSurplus - cancelledLoads, maxReplicasToDrop);
@@ -322,10 +332,11 @@ public class SegmentLoader
       int numToDrop,
       DataSegment segment,
       String tier,
-      SegmentClusterStatus segmentStatus
+      SegmentTierStatus segmentStatus
   )
   {
-    final List<ServerHolder> eligibleServers = segmentStatus.getServers(tier, SegmentState.LOADED);
+    final long startTime = System.currentTimeMillis();
+    final List<ServerHolder> eligibleServers = segmentStatus.getServers(SegmentState.LOADED);
     if (eligibleServers.isEmpty() || numToDrop <= 0) {
       return 0;
     }
@@ -367,6 +378,7 @@ public class SegmentLoader
       );
     }
 
+    stats.addToDutyStat("adhoc", "dropReplicas", System.currentTimeMillis() - startTime);
     return numDropsQueued;
   }
 
@@ -392,12 +404,13 @@ public class SegmentLoader
       int numToLoad,
       DataSegment segment,
       String tier,
-      SegmentClusterStatus segmentStatus,
+      SegmentTierStatus segmentStatus,
       boolean isFirstLoadOnTier
   )
   {
+    final long startTime = System.currentTimeMillis();
     final List<ServerHolder> eligibleServers =
-        segmentStatus.getServers(tier, SegmentState.NONE).stream()
+        segmentStatus.getServers(SegmentState.NONE).stream()
                      .filter(server -> server.canLoadSegment(segment))
                      .collect(Collectors.toList());
     if (eligibleServers.isEmpty()) {
@@ -431,6 +444,7 @@ public class SegmentLoader
       );
     }
 
+    stats.addToDutyStat("adhoc", "loadReplicas", System.currentTimeMillis() - startTime);
     return numLoadsQueued;
   }
 
@@ -438,11 +452,10 @@ public class SegmentLoader
       int maxNumToCancel,
       SegmentState state,
       DataSegment segment,
-      String tier,
-      SegmentClusterStatus segmentStatus
+      SegmentTierStatus segmentStatus
   )
   {
-    final List<ServerHolder> servers = segmentStatus.getServers(tier, state);
+    final List<ServerHolder> servers = segmentStatus.getServers(state);
     if (servers.isEmpty() || maxNumToCancel <= 0) {
       return 0;
     }

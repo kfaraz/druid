@@ -151,6 +151,13 @@ public class EmitClusterStatsAndMetrics implements CoordinatorDuty
             emitMetricWithDimension("coordinator/time", count, DruidMetrics.DUTY, duty)
     );
 
+    // Emit temp stats
+    stats.forEachDutyStat(
+        "adhoc",
+        (duty, count) ->
+            emitMetricWithDimension("coordinator/adhoc/time", count, DruidMetrics.DUTY, duty)
+    );
+
     return params;
   }
 
@@ -255,7 +262,7 @@ public class EmitClusterStatsAndMetrics implements CoordinatorDuty
     for (ServerHolder serverHolder : cluster.getAllServers()) {
       ImmutableDruidServer server = serverHolder.getServer();
       LoadQueuePeon queuePeon = serverHolder.getPeon();
-      log.info(
+      /*log.info(
           "Server[%s, %s, %s] has %,d left to load, %,d left to drop, %,d served, %,d bytes queued, %,d bytes served.",
           server.getName(),
           server.getType().toString(),
@@ -265,7 +272,7 @@ public class EmitClusterStatsAndMetrics implements CoordinatorDuty
           server.getNumSegments(),
           queuePeon.getLoadQueueSize(),
           server.getCurrSize()
-      );
+      );*/
       if (log.isDebugEnabled()) {
         for (DataSegment segment : queuePeon.getSegmentsToLoad()) {
           log.debug("Segment to load[%s]", segment);
