@@ -173,7 +173,7 @@ import org.apache.druid.segment.transform.TransformSpec;
 import org.apache.druid.server.DruidNode;
 import org.apache.druid.sql.calcite.rel.DruidQuery;
 import org.apache.druid.timeline.DataSegment;
-import org.apache.druid.timeline.VersionedIntervalTimeline;
+import org.apache.druid.timeline.SegmentTimeline;
 import org.apache.druid.timeline.partition.DimensionRangeShardSpec;
 import org.apache.druid.timeline.partition.NumberedPartialShardSpec;
 import org.apache.druid.timeline.partition.NumberedShardSpec;
@@ -949,7 +949,7 @@ public class ControllerImpl implements Controller
       if (dataSegments.isEmpty()) {
         return Optional.empty();
       } else {
-        return Optional.of(VersionedIntervalTimeline.forSegments(dataSegments));
+        return Optional.of(SegmentTimeline.forSegments(dataSegments));
       }
     };
   }

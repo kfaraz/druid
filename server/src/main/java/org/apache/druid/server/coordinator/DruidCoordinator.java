@@ -76,6 +76,7 @@ import org.apache.druid.server.coordinator.rules.Rule;
 import org.apache.druid.server.initialization.jetty.ServiceUnavailableException;
 import org.apache.druid.server.lookup.cache.LookupCoordinatorManager;
 import org.apache.druid.timeline.DataSegment;
+import org.apache.druid.timeline.SegmentId;
 import org.joda.time.DateTime;
 import org.joda.time.Duration;
 
@@ -393,6 +394,13 @@ public class DruidCoordinator
   public CoordinatorCompactionConfig getCompactionConfig()
   {
     return CoordinatorCompactionConfig.current(configManager);
+  }
+
+  public void markSegmentsAsUnused(String datasource, Set<SegmentId> segmentIds)
+  {
+    log.debug("Marking [%d] segments of datasource [%s] as unused: %s", segmentIds.size(), datasource, segmentIds);
+    int updatedCount = segmentsMetadataManager.markSegmentsAsUnused(segmentIds);
+    log.info("Successfully marked [%d] segments of datasource [%s] as unused", updatedCount, datasource);
   }
 
   public void markSegmentAsUnused(DataSegment segment)

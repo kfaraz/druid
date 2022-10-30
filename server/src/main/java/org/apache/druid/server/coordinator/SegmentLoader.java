@@ -401,14 +401,14 @@ public class SegmentLoader
                      .filter(server -> server.canLoadSegment(segment))
                      .collect(Collectors.toList());
     if (eligibleServers.isEmpty()) {
-      log.warn("No eligible server to load replica of segment [%s]", segment.getId());
+      //log.warn("No eligible server to load replica of segment [%s]", segment.getId());
       return 0;
     }
 
     final Iterator<ServerHolder> serverIterator =
         serverSelector.getServersInTierToLoadSegment(tier, segment);
     if (!serverIterator.hasNext()) {
-      log.warn("No candidate server to load replica of segment [%s]", segment.getId());
+      //log.warn("No candidate server to load replica of segment [%s]", segment.getId());
       return 0;
     }
 
