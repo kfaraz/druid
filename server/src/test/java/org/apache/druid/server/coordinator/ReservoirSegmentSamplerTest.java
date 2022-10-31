@@ -220,13 +220,14 @@ public class ReservoirSegmentSamplerTest
 
     final Set<DataSegment> pickedSegments = new HashSet<>();
 
-    int sampleSize = (int) (samplePercentage * numSegments);
+    int sampleSize = (int) (numSegments * samplePercentage / 100.0);
 
     int numIterations = 1;
     for (; numIterations < 10000; ++numIterations) {
-      ReservoirSegmentSampler.getRandomBalancerSegmentHolders(servers, Collections.emptySet(), sampleSize).forEach(
-          holder -> pickedSegments.add(holder.getSegment())
-      );
+      ReservoirSegmentSampler
+          .getRandomBalancerSegmentHolders(servers, Collections.emptySet(), sampleSize)
+          .forEach(holder -> pickedSegments.add(holder.getSegment()));
+
       if (pickedSegments.size() >= numSegments) {
         break;
       }
@@ -238,7 +239,7 @@ public class ReservoirSegmentSamplerTest
   private ServerHolder createHistorical(String serverName, DataSegment... loadedSegments)
   {
     final DruidServer server =
-        new DruidServer(serverName, serverName, null, 1000, ServerType.HISTORICAL, "normal", 1);
+        new DruidServer(serverName, serverName, null, 100000, ServerType.HISTORICAL, "normal", 1);
     for (DataSegment segment : loadedSegments) {
       server.addDataSegment(segment);
     }
