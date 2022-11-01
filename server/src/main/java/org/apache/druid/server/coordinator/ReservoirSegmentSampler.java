@@ -47,7 +47,9 @@ final class ReservoirSegmentSampler
         continue;
       }
 
-      for (DataSegment segment : server.getServer().iterateAllSegments()) {
+      List<DataSegment> loadingAndLoadedSegments = new ArrayList<>(server.getLoadingSegments());
+      loadingAndLoadedSegments.addAll(server.getServer().iterateAllSegments());
+      for (DataSegment segment : loadingAndLoadedSegments) {
         if (broadcastDatasources.contains(segment.getDataSource())) {
           // we don't need to rebalance segments that were assigned via broadcast rules
           continue;

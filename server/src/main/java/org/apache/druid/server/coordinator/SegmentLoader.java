@@ -46,6 +46,7 @@ public class SegmentLoader
   private final CoordinatorStats stats = new CoordinatorStats();
   private final SegmentReplicantLookup replicantLookup;
   private final ReplicationThrottler replicationThrottler;
+  private final RoundRobinServerSelector serverSelector;
   private final BalancerStrategy strategy;
 
   private final Set<String> emptyTiers = new HashSet<>();
@@ -63,6 +64,7 @@ public class SegmentLoader
     this.stateManager = stateManager;
     this.replicantLookup = replicantLookup;
     this.replicationThrottler = replicationThrottler;
+    this.serverSelector = new RoundRobinServerSelector(cluster);
   }
 
   public CoordinatorStats getStats()
@@ -127,6 +129,7 @@ public class SegmentLoader
         replicantLookup.getTotalServedReplicas(segment.getId()) - requiredTotalReplicas.get();
 
     // Update replicas in every tier
+    final long updateStart = System.currentTimeMillis();
     int totalDropsQueued = 0;
     for (String tier : allTiers) {
       totalDropsQueued += updateReplicasInTier(
@@ -136,6 +139,7 @@ public class SegmentLoader
           totalOverReplication - totalDropsQueued
       );
     }
+    stats.addToDutyStat("adhoc", "updateReplicasInTier", System.currentTimeMillis() - updateStart);
   }
 
   /**
@@ -387,14 +391,14 @@ public class SegmentLoader
   {
     final List<ServerHolder> eligibleServers = segmentStatus.getServersEligibleToLoad();
     if (eligibleServers.isEmpty()) {
-      log.warn("No eligible server to load replica of segment [%s]", segment.getId());
+      //log.warn("No eligible server to load replica of segment [%s]", segment.getId());
       return 0;
     }
 
     final Iterator<ServerHolder> serverIterator =
-        strategy.findNewSegmentHomeReplicator(segment, eligibleServers);
+        serverSelector.getServersInTierToLoadSegment(tier, segment);
     if (!serverIterator.hasNext()) {
-      log.warn("No candidate server to load replica of segment [%s]", segment.getId());
+      //log.warn("No candidate server to load replica of segment [%s]", segment.getId());
       return 0;
     }
 
