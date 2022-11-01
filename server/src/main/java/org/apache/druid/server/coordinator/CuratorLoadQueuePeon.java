@@ -326,8 +326,8 @@ public class CuratorLoadQueuePeon implements LoadQueuePeon
   private void actionCompleted(SegmentHolder segmentHolder)
   {
     switch (segmentHolder.getAction()) {
-      case PRIORITY_LOAD:
       case LOAD:
+      case REPLICATE:
       case MOVE_TO:
         // When load failed a segment will be removed from the segmentsToLoad twice and
         // null value will be returned at the second time in which case queueSize may be negative.
@@ -415,13 +415,7 @@ public class CuratorLoadQueuePeon implements LoadQueuePeon
   }
 
   @Override
-  public boolean cancelDrop(DataSegment segment)
-  {
-    return false;
-  }
-
-  @Override
-  public boolean cancelLoad(DataSegment segment)
+  public boolean cancelOperation(DataSegment segment)
   {
     return false;
   }

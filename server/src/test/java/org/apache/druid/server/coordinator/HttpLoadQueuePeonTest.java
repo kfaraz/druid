@@ -108,9 +108,9 @@ public class HttpLoadQueuePeonTest
     httpLoadQueuePeon
         .dropSegment(segments.get(0), markSegmentProcessed(segments.get(0)));
     httpLoadQueuePeon
-        .loadSegment(segments.get(1), SegmentAction.PRIORITY_LOAD, markSegmentProcessed(segments.get(1)));
+        .loadSegment(segments.get(1), SegmentAction.LOAD, markSegmentProcessed(segments.get(1)));
     httpLoadQueuePeon
-        .loadSegment(segments.get(2), SegmentAction.LOAD, markSegmentProcessed(segments.get(2)));
+        .loadSegment(segments.get(2), SegmentAction.REPLICATE, markSegmentProcessed(segments.get(2)));
     httpLoadQueuePeon
         .loadSegment(segments.get(3), SegmentAction.MOVE_TO, markSegmentProcessed(segments.get(3)));
 
@@ -158,8 +158,8 @@ public class HttpLoadQueuePeonTest
     // Order: drop, priorityLoad, load, move
     final List<QueueAction> actions = Arrays.asList(
         QueueAction.of(segmentsDay1.get(0), s -> httpLoadQueuePeon.dropSegment(s, null)),
-        QueueAction.of(segmentsDay1.get(1), s -> httpLoadQueuePeon.loadSegment(s, SegmentAction.PRIORITY_LOAD, null)),
-        QueueAction.of(segmentsDay1.get(2), s -> httpLoadQueuePeon.loadSegment(s, SegmentAction.LOAD, null)),
+        QueueAction.of(segmentsDay1.get(1), s -> httpLoadQueuePeon.loadSegment(s, SegmentAction.LOAD, null)),
+        QueueAction.of(segmentsDay1.get(2), s -> httpLoadQueuePeon.loadSegment(s, SegmentAction.REPLICATE, null)),
         QueueAction.of(segmentsDay1.get(3), s -> httpLoadQueuePeon.loadSegment(s, SegmentAction.MOVE_TO, null))
     );
 
@@ -195,10 +195,10 @@ public class HttpLoadQueuePeonTest
     List<QueueAction> actions = Arrays.asList(
         QueueAction.of(segmentsDay2.get(0), s -> httpLoadQueuePeon.dropSegment(s, null)),
         QueueAction.of(segmentsDay1.get(0), s -> httpLoadQueuePeon.dropSegment(s, null)),
-        QueueAction.of(segmentsDay2.get(1), s -> httpLoadQueuePeon.loadSegment(s, SegmentAction.PRIORITY_LOAD, null)),
-        QueueAction.of(segmentsDay1.get(1), s -> httpLoadQueuePeon.loadSegment(s, SegmentAction.PRIORITY_LOAD, null)),
-        QueueAction.of(segmentsDay2.get(2), s -> httpLoadQueuePeon.loadSegment(s, SegmentAction.LOAD, null)),
-        QueueAction.of(segmentsDay1.get(2), s -> httpLoadQueuePeon.loadSegment(s, SegmentAction.LOAD, null)),
+        QueueAction.of(segmentsDay2.get(1), s -> httpLoadQueuePeon.loadSegment(s, SegmentAction.LOAD, null)),
+        QueueAction.of(segmentsDay1.get(1), s -> httpLoadQueuePeon.loadSegment(s, SegmentAction.LOAD, null)),
+        QueueAction.of(segmentsDay2.get(2), s -> httpLoadQueuePeon.loadSegment(s, SegmentAction.REPLICATE, null)),
+        QueueAction.of(segmentsDay1.get(2), s -> httpLoadQueuePeon.loadSegment(s, SegmentAction.REPLICATE, null)),
         QueueAction.of(segmentsDay2.get(3), s -> httpLoadQueuePeon.loadSegment(s, SegmentAction.MOVE_TO, null)),
         QueueAction.of(segmentsDay1.get(3), s -> httpLoadQueuePeon.loadSegment(s, SegmentAction.MOVE_TO, null))
     );
@@ -220,10 +220,10 @@ public class HttpLoadQueuePeonTest
   public void testCancelLoad()
   {
     final DataSegment segment = segments.get(0);
-    httpLoadQueuePeon.loadSegment(segment, SegmentAction.LOAD, markSegmentProcessed(segment));
+    httpLoadQueuePeon.loadSegment(segment, SegmentAction.REPLICATE, markSegmentProcessed(segment));
     Assert.assertEquals(1, httpLoadQueuePeon.getNumberOfSegmentsInQueue());
 
-    boolean cancelled = httpLoadQueuePeon.cancelLoad(segment);
+    boolean cancelled = httpLoadQueuePeon.cancelOperation(segment);
     Assert.assertTrue(cancelled);
     Assert.assertEquals(0, httpLoadQueuePeon.getNumberOfSegmentsInQueue());
 
@@ -237,7 +237,7 @@ public class HttpLoadQueuePeonTest
     httpLoadQueuePeon.dropSegment(segment, markSegmentProcessed(segment));
     Assert.assertEquals(1, httpLoadQueuePeon.getSegmentsToDrop().size());
 
-    boolean cancelled = httpLoadQueuePeon.cancelDrop(segment);
+    boolean cancelled = httpLoadQueuePeon.cancelOperation(segment);
     Assert.assertTrue(cancelled);
     Assert.assertTrue(httpLoadQueuePeon.getSegmentsToDrop().isEmpty());
 
@@ -248,7 +248,7 @@ public class HttpLoadQueuePeonTest
   public void testCannotCancelRequestSentToServer()
   {
     final DataSegment segment = segments.get(0);
-    httpLoadQueuePeon.loadSegment(segment, SegmentAction.LOAD, markSegmentProcessed(segment));
+    httpLoadQueuePeon.loadSegment(segment, SegmentAction.REPLICATE, markSegmentProcessed(segment));
     Assert.assertTrue(httpLoadQueuePeon.getSegmentsToLoad().contains(segment));
 
     // Send the request to the server
@@ -257,7 +257,7 @@ public class HttpLoadQueuePeonTest
 
     // Segment is still in queue but operation cannot be cancelled
     Assert.assertTrue(httpLoadQueuePeon.getSegmentsToLoad().contains(segment));
-    boolean cancelled = httpLoadQueuePeon.cancelLoad(segment);
+    boolean cancelled = httpLoadQueuePeon.cancelOperation(segment);
     Assert.assertFalse(cancelled);
 
     // Handle response from server
@@ -265,7 +265,7 @@ public class HttpLoadQueuePeonTest
 
     // Segment has been removed from queue
     Assert.assertTrue(httpLoadQueuePeon.getSegmentsToLoad().isEmpty());
-    cancelled = httpLoadQueuePeon.cancelLoad(segment);
+    cancelled = httpLoadQueuePeon.cancelOperation(segment);
     Assert.assertFalse(cancelled);
 
     // Execute callbacks and verify segment is fully processed
@@ -274,14 +274,14 @@ public class HttpLoadQueuePeonTest
   }
 
   @Test
-  public void testCannotCancelDropOfLoadingSegment()
+  public void testCannotCancelOperationMultipleTimes()
   {
     final DataSegment segment = segments.get(0);
-    httpLoadQueuePeon.loadSegment(segment, SegmentAction.LOAD, markSegmentProcessed(segment));
+    httpLoadQueuePeon.loadSegment(segment, SegmentAction.REPLICATE, markSegmentProcessed(segment));
     Assert.assertTrue(httpLoadQueuePeon.getSegmentsToLoad().contains(segment));
 
-    // Try to cancel drop of segment, even though it is actually loading
-    Assert.assertFalse(httpLoadQueuePeon.cancelDrop(segment));
+    Assert.assertTrue(httpLoadQueuePeon.cancelOperation(segment));
+    Assert.assertFalse(httpLoadQueuePeon.cancelOperation(segment));
   }
 
   private LoadPeonCallback markSegmentProcessed(DataSegment segment)

@@ -48,7 +48,7 @@ public class SegmentHolder implements Comparable<SegmentHolder>
    * </ul>
    */
   public static final Comparator<SegmentHolder> COMPARE_ACTION_THEN_INTERVAL =
-      Ordering.explicit(SegmentAction.DROP, SegmentAction.PRIORITY_LOAD, SegmentAction.LOAD, SegmentAction.MOVE_TO)
+      Ordering.explicit(SegmentAction.DROP, SegmentAction.LOAD, SegmentAction.REPLICATE, SegmentAction.MOVE_TO)
               .onResultOf(SegmentHolder::getAction)
               .compound(DruidCoordinator.SEGMENT_COMPARATOR_RECENT_FIRST.onResultOf(SegmentHolder::getSegment));
 
@@ -130,13 +130,9 @@ public class SegmentHolder implements Comparable<SegmentHolder>
     return firstRequestMillis.get() > 0;
   }
 
-  public long getMillisSinceFirstRequestToServer()
+  public long getFirstRequestMillis()
   {
-    if (firstRequestMillis.get() == 0) {
-      return 0;
-    } else {
-      return System.currentTimeMillis() - firstRequestMillis.get();
-    }
+    return firstRequestMillis.get();
   }
 
   @Override
