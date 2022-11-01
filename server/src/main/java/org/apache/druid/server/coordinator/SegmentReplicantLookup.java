@@ -90,32 +90,9 @@ public class SegmentReplicantLookup
    * Does not include replicas with state DROPPING or MOVING_TO.
    */
   public int getProjectedReplicas(SegmentId segmentId, String tier)
-<<<<<<< HEAD
   {
     ReplicaCount count = replicaCounts.get(segmentId, tier);
     return count == null ? 0 : count.projected();
-  }
-
-  /**
-   * Total number of replicas of the segment expected to be present across all
-   * tiers once all the operations in progress have completed.
-   * <p>
-   * Includes replicas with state LOADING and LOADED.
-   * Does not include replicas with state DROPPING or MOVING_TO.
-   */
-  public int getTotalProjectedReplicas(SegmentId segmentId)
-  {
-    final Map<String, ReplicaCount> allTiers = replicaCounts.row(segmentId);
-    int totalLoaded = 0;
-    for (ReplicaCount count : allTiers.values()) {
-      totalLoaded += count.projected();
-    }
-    return totalLoaded;
-=======
-  {
-    ReplicaCount count = replicaCounts.get(segmentId, tier);
-    return count == null ? 0 : count.projected();
->>>>>>> 0d91c2c44744057a6aba0df11ee74b0f6635a1b4
   }
 
   /**

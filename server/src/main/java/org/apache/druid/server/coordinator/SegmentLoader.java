@@ -105,8 +105,6 @@ public class SegmentLoader
     } else {
       return false;
     }
-
-    return false;
   }
 
   /**
@@ -362,7 +360,6 @@ public class SegmentLoader
       );
     }
 
-    stats.addToDutyStat("adhoc", "dropReplicas", System.currentTimeMillis() - startTime);
     return numDropsQueued;
   }
 
@@ -424,7 +421,6 @@ public class SegmentLoader
       );
     }
 
-    stats.addToDutyStat("adhoc", "loadReplicas", System.currentTimeMillis() - startTime);
     return numLoadsQueued;
   }
 
