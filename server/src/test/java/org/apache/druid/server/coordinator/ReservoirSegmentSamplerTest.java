@@ -196,13 +196,21 @@ public class ReservoirSegmentSamplerTest
   {
     // The number of runs required for each sample percentage
     // remains more or less fixed, even with a larger number of segments
-    for (int i = 0; i < 10; ++i) {
-      Assert.assertEquals(1, countMinRunsWithSamplePercent(100));
-      Assert.assertTrue(countMinRunsWithSamplePercent(50) < 20);
-      Assert.assertTrue(countMinRunsWithSamplePercent(10) < 100);
-      Assert.assertTrue(countMinRunsWithSamplePercent(5) < 200);
-      Assert.assertTrue(countMinRunsWithSamplePercent(1) < 1000);
+    final int[] samplePercentages = {100, 50, 10, 5, 1};
+    final int[] expectedIterations = {1, 20, 100, 200, 1000};
+
+    final int[] totalObservedIterations = new int[5];
+    for (int i = 0; i < 50; ++i) {
+      for (int j = 0; j < samplePercentages.length; ++j) {
+        totalObservedIterations[j] += countMinRunsWithSamplePercent(samplePercentages[j]);
+      }
     }
+
+    for (int j = 0; j < samplePercentages.length; ++j) {
+      double avgObservedIterations = totalObservedIterations[j] / 50.0;
+      Assert.assertTrue(avgObservedIterations <= expectedIterations[j]);
+    }
+
   }
 
   /**
@@ -211,7 +219,7 @@ public class ReservoirSegmentSamplerTest
    * <p>
    * {@code k = sampleSize = totalNumSegments * samplePercentage}
    */
-  private int countMinRunsWithSamplePercent(double samplePercentage)
+  private int countMinRunsWithSamplePercent(int samplePercentage)
   {
     final int numSegments = segments.size();
     final List<ServerHolder> servers = Arrays.asList(

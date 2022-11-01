@@ -58,7 +58,7 @@ public class CoordinatorDutiesTest extends CoordinatorSimulationBaseTest
 
   }
 
-  @Test
+  //@Test
   public void testMarkingThing()
   {
     CoordinatorDynamicConfig dynamicConfig =
