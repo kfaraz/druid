@@ -151,6 +151,13 @@ public class EmitClusterStatsAndMetrics implements CoordinatorDuty
             emitMetricWithDimension("coordinator/time", count, DruidMetrics.DUTY, duty)
     );
 
+    // Emit temp stats
+    stats.forEachDutyStat(
+        "adhoc",
+        (duty, count) ->
+            emitMetricWithDimension("coordinator/adhoc/time", count, DruidMetrics.DUTY, duty)
+    );
+
     return params;
   }
 

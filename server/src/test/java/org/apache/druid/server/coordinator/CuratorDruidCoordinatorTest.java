@@ -321,6 +321,8 @@ public class CuratorDruidCoordinatorTest extends CuratorTestBase
     EasyMock.expect(coordinatorRuntimeParams.getDataSourcesSnapshot()).andReturn(dataSourcesSnapshot).anyTimes();
     EasyMock.expect(coordinatorRuntimeParams.getCoordinatorDynamicConfig())
             .andReturn(CoordinatorDynamicConfig.builder().build()).anyTimes();
+    EasyMock.expect(coordinatorRuntimeParams.getDruidCluster())
+            .andReturn(DruidClusterBuilder.newBuilder().build()).anyTimes();
     EasyMock.replay(segmentsMetadataManager, coordinatorRuntimeParams);
 
     EasyMock.expect(dataSourcesSnapshot.getDataSource(EasyMock.anyString())).andReturn(druidDataSource).anyTimes();
