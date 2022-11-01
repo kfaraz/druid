@@ -19,29 +19,23 @@
 
 package org.apache.druid.server.coordinator;
 
-import org.apache.druid.client.ImmutableDruidServer;
 import org.apache.druid.timeline.DataSegment;
 
 /**
+ * Represents a segment picked for moving by a balancer strategy.
  */
 public class BalancerSegmentHolder
 {
-  private final ImmutableDruidServer fromServer;
+  private final ServerHolder fromServer;
   private final DataSegment segment;
 
-  // This is a pretty fugly hard coding of the maximum lifetime
-  private int lifetime = 15;
-
-  public BalancerSegmentHolder(
-      ImmutableDruidServer fromServer,
-      DataSegment segment
-  )
+  public BalancerSegmentHolder(ServerHolder fromServer, DataSegment segment)
   {
     this.fromServer = fromServer;
     this.segment = segment;
   }
 
-  public ImmutableDruidServer getFromServer()
+  public ServerHolder getFromServer()
   {
     return fromServer;
   }
@@ -51,13 +45,4 @@ public class BalancerSegmentHolder
     return segment;
   }
 
-  public int getLifetime()
-  {
-    return lifetime;
-  }
-
-  public void reduceLifetime()
-  {
-    lifetime--;
-  }
 }

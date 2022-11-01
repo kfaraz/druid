@@ -27,12 +27,36 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.function.ObjLongConsumer;
 
 /**
  */
 public class CoordinatorStats
 {
+  // List of stat names
+  public static final String CANCELLED_MOVES = "cancelMoveCount";
+  public static final String CANCELLED_LOADS = "cancelLoadCount";
+  public static final String CANCELLED_DROPS = "cancelDropCount";
+
+  public static final String ASSIGNED_COUNT = "assignedCount";
+  public static final String DROPPED_COUNT = "droppedCount";
+  public static final String DELETED_COUNT = "deletedCount";
+
+  public static final String UNDER_REPLICATED_COUNT = "underReplicatedCount";
+  public static final String ASSIGN_SKIP_COUNT = "assignSkip";
+  public static final String DROP_SKIP_COUNT = "dropSkip";
+
+  public static final String MOVED_COUNT = "movedCount";
+  public static final String UNMOVED_COUNT = "unmovedCount";
+
+  public static final String BROADCAST_LOADS = "broadcastLoad";
+  public static final String BROADCAST_DROPS = "broadcastDrop";
+
+  public static final String REQUIRED_CAPACITY = "requiredCapacity";
+  public static final String TOTAL_CAPACITY = "totalCapacity";
+  public static final String MAX_REPLICATION_FACTOR = "maxReplicationFactor";
+
   private final Map<String, Object2LongOpenHashMap<String>> perTierStats;
   private final Map<String, Object2LongOpenHashMap<String>> perDataSourceStats;
   private final Map<String, Object2LongOpenHashMap<String>> perDutyStats;
@@ -222,5 +246,17 @@ public class CoordinatorStats
     }
 
     return this;
+  }
+
+  public Map<String, Long> getSortedTierStats(String tier)
+  {
+    final Map<String, Long> sortedTierStats = new TreeMap<>();
+    perTierStats.forEach((statName, statsPerTier) -> {
+      if (statsPerTier.containsKey(tier)) {
+        sortedTierStats.put(statName, statsPerTier.getLong(tier));
+      }
+    });
+
+    return sortedTierStats;
   }
 }

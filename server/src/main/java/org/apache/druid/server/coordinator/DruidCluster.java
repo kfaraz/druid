@@ -82,15 +82,11 @@ public class DruidCluster
   public void add(ServerHolder serverHolder)
   {
     switch (serverHolder.getServer().getType()) {
+      case BRIDGE:
       case HISTORICAL:
         addHistorical(serverHolder);
         break;
       case REALTIME:
-        addRealtime(serverHolder);
-        break;
-      case BRIDGE:
-        addHistorical(serverHolder);
-        break;
       case INDEXER_EXECUTOR:
         addRealtime(serverHolder);
         break;
@@ -146,6 +142,12 @@ public class DruidCluster
   public NavigableSet<ServerHolder> getHistoricalsByTier(String tier)
   {
     return historicals.get(tier);
+  }
+
+  public int getNumHistoricalsInTier(String tier)
+  {
+    Set<ServerHolder> historicals = getHistoricalsByTier(tier);
+    return historicals == null ? 0 : historicals.size();
   }
 
   public Collection<ServerHolder> getAllServers()

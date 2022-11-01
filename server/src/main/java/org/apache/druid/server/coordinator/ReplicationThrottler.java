@@ -19,164 +19,83 @@
 
 package org.apache.druid.server.coordinator;
 
-import org.apache.druid.java.util.emitter.EmittingLogger;
-import org.apache.druid.timeline.SegmentId;
-
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
+import java.util.Set;
 
 /**
- * The ReplicationThrottler is used to throttle the number of replicants that are created.
+ * The ReplicationThrottler is used to throttle the number of segment replicas
+ * that are assigned to a load queue in a single run.
+ * This is achieved by setting the values of these configs:
+ * <ul>
+ *   <li>{@link CoordinatorDynamicConfig#getReplicationThrottleLimit()}, and</li>
+ *   <li>{@link CoordinatorDynamicConfig#getMaxNonPrimaryReplicantsToLoad()}</li>
+ * </ul>
  */
 public class ReplicationThrottler
 {
-  private static final EmittingLogger log = new EmittingLogger(ReplicationThrottler.class);
+  private final Set<String> eligibleTiers;
+  private final int replicationThrottleLimit;
+  private final int maxLifetime;
+  private final int maxTotalReplicasPerRun;
 
-  private final Map<String, Boolean> replicatingLookup = new HashMap<>();
-  private final ReplicatorSegmentHolder currentlyReplicating = new ReplicatorSegmentHolder();
+  private final Map<String, Integer> tierToNumAssigned = new HashMap<>();
+  private final Map<String, Integer> tierToNumThrottled = new HashMap<>();
 
-  private volatile int maxReplicants;
-  private volatile int maxLifetime;
-  private volatile boolean loadPrimaryReplicantsOnly;
+  private int totalNumAssignedReplicas;
 
-  public ReplicationThrottler(int maxReplicants, int maxLifetime, boolean loadPrimaryReplicantsOnly)
+  /**
+   * Creates a new ReplicationThrottler for use during a single coordiantor run.
+   *
+   * @param eligibleTiers            Set of tiers eligible for replication.
+   * @param replicationThrottleLimit Maximum number of replicas that can be
+   *                                 actively loading on a tier at any given time.
+   * @param maxLifetime              Number of coordinator runs after which a
+   *                                 replica remaining in the queue is considered
+   *                                 to be stuck and triggers an alert.
+   * @param maxTotalReplicasPerRun   Maximum number of replicas that can be
+   *                                 assigned for loading in a single coordinator run.
+   */
+  public ReplicationThrottler(
+      Set<String> eligibleTiers,
+      int replicationThrottleLimit,
+      int maxLifetime,
+      int maxTotalReplicasPerRun
+  )
   {
-    updateParams(maxReplicants, maxLifetime, loadPrimaryReplicantsOnly);
-  }
-
-  public void updateParams(int maxReplicants, int maxLifetime, boolean loadPrimaryReplicantsOnly)
-  {
-    this.maxReplicants = maxReplicants;
+    this.eligibleTiers = eligibleTiers;
+    this.replicationThrottleLimit = replicationThrottleLimit;
     this.maxLifetime = maxLifetime;
-    this.loadPrimaryReplicantsOnly = loadPrimaryReplicantsOnly;
+    this.maxTotalReplicasPerRun = maxTotalReplicasPerRun;
+    this.totalNumAssignedReplicas = 0;
   }
 
-  public void updateReplicationState(String tier)
+  public boolean canAssignReplica(String tier, int numProcessingSegmentsInTier)
   {
-    update(tier, currentlyReplicating, replicatingLookup, "create");
+    return totalNumAssignedReplicas < maxTotalReplicasPerRun
+           && numProcessingSegmentsInTier < replicationThrottleLimit
+           && eligibleTiers.contains(tier);
   }
 
-  public boolean isLoadPrimaryReplicantsOnly()
+  public void incrementAssignedReplicas(String tier)
   {
-    return loadPrimaryReplicantsOnly;
+    ++totalNumAssignedReplicas;
+    tierToNumAssigned.compute(tier, (t, count) -> (count == null) ? 1 : count + 1);
   }
 
-  public void setLoadPrimaryReplicantsOnly(boolean loadPrimaryReplicantsOnly)
+  public void incrementThrottledReplicas(String tier)
   {
-    this.loadPrimaryReplicantsOnly = loadPrimaryReplicantsOnly;
+    tierToNumThrottled.compute(tier, (t, count) -> (count == null) ? 1 : count + 1);
   }
 
-  private void update(String tier, ReplicatorSegmentHolder holder, Map<String, Boolean> lookup, String type)
+  public Map<String, Integer> getTierToNumThrottled()
   {
-    int size = holder.getNumProcessing(tier);
-    if (size != 0) {
-      log.info(
-          "[%s]: Replicant %s queue still has %d segments. Lifetime[%d]. Segments %s",
-          tier,
-          type,
-          size,
-          holder.getLifetime(tier),
-          holder.getCurrentlyProcessingSegmentsAndHosts(tier)
-      );
-      holder.reduceLifetime(tier);
-      lookup.put(tier, false);
-
-      if (holder.getLifetime(tier) < 0) {
-        log.makeAlert("[%s]: Replicant %s queue stuck after %d+ runs!", tier, type, maxLifetime)
-           .addData("segments", holder.getCurrentlyProcessingSegmentsAndHosts(tier))
-           .emit();
-      }
-    } else {
-      log.info("[%s]: Replicant %s queue is empty.", tier, type);
-      lookup.put(tier, true);
-      holder.resetLifetime(tier);
-    }
+    return tierToNumThrottled;
   }
 
-  public boolean canCreateReplicant(String tier)
+  public int getMaxLifetime()
   {
-    return !loadPrimaryReplicantsOnly && replicatingLookup.get(tier) && !currentlyReplicating.isAtMaxReplicants(tier);
+    return maxLifetime;
   }
 
-  public void registerReplicantCreation(String tier, SegmentId segmentId, String serverId)
-  {
-    currentlyReplicating.addSegment(tier, segmentId, serverId);
-  }
-
-  public void unregisterReplicantCreation(String tier, SegmentId segmentId)
-  {
-    currentlyReplicating.removeSegment(tier, segmentId);
-  }
-
-  private class ReplicatorSegmentHolder
-  {
-    private final Map<String, ConcurrentHashMap<SegmentId, String>> currentlyProcessingSegments = new HashMap<>();
-    private final Map<String, Integer> lifetimes = new HashMap<>();
-
-    public boolean isAtMaxReplicants(String tier)
-    {
-      final ConcurrentHashMap<SegmentId, String> segments = currentlyProcessingSegments.get(tier);
-      return (segments != null && segments.size() >= maxReplicants);
-    }
-
-    public void addSegment(String tier, SegmentId segmentId, String serverId)
-    {
-      ConcurrentHashMap<SegmentId, String> segments =
-          currentlyProcessingSegments.computeIfAbsent(tier, t -> new ConcurrentHashMap<>());
-
-      if (!isAtMaxReplicants(tier)) {
-        segments.put(segmentId, serverId);
-      }
-    }
-
-    public void removeSegment(String tier, SegmentId segmentId)
-    {
-      ConcurrentMap<SegmentId, String> segments = currentlyProcessingSegments.get(tier);
-      if (segments != null) {
-        segments.remove(segmentId);
-      }
-    }
-
-    public int getNumProcessing(String tier)
-    {
-      ConcurrentMap<SegmentId, String> segments = currentlyProcessingSegments.get(tier);
-      return (segments == null) ? 0 : segments.size();
-    }
-
-    public int getLifetime(String tier)
-    {
-      Integer lifetime = lifetimes.putIfAbsent(tier, maxLifetime);
-      return lifetime != null ? lifetime : maxLifetime;
-    }
-
-    public void reduceLifetime(String tier)
-    {
-      lifetimes.compute(
-          tier,
-          (t, lifetime) -> {
-            if (lifetime == null) {
-              return maxLifetime - 1;
-            }
-            return lifetime - 1;
-          }
-      );
-    }
-
-    public void resetLifetime(String tier)
-    {
-      lifetimes.put(tier, maxLifetime);
-    }
-
-    public List<String> getCurrentlyProcessingSegmentsAndHosts(String tier)
-    {
-      ConcurrentMap<SegmentId, String> segments = currentlyProcessingSegments.get(tier);
-      List<String> segmentsAndHosts = new ArrayList<>();
-      segments.forEach((segmentId, serverId) -> segmentsAndHosts.add(segmentId + " ON " + serverId));
-      return segmentsAndHosts;
-    }
-  }
 }

@@ -21,15 +21,11 @@ package org.apache.druid.server.coordinator;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.collect.ImmutableList;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.api.CuratorWatcher;
 import org.apache.curator.utils.ZKPaths;
 import org.apache.druid.java.util.common.ISE;
 import org.apache.druid.java.util.emitter.EmittingLogger;
-import org.apache.druid.server.coordination.DataSegmentChangeRequest;
-import org.apache.druid.server.coordination.SegmentChangeRequestDrop;
-import org.apache.druid.server.coordination.SegmentChangeRequestLoad;
 import org.apache.druid.server.coordination.SegmentChangeRequestNoop;
 import org.apache.druid.timeline.DataSegment;
 import org.apache.zookeeper.CreateMode;
@@ -38,11 +34,8 @@ import org.apache.zookeeper.data.Stat;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ConcurrentSkipListSet;
@@ -63,7 +56,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * of the same or different methods.
  */
 @Deprecated
-public class CuratorLoadQueuePeon extends LoadQueuePeon
+public class CuratorLoadQueuePeon implements LoadQueuePeon
 {
   private static final EmittingLogger log = new EmittingLogger(CuratorLoadQueuePeon.class);
 
@@ -84,8 +77,9 @@ public class CuratorLoadQueuePeon extends LoadQueuePeon
 
   /**
    * Needs to be thread safe since it can be concurrently accessed via
-   * {@link #loadSegment(DataSegment, LoadPeonCallback)}, {@link #actionCompleted(SegmentHolder)},
-   * {@link #getSegmentsToLoad()} and {@link #stop()}
+   * {@link #loadSegment(DataSegment, SegmentAction, LoadPeonCallback)},
+   * {@link #actionCompleted(SegmentHolder)}, {@link #getSegmentsToLoad()} and
+   * {@link #stop()}.
    */
   private final ConcurrentSkipListMap<DataSegment, SegmentHolder> segmentsToLoad = new ConcurrentSkipListMap<>(
       DruidCoordinator.SEGMENT_COMPARATOR_RECENT_FIRST
@@ -142,6 +136,15 @@ public class CuratorLoadQueuePeon extends LoadQueuePeon
     return segmentsToLoad.keySet();
   }
 
+  @Override
+  public Map<DataSegment, SegmentAction> getSegmentsInQueue()
+  {
+    final Map<DataSegment, SegmentAction> segmentsInQueue = new HashMap<>();
+    segmentsToLoad.values().forEach(s -> segmentsInQueue.put(s.getSegment(), s.getAction()));
+    segmentsToDrop.values().forEach(s -> segmentsInQueue.put(s.getSegment(), s.getAction()));
+    return segmentsInQueue;
+  }
+
   @JsonProperty
   @Override
   public Set<DataSegment> getSegmentsToDrop()
@@ -181,9 +184,9 @@ public class CuratorLoadQueuePeon extends LoadQueuePeon
   }
 
   @Override
-  public void loadSegment(final DataSegment segment, @Nullable final LoadPeonCallback callback)
+  public void loadSegment(final DataSegment segment, SegmentAction action, @Nullable final LoadPeonCallback callback)
   {
-    SegmentHolder segmentHolder = new SegmentHolder(segment, Action.LOAD, Collections.singletonList(callback));
+    SegmentHolder segmentHolder = new SegmentHolder(segment, action, callback);
     final SegmentHolder existingHolder = segmentsToLoad.putIfAbsent(segment, segmentHolder);
     if (existingHolder != null) {
       existingHolder.addCallback(callback);
@@ -197,7 +200,7 @@ public class CuratorLoadQueuePeon extends LoadQueuePeon
   @Override
   public void dropSegment(final DataSegment segment, @Nullable final LoadPeonCallback callback)
   {
-    SegmentHolder segmentHolder = new SegmentHolder(segment, Action.DROP, Collections.singletonList(callback));
+    SegmentHolder segmentHolder = new SegmentHolder(segment, SegmentAction.DROP, callback);
     final SegmentHolder existingHolder = segmentsToDrop.putIfAbsent(segment, segmentHolder);
     if (existingHolder != null) {
       existingHolder.addCallback(callback);
@@ -324,11 +327,13 @@ public class CuratorLoadQueuePeon extends LoadQueuePeon
   {
     switch (segmentHolder.getAction()) {
       case LOAD:
+      case REPLICATE:
+      case MOVE_TO:
         // When load failed a segment will be removed from the segmentsToLoad twice and
         // null value will be returned at the second time in which case queueSize may be negative.
         // See https://github.com/apache/druid/pull/10362 for more details.
         if (null != segmentsToLoad.remove(segmentHolder.getSegment())) {
-          queuedSize.addAndGet(-segmentHolder.getSegmentSize());
+          queuedSize.addAndGet(-segmentHolder.getSegment().getSize());
           timedOutSegments.remove(segmentHolder.getSegment());
         }
         break;
@@ -409,91 +414,15 @@ public class CuratorLoadQueuePeon extends LoadQueuePeon
     }
   }
 
-  private enum Action
+  @Override
+  public boolean cancelOperation(DataSegment segment)
   {
-    LOAD, DROP
-  }
-
-  private static class SegmentHolder
-  {
-    private final DataSegment segment;
-    private final DataSegmentChangeRequest changeRequest;
-    private final Action type;
-    // Guaranteed to store only non-null elements
-    private final List<LoadPeonCallback> callbacks = new ArrayList<>();
-
-    private SegmentHolder(
-        DataSegment segment,
-        Action type,
-        Collection<LoadPeonCallback> callbacksParam
-    )
-    {
-      this.segment = segment;
-      this.type = type;
-      this.changeRequest = (type == Action.LOAD)
-                           ? new SegmentChangeRequestLoad(segment)
-                           : new SegmentChangeRequestDrop(segment);
-      Iterator<LoadPeonCallback> itr = callbacksParam.iterator();
-      while (itr.hasNext()) {
-        LoadPeonCallback c = itr.next();
-        if (c != null) {
-          callbacks.add(c);
-        }
-      }
-    }
-
-    public DataSegment getSegment()
-    {
-      return segment;
-    }
-
-    public Action getAction()
-    {
-      return type;
-    }
-
-    public String getSegmentIdentifier()
-    {
-      return segment.getId().toString();
-    }
-
-    public long getSegmentSize()
-    {
-      return segment.getSize();
-    }
-
-    public void addCallback(@Nullable LoadPeonCallback newCallback)
-    {
-      if (newCallback != null) {
-        synchronized (callbacks) {
-          callbacks.add(newCallback);
-        }
-      }
-    }
-
-    List<LoadPeonCallback> snapshotCallbacks()
-    {
-      synchronized (callbacks) {
-        // Return an immutable copy so that callers don't have to worry about concurrent modification
-        return ImmutableList.copyOf(callbacks);
-      }
-    }
-
-    public DataSegmentChangeRequest getChangeRequest()
-    {
-      return changeRequest;
-    }
-
-    @Override
-    public String toString()
-    {
-      return changeRequest.toString();
-    }
+    return false;
   }
 
   private void executeCallbacks(SegmentHolder holder, boolean success)
   {
-    for (LoadPeonCallback callback : holder.snapshotCallbacks()) {
+    for (LoadPeonCallback callback : holder.getCallbacks()) {
       callBackExecutor.submit(() -> callback.execute(success));
     }
   }

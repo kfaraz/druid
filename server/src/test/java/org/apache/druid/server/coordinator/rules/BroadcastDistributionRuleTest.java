@@ -23,16 +23,21 @@ import org.apache.druid.client.DruidServer;
 import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.common.Intervals;
 import org.apache.druid.server.coordination.ServerType;
+import org.apache.druid.server.coordinator.CoordinatorDynamicConfig;
 import org.apache.druid.server.coordinator.CoordinatorRuntimeParamsTestHelpers;
 import org.apache.druid.server.coordinator.CoordinatorStats;
 import org.apache.druid.server.coordinator.DruidCluster;
 import org.apache.druid.server.coordinator.DruidClusterBuilder;
 import org.apache.druid.server.coordinator.DruidCoordinatorRuntimeParams;
 import org.apache.druid.server.coordinator.LoadQueuePeonTester;
+import org.apache.druid.server.coordinator.ReplicationThrottler;
+import org.apache.druid.server.coordinator.SegmentLoader;
 import org.apache.druid.server.coordinator.SegmentReplicantLookup;
+import org.apache.druid.server.coordinator.SegmentStateManager;
 import org.apache.druid.server.coordinator.ServerHolder;
 import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.timeline.partition.NoneShardSpec;
+import org.assertj.core.util.Sets;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -54,12 +59,16 @@ public class BroadcastDistributionRuleTest
   private ServerHolder activeServer;
   private ServerHolder decommissioningServer1;
   private ServerHolder decommissioningServer2;
+  private SegmentStateManager stateManager;
+
+  private static final String DS_SMALL = "small_source";
 
   @Before
   public void setUp()
   {
+    stateManager = new SegmentStateManager(null, null, null);
     smallSegment = new DataSegment(
-        "small_source",
+        DS_SMALL,
         Intervals.of("0/1000"),
         DateTimes.nowUtc().toString(),
         new HashMap<>(),
@@ -270,8 +279,9 @@ public class BroadcastDistributionRuleTest
     final ForeverBroadcastDistributionRule rule =
         new ForeverBroadcastDistributionRule();
 
-    CoordinatorStats stats = rule.run(
-        null,
+    CoordinatorStats stats = runRuleAndGetStats(
+        rule,
+        smallSegment,
         makeCoordinartorRuntimeParams(
             druidCluster,
             smallSegment,
@@ -280,11 +290,10 @@ public class BroadcastDistributionRuleTest
             largeSegments.get(2),
             largeSegments2.get(0),
             largeSegments2.get(1)
-        ),
-        smallSegment
+        )
     );
 
-    Assert.assertEquals(5L, stats.getGlobalStat(LoadRule.ASSIGNED_COUNT));
+    Assert.assertEquals(5L, stats.getDataSourceStat(CoordinatorStats.BROADCAST_LOADS, DS_SMALL));
     Assert.assertFalse(stats.hasPerTierStats());
 
     Assert.assertTrue(
@@ -332,18 +341,18 @@ public class BroadcastDistributionRuleTest
     final ForeverBroadcastDistributionRule rule =
         new ForeverBroadcastDistributionRule();
 
-    CoordinatorStats stats = rule.run(
-        null,
+    CoordinatorStats stats = runRuleAndGetStats(
+        rule,
+        smallSegment,
         makeCoordinartorRuntimeParams(
             secondCluster,
             smallSegment,
             largeSegments.get(0),
             largeSegments.get(1)
-        ),
-        smallSegment
+        )
     );
 
-    Assert.assertEquals(1L, stats.getGlobalStat(LoadRule.ASSIGNED_COUNT));
+    Assert.assertEquals(1L, stats.getDataSourceStat(CoordinatorStats.BROADCAST_LOADS, DS_SMALL));
     Assert.assertFalse(stats.hasPerTierStats());
 
     Assert.assertEquals(1, activeServer.getPeon().getSegmentsToLoad().size());
@@ -354,11 +363,11 @@ public class BroadcastDistributionRuleTest
   @Test
   public void testBroadcastToMultipleDataSources()
   {
-    final ForeverBroadcastDistributionRule rule = new ForeverBroadcastDistributionRule(
-    );
+    final ForeverBroadcastDistributionRule rule = new ForeverBroadcastDistributionRule();
 
-    CoordinatorStats stats = rule.run(
-        null,
+    CoordinatorStats stats = runRuleAndGetStats(
+        rule,
+        smallSegment,
         makeCoordinartorRuntimeParams(
             druidCluster,
             smallSegment,
@@ -367,11 +376,10 @@ public class BroadcastDistributionRuleTest
             largeSegments.get(2),
             largeSegments2.get(0),
             largeSegments2.get(1)
-        ),
-        smallSegment
+        )
     );
 
-    Assert.assertEquals(5L, stats.getGlobalStat(LoadRule.ASSIGNED_COUNT));
+    Assert.assertEquals(5L, stats.getDataSourceStat(CoordinatorStats.BROADCAST_LOADS, DS_SMALL));
     Assert.assertFalse(stats.hasPerTierStats());
 
     Assert.assertTrue(
@@ -392,8 +400,9 @@ public class BroadcastDistributionRuleTest
   {
     final ForeverBroadcastDistributionRule rule = new ForeverBroadcastDistributionRule();
 
-    CoordinatorStats stats = rule.run(
-        null,
+    CoordinatorStats stats = runRuleAndGetStats(
+        rule,
+        smallSegment,
         makeCoordinartorRuntimeParams(
             druidCluster,
             smallSegment,
@@ -402,11 +411,10 @@ public class BroadcastDistributionRuleTest
             largeSegments.get(2),
             largeSegments2.get(0),
             largeSegments2.get(1)
-        ),
-        smallSegment
+        )
     );
 
-    Assert.assertEquals(5L, stats.getGlobalStat(LoadRule.ASSIGNED_COUNT));
+    Assert.assertEquals(5L, stats.getDataSourceStat(CoordinatorStats.BROADCAST_LOADS, DS_SMALL));
     Assert.assertFalse(stats.hasPerTierStats());
 
     Assert.assertTrue(
@@ -415,5 +423,29 @@ public class BroadcastDistributionRuleTest
             .stream()
             .allMatch(holder -> holder.isLoadingSegment(smallSegment) || holder.isServingSegment(smallSegment))
     );
+  }
+
+  private CoordinatorStats runRuleAndGetStats(
+      Rule rule,
+      DataSegment segment,
+      DruidCoordinatorRuntimeParams params
+  )
+  {
+    final CoordinatorDynamicConfig dynamicConfig = params.getCoordinatorDynamicConfig();
+    ReplicationThrottler throttler = new ReplicationThrottler(
+        Sets.newHashSet(params.getDruidCluster().getTierNames()),
+        dynamicConfig.getReplicationThrottleLimit(),
+        dynamicConfig.getReplicantLifetime(),
+        dynamicConfig.getMaxNonPrimaryReplicantsToLoad()
+    );
+    SegmentLoader loader = new SegmentLoader(
+        stateManager,
+        params.getDruidCluster(),
+        params.getSegmentReplicantLookup(),
+        throttler,
+        params.getBalancerStrategy()
+    );
+    rule.run(segment, loader);
+    return loader.getStats();
   }
 }

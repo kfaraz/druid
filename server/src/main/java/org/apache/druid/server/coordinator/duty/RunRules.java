@@ -20,15 +20,17 @@
 package org.apache.druid.server.coordinator.duty;
 
 import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 import org.apache.druid.client.ImmutableDruidDataSource;
 import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.emitter.EmittingLogger;
 import org.apache.druid.metadata.MetadataRuleManager;
-import org.apache.druid.server.coordinator.CoordinatorStats;
+import org.apache.druid.server.coordinator.CoordinatorDynamicConfig;
 import org.apache.druid.server.coordinator.DruidCluster;
-import org.apache.druid.server.coordinator.DruidCoordinator;
 import org.apache.druid.server.coordinator.DruidCoordinatorRuntimeParams;
 import org.apache.druid.server.coordinator.ReplicationThrottler;
+import org.apache.druid.server.coordinator.SegmentLoader;
+import org.apache.druid.server.coordinator.SegmentStateManager;
 import org.apache.druid.server.coordinator.rules.BroadcastDistributionRule;
 import org.apache.druid.server.coordinator.rules.Rule;
 import org.apache.druid.timeline.DataSegment;
@@ -40,44 +42,30 @@ import java.util.List;
 import java.util.Set;
 
 /**
+ * Duty to run retention rules.
+ * <p>
+ * The params returned from {@code run()} must have these fields initialized:
+ * <ul>
+ *   <li>{@link DruidCoordinatorRuntimeParams#getBroadcastDatasources()}</li>
+ *   <li>{@link DruidCoordinatorRuntimeParams#getReplicationManager()}</li>
+ * </ul>
+ * These fields are used by the downstream coordinator duty, {@link BalanceSegments}.
  */
 public class RunRules implements CoordinatorDuty
 {
   private static final EmittingLogger log = new EmittingLogger(RunRules.class);
   private static final int MAX_MISSING_RULES = 10;
 
-  private final ReplicationThrottler replicatorThrottler;
+  private final SegmentStateManager stateManager;
 
-  private final DruidCoordinator coordinator;
-
-  public RunRules(DruidCoordinator coordinator)
+  public RunRules(SegmentStateManager stateManager)
   {
-    this(
-        new ReplicationThrottler(
-            coordinator.getDynamicConfigs().getReplicationThrottleLimit(),
-            coordinator.getDynamicConfigs().getReplicantLifetime(),
-            false
-        ),
-        coordinator
-    );
-  }
-
-  public RunRules(ReplicationThrottler replicatorThrottler, DruidCoordinator coordinator)
-  {
-    this.replicatorThrottler = replicatorThrottler;
-    this.coordinator = coordinator;
+    this.stateManager = stateManager;
   }
 
   @Override
   public DruidCoordinatorRuntimeParams run(DruidCoordinatorRuntimeParams params)
   {
-    replicatorThrottler.updateParams(
-        coordinator.getDynamicConfigs().getReplicationThrottleLimit(),
-        coordinator.getDynamicConfigs().getReplicantLifetime(),
-        false
-    );
-
-    CoordinatorStats stats = new CoordinatorStats();
     DruidCluster cluster = params.getDruidCluster();
 
     if (cluster.isEmpty()) {
@@ -91,18 +79,9 @@ public class RunRules implements CoordinatorDuty
     // to unload such segments in UnloadUnusedSegments.
     Set<SegmentId> overshadowed = params.getDataSourcesSnapshot().getOvershadowedSegments();
 
-    for (String tier : cluster.getTierNames()) {
-      replicatorThrottler.updateReplicationState(tier);
-    }
-
-    DruidCoordinatorRuntimeParams paramsWithReplicationManager = params
-        .buildFromExistingWithoutSegmentsMetadata()
-        .withReplicationManager(replicatorThrottler)
-        .build();
-
     // Run through all matched rules for used segments
     DateTime now = DateTimes.nowUtc();
-    MetadataRuleManager databaseRuleManager = paramsWithReplicationManager.getDatabaseRuleManager();
+    MetadataRuleManager databaseRuleManager = params.getDatabaseRuleManager();
 
     final List<SegmentId> segmentsWithMissingRules = Lists.newArrayListWithCapacity(MAX_MISSING_RULES);
     int missingRules = 0;
@@ -121,6 +100,19 @@ public class RunRules implements CoordinatorDuty
       }
     }
 
+    final CoordinatorDynamicConfig dynamicConfig = params.getCoordinatorDynamicConfig();
+    final ReplicationThrottler replicationThrottler = createReplicationThrottler(
+        reduceLifetimesAndGetBusyTiers(dynamicConfig),
+        cluster,
+        dynamicConfig
+    );
+    final SegmentLoader segmentLoader = new SegmentLoader(
+        stateManager,
+        params.getDruidCluster(),
+        params.getSegmentReplicantLookup(),
+        replicationThrottler,
+        params.getBalancerStrategy()
+    );
     for (DataSegment segment : params.getUsedSegments()) {
       if (overshadowed.contains(segment.getId())) {
         // Skipping overshadowed segments
@@ -130,19 +122,7 @@ public class RunRules implements CoordinatorDuty
       boolean foundMatchingRule = false;
       for (Rule rule : rules) {
         if (rule.appliesTo(segment, now)) {
-          if (
-              stats.getGlobalStat(
-                  "totalNonPrimaryReplicantsLoaded") >= paramsWithReplicationManager.getCoordinatorDynamicConfig()
-                                                                                   .getMaxNonPrimaryReplicantsToLoad()
-              && !paramsWithReplicationManager.getReplicationManager().isLoadPrimaryReplicantsOnly()
-          ) {
-            log.info(
-                "Maximum number of non-primary replicants [%d] have been loaded for the current RunRules execution. Only loading primary replicants from here on for this coordinator run cycle.",
-                paramsWithReplicationManager.getCoordinatorDynamicConfig().getMaxNonPrimaryReplicantsToLoad()
-            );
-            paramsWithReplicationManager.getReplicationManager().setLoadPrimaryReplicantsOnly(true);
-          }
-          stats.accumulate(rule.run(coordinator, paramsWithReplicationManager, segment));
+          rule.run(segment, segmentLoader);
           foundMatchingRule = true;
           break;
         }
@@ -163,9 +143,64 @@ public class RunRules implements CoordinatorDuty
          .emit();
     }
 
+    segmentLoader.makeAlerts();
     return params.buildFromExisting()
-                 .withCoordinatorStats(stats)
+                 .withCoordinatorStats(segmentLoader.getStats())
                  .withBroadcastDatasources(broadcastDatasources)
+                 .withReplicationManager(replicationThrottler)
                  .build();
+  }
+
+  /**
+   * Reduces the lifetimes of segments currently being replicated in all the tiers.
+   * Returns the set of tiers that are currently replicatinng some segments and
+   * won't be eligible for assigning more replicas in this run.
+   */
+  private Set<String> reduceLifetimesAndGetBusyTiers(CoordinatorDynamicConfig dynamicConfig)
+  {
+    final Set<String> busyTiers = new HashSet<>();
+    stateManager.reduceLifetimesOfReplicatingSegments().forEach((tier, replicatingState) -> {
+      int numReplicatingSegments = replicatingState.getNumProcessingSegments();
+      if (numReplicatingSegments <= 0) {
+        return;
+      }
+
+      busyTiers.add(tier);
+      log.info(
+          "Skipping replication on tier [%s] as is still has %d segments in queue with lifetime [%d / %d]",
+          tier,
+          numReplicatingSegments,
+          replicatingState.getLifetime(),
+          dynamicConfig.getReplicantLifetime()
+      );
+
+      // Create alerts for stuck tiers
+      if (replicatingState.getLifetime() <= 0) {
+        log.makeAlert("Replication queue for tier [%s] has [%d] segments stuck.", tier, numReplicatingSegments)
+           .addData("segments", replicatingState.getCurrentlyProcessingSegmentsAndHosts())
+           .emit();
+      }
+    });
+
+    return busyTiers;
+  }
+
+  private ReplicationThrottler createReplicationThrottler(
+      Set<String> busyTiers,
+      DruidCluster cluster,
+      CoordinatorDynamicConfig dynamicConfig
+  )
+  {
+    // Tiers that already have some replication in progress are not eligible for
+    // replication in this coordinator run
+    final Set<String> tiersEligibleForReplication = Sets.newHashSet(cluster.getTierNames());
+    tiersEligibleForReplication.removeAll(busyTiers);
+
+    return new ReplicationThrottler(
+        tiersEligibleForReplication,
+        dynamicConfig.getReplicationThrottleLimit(),
+        dynamicConfig.getReplicantLifetime(),
+        dynamicConfig.getMaxNonPrimaryReplicantsToLoad()
+    );
   }
 }

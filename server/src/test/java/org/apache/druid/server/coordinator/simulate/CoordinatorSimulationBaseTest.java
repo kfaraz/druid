@@ -25,6 +25,7 @@ import org.apache.druid.java.util.emitter.service.ServiceMetricEvent;
 import org.apache.druid.server.coordination.ServerType;
 import org.apache.druid.server.coordinator.CoordinatorDynamicConfig;
 import org.apache.druid.server.coordinator.CreateDataSegments;
+import org.apache.druid.server.coordinator.rules.ForeverBroadcastDistributionRule;
 import org.apache.druid.server.coordinator.rules.ForeverLoadRule;
 import org.apache.druid.server.coordinator.rules.Rule;
 import org.apache.druid.timeline.DataSegment;
@@ -127,6 +128,12 @@ public abstract class CoordinatorSimulationBaseTest
   public void removeServer(DruidServer server)
   {
     sim.cluster().removeServer(server);
+  }
+
+  @Override
+  public void addServer(DruidServer server)
+  {
+    sim.cluster().addServer(server);
   }
 
   @Override
@@ -268,7 +275,12 @@ public abstract class CoordinatorSimulationBaseTest
     static final String ASSIGNED_COUNT = "segment/assigned/count";
     static final String MOVED_COUNT = "segment/moved/count";
     static final String DROPPED_COUNT = "segment/dropped/count";
+    static final String THROTTLED_COUNT = "segment/throttledReplica/count";
     static final String LOAD_QUEUE_COUNT = "segment/loadQueue/count";
+
+    static final String BROADCAST_LOADS = "segment/broadcastLoad/count";
+    static final String BROADCAST_DROPS = "segment/broadcastDrop/count";
+    static final String CANCELLED_LOADS = "segment/cancelLoad/count";
   }
 
   static class Segments
@@ -308,6 +320,17 @@ public abstract class CoordinatorSimulationBaseTest
     Rule forever()
     {
       return new ForeverLoadRule(tieredReplicants);
+    }
+  }
+
+  /**
+   * Builder for a broadcast rule.
+   */
+  static class Broadcast
+  {
+    static Rule forever()
+    {
+      return new ForeverBroadcastDistributionRule();
     }
   }
 }

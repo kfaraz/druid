@@ -20,31 +20,59 @@
 package org.apache.druid.server.coordinator;
 
 import org.apache.druid.client.ImmutableDruidServer;
-import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.timeline.SegmentId;
 
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 
 /**
+ *
  */
 public class ServerHolder implements Comparable<ServerHolder>
 {
-  private static final Logger log = new Logger(ServerHolder.class);
   private final ImmutableDruidServer server;
   private final LoadQueuePeon peon;
   private final boolean isDecommissioning;
+  private final int maxSegmentsInLoadQueue;
+
+  private int segmentsQueuedForLoad;
+  private long sizeOfLoadingSegments;
+
+  /**
+   * Remove entries from this map only if the operation is cancelled.
+   * Do not remove entries on load/drop success or failure during the run.
+   */
+  private final Map<SegmentId, SegmentAction> queuedSegments = new HashMap<>();
 
   public ServerHolder(ImmutableDruidServer server, LoadQueuePeon peon)
   {
-    this(server, peon, false);
+    this(server, peon, false, 0);
   }
 
   public ServerHolder(ImmutableDruidServer server, LoadQueuePeon peon, boolean isDecommissioning)
   {
+    this(server, peon, isDecommissioning, 0);
+  }
+
+  public ServerHolder(
+      ImmutableDruidServer server,
+      LoadQueuePeon peon,
+      boolean isDecommissioning,
+      int maxSegmentsInLoadQueue
+  )
+  {
     this.server = server;
     this.peon = peon;
     this.isDecommissioning = isDecommissioning;
+    this.maxSegmentsInLoadQueue = maxSegmentsInLoadQueue;
+
+    peon.getSegmentsInQueue().forEach(
+        (segment, action) ->
+            queuedSegments.put(segment.getId(), simplify(action))
+    );
   }
 
   public ImmutableDruidServer getServer()
@@ -62,19 +90,9 @@ public class ServerHolder implements Comparable<ServerHolder>
     return server.getMaxSize();
   }
 
-  public long getCurrServerSize()
-  {
-    return server.getCurrSize();
-  }
-
-  public long getLoadQueueSize()
-  {
-    return peon.getLoadQueueSize();
-  }
-
   public long getSizeUsed()
   {
-    return getCurrServerSize() + getLoadQueueSize();
+    return server.getCurrSize() + sizeOfLoadingSegments;
   }
 
   public double getPercentUsed()
@@ -87,6 +105,7 @@ public class ServerHolder implements Comparable<ServerHolder>
    * the percent of move operations diverted from normal balancer moves for this purpose by
    * {@link CoordinatorDynamicConfig#getDecommissioningMaxPercentOfMaxSegmentsToMove()}. The mechanism allows draining
    * segments from nodes which are planned for replacement.
+   *
    * @return true if the node is decommissioning
    */
   public boolean isDecommissioning()
@@ -96,46 +115,108 @@ public class ServerHolder implements Comparable<ServerHolder>
 
   public long getAvailableSize()
   {
-    long maxSize = getMaxSize();
-    long sizeUsed = getSizeUsed();
-    long availableSize = maxSize - sizeUsed;
-
-    log.debug(
-        "Server[%s], MaxSize[%,d], CurrSize[%,d], QueueSize[%,d], SizeUsed[%,d], AvailableSize[%,d]",
-        server.getName(),
-        maxSize,
-        getCurrServerSize(),
-        getLoadQueueSize(),
-        sizeUsed,
-        availableSize
-    );
-
-    return availableSize;
+    return getMaxSize() - getSizeUsed();
   }
 
+  /**
+   * Checks if the server can load the given segment.
+   * <p>
+   * A load is possible only if the server meets all of the following criteria:
+   * <ul>
+   *   <li>is not being decommissioned</li>
+   *   <li>is not already serving the segment</li>
+   *   <li>is not performing any other action on the segment</li>
+   *   <li>has not already exceeded the load queue limit in this run</li>
+   *   <li>has available disk space</li>
+   * </ul>
+   */
+  public boolean canLoadSegment(DataSegment segment)
+  {
+    return !isDecommissioning
+           && !hasSegmentLoaded(segment.getId())
+           && getActionOnSegment(segment) == null
+           && (maxSegmentsInLoadQueue == 0 || maxSegmentsInLoadQueue > segmentsQueuedForLoad)
+           && getAvailableSize() >= segment.getSize();
+  }
+
+  public SegmentAction getActionOnSegment(DataSegment segment)
+  {
+    return queuedSegments.get(segment.getId());
+  }
+
+  /**
+   * Segments queued for load, drop or move on this server.
+   * <ul>
+   * <li>Contains segments present in the queue when the current coordinator run started.</li>
+   * <li>Contains segments added to the queue during the current run.</li>
+   * <li>Maps replicating segments to LOAD rather than REPLICATE for simplicity.</li>
+   * <li>Does not contain segments whose actions were cancelled.</li>
+   * </ul>
+   */
+  public Map<SegmentId, SegmentAction> getQueuedSegments()
+  {
+    return Collections.unmodifiableMap(queuedSegments);
+  }
+
+  /**
+   * Returns true if this server has the segment loaded and is not dropping it.
+   */
   public boolean isServingSegment(DataSegment segment)
   {
-    return isServingSegment(segment.getId());
+    return hasSegmentLoaded(segment.getId()) && getActionOnSegment(segment) == null;
   }
 
   public boolean isLoadingSegment(DataSegment segment)
   {
-    return peon.getSegmentsToLoad().contains(segment);
+    return getActionOnSegment(segment) == SegmentAction.LOAD;
   }
 
   public boolean isDroppingSegment(DataSegment segment)
   {
-    return peon.getSegmentsToDrop().contains(segment);
+    return getActionOnSegment(segment) == SegmentAction.DROP;
   }
 
-  public int getNumberOfSegmentsInQueue()
+  public boolean startOperation(SegmentAction action, DataSegment segment)
   {
-    return peon.getNumberOfSegmentsInQueue();
+    if (queuedSegments.containsKey(segment.getId())) {
+      return false;
+    }
+
+    final SegmentAction simpleAction = simplify(action);
+    if (simpleAction == SegmentAction.LOAD || action == SegmentAction.MOVE_TO) {
+      ++segmentsQueuedForLoad;
+      sizeOfLoadingSegments += segment.getSize();
+    }
+    queuedSegments.put(segment.getId(), simpleAction);
+    return true;
   }
 
-  public boolean isServingSegment(SegmentId segmentId)
+  public boolean cancelOperation(SegmentAction action, DataSegment segment)
+  {
+    return queuedSegments.get(segment.getId()) == simplify(action)
+           && peon.cancelOperation(segment)
+           && cleanupState(segment);
+  }
+
+  public boolean hasSegmentLoaded(SegmentId segmentId)
   {
     return server.getSegment(segmentId) != null;
+  }
+
+  private SegmentAction simplify(SegmentAction action)
+  {
+    return action == SegmentAction.REPLICATE ? SegmentAction.LOAD : action;
+  }
+
+  private boolean cleanupState(DataSegment segment)
+  {
+    final SegmentAction action = queuedSegments.remove(segment.getId());
+    if (action == SegmentAction.LOAD || action == SegmentAction.MOVE_TO) {
+      --segmentsQueuedForLoad;
+      sizeOfLoadingSegments -= segment.getSize();
+    }
+
+    return true;
   }
 
   @Override
