@@ -201,6 +201,7 @@ public class ReservoirSegmentSamplerTest
       Assert.assertTrue(countMinRunsWithSamplePercent(50) < 20);
       Assert.assertTrue(countMinRunsWithSamplePercent(10) < 100);
       Assert.assertTrue(countMinRunsWithSamplePercent(5) < 200);
+      Assert.assertTrue(countMinRunsWithSamplePercent(1) < 1000);
     }
   }
 
