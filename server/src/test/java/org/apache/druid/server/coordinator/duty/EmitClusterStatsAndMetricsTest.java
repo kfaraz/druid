@@ -62,7 +62,7 @@ public class EmitClusterStatsAndMetricsTest
     Mockito.when(mockDruidCoordinatorRuntimeParams.getCoordinatorStats()).thenReturn(mockCoordinatorStats);
     Mockito.when(mockDruidCoordinatorRuntimeParams.getDruidCluster()).thenReturn(mockDruidCluster);
     Mockito.when(mockDruidCoordinator.computeNumsUnavailableUsedSegmentsPerDataSource()).thenReturn(Object2IntMaps.emptyMap());
-    Mockito.when(mockDruidCoordinator.computeUnderReplicationCountsPerDataSourcePerTier()).thenReturn(ImmutableMap.of());
+    //Mockito.when(mockDruidCoordinator.computeUnderReplicationCountsPerDataSourcePerTier()).thenReturn(ImmutableMap.of());
     CoordinatorDuty duty = new EmitClusterStatsAndMetrics(
         mockDruidCoordinator,
         DruidCoordinator.HISTORICAL_MANAGEMENT_DUTIES_DUTY_GROUP,

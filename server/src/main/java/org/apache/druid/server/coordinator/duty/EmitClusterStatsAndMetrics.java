@@ -74,6 +74,17 @@ public class EmitClusterStatsAndMetrics implements CoordinatorDuty
     );
   }
 
+  private void emitMetric(String metricName, String datasource, String tier, Number value)
+  {
+    emitter.emit(
+        new ServiceMetricEvent.Builder()
+            .setDimension(DruidMetrics.TIER, tier)
+            .setDimension(DruidMetrics.DATASOURCE, datasource)
+            .setDimension(DruidMetrics.DUTY_GROUP, groupName)
+            .build(metricName, value)
+    );
+  }
+
   private void emitMetricForServer(String metricName, String serverName, Number value)
   {
     emitter.emit(
@@ -81,6 +92,14 @@ public class EmitClusterStatsAndMetrics implements CoordinatorDuty
             .setDimension(DruidMetrics.SERVER, serverName)
             .setDimension(DruidMetrics.DUTY_GROUP, groupName)
             .build(metricName, value)
+    );
+  }
+
+  private void emitTieredDatasourceStat(String metricName, String statName, CoordinatorStats stats)
+  {
+    stats.forEachDataSourceStat(
+        statName,
+        (datasource, tier, value) -> emitMetric(metricName, datasource, tier, value)
     );
   }
 
@@ -180,16 +199,17 @@ public class EmitClusterStatsAndMetrics implements CoordinatorDuty
   {
     emitDatasourceStats("segment/broadcastLoad/count", stats, CoordinatorStats.BROADCAST_LOADS);
     emitDatasourceStats("segment/broadcastDrop/count", stats, CoordinatorStats.BROADCAST_DROPS);
-
-    emitTieredStats("segment/cancelLoad/count", stats, CoordinatorStats.CANCELLED_LOADS);
-    emitTieredStats("segment/cancelMove/count", stats, CoordinatorStats.CANCELLED_MOVES);
-
-    emitTieredStats("segment/assigned/count", stats, CoordinatorStats.ASSIGNED_COUNT);
-    emitTieredStats("segment/dropped/count", stats, CoordinatorStats.DROPPED_COUNT);
     emitTieredStats("segment/moved/count", stats, CoordinatorStats.MOVED_COUNT);
     emitTieredStats("segment/unmoved/count", stats, CoordinatorStats.UNMOVED_COUNT);
-    emitTieredStats("segment/deleted/count", stats, CoordinatorStats.DELETED_COUNT);
-    emitTieredStats("segment/unneeded/count", stats, CoordinatorStats.UNNEEDED_COUNT);
+
+    emitTieredDatasourceStat("segment/cancelLoad/count", CoordinatorStats.CANCELLED_LOADS, stats);
+    emitTieredDatasourceStat("segment/cancelMove/count", CoordinatorStats.CANCELLED_MOVES, stats);
+    emitTieredDatasourceStat("segment/assigned/count", CoordinatorStats.ASSIGNED_COUNT, stats);
+    emitTieredDatasourceStat("segment/dropped/count", CoordinatorStats.DROPPED_COUNT, stats);
+    emitTieredDatasourceStat("segment/deleted/count", CoordinatorStats.DELETED_COUNT, stats);
+    emitTieredDatasourceStat("segment/unneeded/count", CoordinatorStats.UNNEEDED_COUNT, stats);
+    emitTieredDatasourceStat("segment/underReplicated/count", CoordinatorStats.UNDER_REPLICATED_COUNT, stats);
+
     emitGlobalStat("segment/overShadowed/count", stats, CoordinatorStats.OVERSHADOWED_COUNT);
 
     final ReplicationThrottler replicationThrottler = params.getReplicationManager();
@@ -263,18 +283,6 @@ public class EmitClusterStatsAndMetrics implements CoordinatorDuty
             numUnavailable,
             DruidMetrics.DATASOURCE,
             dataSource
-        )
-    );
-
-    coordinator.computeUnderReplicationCountsPerDataSourcePerTier().forEach(
-        (tier, countsPerDatasource) -> countsPerDatasource.forEach(
-            (dataSource, underReplicatedCount) -> emitter.emit(
-                new ServiceMetricEvent.Builder()
-                    .setDimension(DruidMetrics.DUTY_GROUP, groupName)
-                    .setDimension(DruidMetrics.TIER, tier)
-                    .setDimension(DruidMetrics.DATASOURCE, dataSource)
-                    .build("segment/underReplicated/count", underReplicatedCount)
-            )
         )
     );
 

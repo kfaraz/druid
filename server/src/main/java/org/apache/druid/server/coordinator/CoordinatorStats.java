@@ -19,12 +19,16 @@
 
 package org.apache.druid.server.coordinator;
 
+import com.google.common.collect.HashBasedTable;
+import com.google.common.collect.Table;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMap.Entry;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+import org.apache.druid.java.util.emitter.service.ServiceEmitter;
 
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Hashtable;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -35,9 +39,9 @@ import java.util.function.ObjLongConsumer;
 public class CoordinatorStats
 {
   // List of stat names
-  public static final String CANCELLED_MOVES = "cancelMoveCount";
-  public static final String CANCELLED_LOADS = "cancelLoadCount";
-  public static final String CANCELLED_DROPS = "cancelDropCount";
+  public static final String CANCELLED_MOVES = "cancelledMove";
+  public static final String CANCELLED_LOADS = "cancelledLoad";
+  public static final String CANCELLED_DROPS = "cancelledDrop";
 
   public static final String ASSIGNED_COUNT = "assignedCount";
   public static final String DROPPED_COUNT = "droppedCount";
@@ -46,8 +50,8 @@ public class CoordinatorStats
   public static final String OVERSHADOWED_COUNT = "overshadowedCount";
   public static final String UNDER_REPLICATED_COUNT = "underReplicatedCount";
 
-  public static final String ASSIGN_SKIP_COUNT = "assignSkip";
-  public static final String DROP_SKIP_COUNT = "dropSkip";
+  public static final String ASSIGN_SKIPS = "assignSkip";
+  public static final String DROP_SKIPS = "dropSkip";
 
   public static final String MOVED_COUNT = "movedCount";
   public static final String UNMOVED_COUNT = "unmovedCount";
@@ -59,33 +63,14 @@ public class CoordinatorStats
   public static final String TOTAL_CAPACITY = "totalCapacity";
   public static final String MAX_REPLICATION_FACTOR = "maxReplicationFactor";
 
-  private final Map<String, Object2LongOpenHashMap<String>> perTierStats;
-  private final Map<String, Object2LongOpenHashMap<String>> perDataSourceStats;
-  private final Map<String, Object2LongOpenHashMap<String>> perDutyStats;
-  private final Object2LongOpenHashMap<String> globalStats;
+  private final Map<String, Object2LongOpenHashMap<String>> perTierStats = new HashMap<>();
+  private final Map<String, Object2LongOpenHashMap<String>> perDataSourceStats = new HashMap<>();
+  private final Map<String, Object2LongOpenHashMap<String>> perDutyStats = new HashMap<>();
+  private final Object2LongOpenHashMap<String> globalStats = new Object2LongOpenHashMap<>();
 
-  public CoordinatorStats()
-  {
-    perTierStats = new HashMap<>();
-    perDataSourceStats = new HashMap<>();
-    perDutyStats = new HashMap<>();
-    globalStats = new Object2LongOpenHashMap<>();
-  }
-
-  public boolean hasPerTierStats()
-  {
-    return !perTierStats.isEmpty();
-  }
-
-  public boolean hasPerDataSourceStats()
-  {
-    return !perDataSourceStats.isEmpty();
-  }
-
-  public boolean hasPerDutyStats()
-  {
-    return !perDutyStats.isEmpty();
-  }
+  // (statName, tier) -> (datasource -> value)
+  private final Table<String, String, Object2LongOpenHashMap<String>>
+      perTierPerDatasourceStats = HashBasedTable.create();
 
   public Set<String> getTiers(final String statName)
   {
@@ -151,6 +136,22 @@ public class CoordinatorStats
     }
   }
 
+  public void forEachDataSourceStat(String statName, DatasourceStatConsumer consumer)
+  {
+    Map<String, Object2LongOpenHashMap<String>> tierToValues = perTierPerDatasourceStats.row(statName);
+    if (tierToValues == null) {
+      return;
+    }
+
+    tierToValues.forEach(
+        (tier, values) -> {
+          for (Entry<String> entry : values.object2LongEntrySet()) {
+            consumer.accept(entry.getKey(), tier, entry.getLongValue());
+          }
+        }
+    );
+  }
+
   public long getDutyStat(String statName, String duty)
   {
     return perDutyStats.get(statName).getLong(duty);
@@ -187,6 +188,16 @@ public class CoordinatorStats
   {
     perDataSourceStats.computeIfAbsent(statName, k -> new Object2LongOpenHashMap<>())
                       .addTo(dataSource, value);
+  }
+
+  public void addForDatasource(String statName, String datasource, String tier, long value)
+  {
+    Object2LongOpenHashMap<String> datasourceValues = perTierPerDatasourceStats.get(statName, tier);
+    if (datasourceValues == null) {
+      datasourceValues = new Object2LongOpenHashMap<>();
+      perTierPerDatasourceStats.put(statName, tier, datasourceValues);
+    }
+    datasourceValues.addTo(datasource, value);
   }
 
   public void addToDutyStat(String statName, String duty, long value)
@@ -261,4 +272,10 @@ public class CoordinatorStats
 
     return sortedTierStats;
   }
+
+  public interface DatasourceStatConsumer
+  {
+    void accept(String datasource, String tier, long value);
+  }
+
 }

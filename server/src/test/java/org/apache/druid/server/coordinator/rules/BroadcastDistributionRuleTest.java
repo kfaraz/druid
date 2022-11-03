@@ -294,7 +294,6 @@ public class BroadcastDistributionRuleTest
     );
 
     Assert.assertEquals(5L, stats.getDataSourceStat(CoordinatorStats.BROADCAST_LOADS, DS_SMALL));
-    Assert.assertFalse(stats.hasPerTierStats());
 
     Assert.assertTrue(
         holdersOfLargeSegments.stream()
@@ -353,7 +352,6 @@ public class BroadcastDistributionRuleTest
     );
 
     Assert.assertEquals(1L, stats.getDataSourceStat(CoordinatorStats.BROADCAST_LOADS, DS_SMALL));
-    Assert.assertFalse(stats.hasPerTierStats());
 
     Assert.assertEquals(1, activeServer.getPeon().getSegmentsToLoad().size());
     Assert.assertEquals(1, decommissioningServer1.getPeon().getSegmentsToDrop().size());
@@ -380,7 +378,6 @@ public class BroadcastDistributionRuleTest
     );
 
     Assert.assertEquals(5L, stats.getDataSourceStat(CoordinatorStats.BROADCAST_LOADS, DS_SMALL));
-    Assert.assertFalse(stats.hasPerTierStats());
 
     Assert.assertTrue(
         holdersOfLargeSegments.stream()
@@ -415,7 +412,6 @@ public class BroadcastDistributionRuleTest
     );
 
     Assert.assertEquals(5L, stats.getDataSourceStat(CoordinatorStats.BROADCAST_LOADS, DS_SMALL));
-    Assert.assertFalse(stats.hasPerTierStats());
 
     Assert.assertTrue(
         druidCluster

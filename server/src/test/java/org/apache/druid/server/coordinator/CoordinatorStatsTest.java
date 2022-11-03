@@ -64,13 +64,11 @@ public class CoordinatorStatsTest
   @Test
   public void testAddToTieredStat()
   {
-    Assert.assertFalse(stats.hasPerTierStats());
     stats.addToTieredStat("stat1", "tier1", 1);
     stats.addToTieredStat("stat1", "tier2", 1);
     stats.addToTieredStat("stat1", "tier1", -5);
     stats.addToTieredStat("stat2", "tier1", 1);
     stats.addToTieredStat("stat1", "tier2", 1);
-    Assert.assertTrue(stats.hasPerTierStats());
 
     Assert.assertEquals(
         Sets.newHashSet("tier1", "tier2"),
@@ -148,7 +146,6 @@ public class CoordinatorStatsTest
   @Test
   public void testAccumulateMaxToTieredStat()
   {
-    Assert.assertFalse(stats.hasPerTierStats());
     stats.accumulateMaxTieredStat("stat1", "tier1", 2);
     stats.accumulateMaxTieredStat("stat1", "tier1", 6);
     stats.accumulateMaxTieredStat("stat1", "tier1", 5);
@@ -160,8 +157,6 @@ public class CoordinatorStatsTest
     stats.accumulateMaxTieredStat("stat1", "tier2", 7);
     stats.accumulateMaxTieredStat("stat1", "tier2", 9);
     stats.accumulateMaxTieredStat("stat1", "tier2", 10);
-
-    Assert.assertTrue(stats.hasPerTierStats());
 
     Assert.assertEquals(
         Sets.newHashSet("tier1", "tier2"),
@@ -188,13 +183,11 @@ public class CoordinatorStatsTest
   @Test
   public void testAddToDutyStat()
   {
-    Assert.assertFalse(stats.hasPerDutyStats());
     stats.addToDutyStat("stat1", "duty1", 1);
     stats.addToDutyStat("stat1", "duty2", 1);
     stats.addToDutyStat("stat1", "duty1", -5);
     stats.addToDutyStat("stat2", "duty1", 1);
     stats.addToDutyStat("stat1", "duty2", 1);
-    Assert.assertTrue(stats.hasPerDutyStats());
 
     Assert.assertEquals(
         Sets.newHashSet("duty1", "duty2"),

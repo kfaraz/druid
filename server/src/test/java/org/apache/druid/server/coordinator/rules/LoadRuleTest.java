@@ -20,7 +20,6 @@
 package org.apache.druid.server.coordinator.rules;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
@@ -67,7 +66,6 @@ import org.junit.Ignore;
 import org.junit.Test;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -135,10 +133,6 @@ public class LoadRuleTest
     ));
 
     final DataSegment segment = createDataSegment("foo");
-
-    EasyMock.expect(mockBalancerStrategy.findNewSegmentHomeReplicator(EasyMock.anyObject(), EasyMock.anyObject()))
-            .andDelegateTo(balancerStrategy)
-            .times(2);
 
     EasyMock.replay(mockPeon, mockBalancerStrategy);
 
@@ -246,10 +240,6 @@ public class LoadRuleTest
 
     final DataSegment segment = createDataSegment("foo");
 
-    EasyMock.expect(mockBalancerStrategy.findNewSegmentHomeReplicator(EasyMock.anyObject(), EasyMock.anyObject()))
-            .andDelegateTo(balancerStrategy)
-            .anyTimes();
-
     EasyMock.replay(mockPeon, mockBalancerStrategy);
 
     ImmutableDruidServer server1 =
@@ -293,10 +283,6 @@ public class LoadRuleTest
     ));
 
     final DataSegment segment = createDataSegment("foo");
-
-    EasyMock.expect(mockBalancerStrategy.findNewSegmentHomeReplicator(EasyMock.anyObject(), EasyMock.anyObject()))
-            .andDelegateTo(balancerStrategy)
-            .anyTimes();
 
     EasyMock.replay(emptyPeon, mockBalancerStrategy);
 
@@ -351,10 +337,6 @@ public class LoadRuleTest
 
     final DataSegment segment = createDataSegment("foo");
 
-    EasyMock.expect(mockBalancerStrategy.findNewSegmentHomeReplicator(EasyMock.anyObject(), EasyMock.anyObject()))
-            .andDelegateTo(balancerStrategy)
-            .anyTimes();
-
     EasyMock.replay(emptyPeon, mockBalancerStrategy);
 
     ImmutableDruidServer server1 =
@@ -407,10 +389,6 @@ public class LoadRuleTest
     loadingPeon.loadSegment(EasyMock.anyObject(), EasyMock.anyObject(), EasyMock.anyObject());
     EasyMock.expectLastCall().once();
 
-    EasyMock.expect(mockBalancerStrategy.findNewSegmentHomeReplicator(EasyMock.anyObject(), EasyMock.anyObject()))
-            .andDelegateTo(cachingCostBalancerStrategy)
-            .anyTimes();
-
     EasyMock.replay(loadingPeon, mockBalancerStrategy);
 
     ImmutableDruidServer server =
@@ -441,10 +419,6 @@ public class LoadRuleTest
 
     mockPeon2.loadSegment(EasyMock.anyObject(), EasyMock.anyObject(), EasyMock.isNull());
     EasyMock.expectLastCall().once();
-
-    EasyMock.expect(mockBalancerStrategy.findNewSegmentHomeReplicator(EasyMock.anyObject(), EasyMock.anyObject()))
-            .andDelegateTo(balancerStrategy)
-            .times(2);
 
     EasyMock.replay(mockPeon1, mockPeon2, mockBalancerStrategy);
 
@@ -549,10 +523,6 @@ public class LoadRuleTest
     mockPeon.loadSegment(EasyMock.anyObject(), EasyMock.anyObject(), EasyMock.anyObject());
     EasyMock.expectLastCall().atLeastOnce();
 
-    EasyMock.expect(mockBalancerStrategy.findNewSegmentHomeReplicator(EasyMock.anyObject(), EasyMock.anyObject()))
-            .andDelegateTo(balancerStrategy)
-            .times(1);
-
     EasyMock.replay(mockPeon, mockBalancerStrategy);
 
     LoadRule rule = createLoadRule(ImmutableMap.of("nonExistentTier", 1, "hot", 1));
@@ -613,10 +583,6 @@ public class LoadRuleTest
   @Test
   public void testMaxLoadingQueueSize()
   {
-    EasyMock.expect(mockBalancerStrategy.findNewSegmentHomeReplicator(EasyMock.anyObject(), EasyMock.anyObject()))
-            .andDelegateTo(balancerStrategy)
-            .times(2);
-
     EasyMock.replay(mockBalancerStrategy);
 
     final LoadQueuePeonTester peon = new LoadQueuePeonTester();
@@ -676,10 +642,6 @@ public class LoadRuleTest
 
     final DataSegment segment = createDataSegment("foo");
 
-    EasyMock.expect(mockBalancerStrategy.findNewSegmentHomeReplicator(EasyMock.anyObject(), EasyMock.anyObject()))
-            .andDelegateTo(balancerStrategy)
-            .times(1);
-
     EasyMock.replay(mockPeon1, mockPeon2, mockBalancerStrategy);
 
     DruidCluster druidCluster = DruidClusterBuilder
@@ -717,10 +679,6 @@ public class LoadRuleTest
     ServerHolder holder3 = createServerHolder("tier2", mockPeon3, false);
     ServerHolder holder4 = createServerHolder("tier2", mockPeon4, false);
 
-    EasyMock.expect(mockBalancerStrategy.findNewSegmentHomeReplicator(segment, ImmutableList.of(holder2)))
-            .andReturn(Collections.singletonList(holder2).iterator());
-    EasyMock.expect(mockBalancerStrategy.findNewSegmentHomeReplicator(segment, ImmutableList.of(holder4, holder3)))
-            .andReturn(Arrays.asList(holder3, holder4).iterator());
     EasyMock.replay(mockBalancerStrategy);
 
     DruidCluster druidCluster = DruidClusterBuilder
