@@ -236,16 +236,22 @@ public class SegmentAllocationQueue
 
   private int processRequestsInBatch(AllocateRequestBatch requestBatch, Set<DataSegment> usedSegments)
   {
-    final List<Interval> tryIntervals = getTryIntervals(requestBatch.key, usedSegments);
+    final AllocateRequestKey requestKey = requestBatch.key;
+    final List<Interval> tryIntervals = getTryIntervals(requestKey, usedSegments);
     if (tryIntervals.isEmpty()) {
-      log.error("Found no valid interval containing the row interval [%s]", requestBatch.key.rowInterval);
+      log.error("Found no valid interval containing the row interval [%s]", requestKey.rowInterval);
       return 0;
     }
 
     int successCount = 0;
     for (Interval tryInterval : tryIntervals) {
       final List<SegmentAllocateRequest> requests = new ArrayList<>(requestBatch.requestToFuture.keySet());
-      final List<SegmentAllocateResult> results = taskLockbox.allocateSegments(requests, tryInterval);
+      final List<SegmentAllocateResult> results = taskLockbox.allocateSegments(
+          requests,
+          requestKey.dataSource,
+          tryInterval,
+          requestKey.lockGranularity
+      );
 
       successCount += updateBatchWithResults(requestBatch, requests, results);
     }

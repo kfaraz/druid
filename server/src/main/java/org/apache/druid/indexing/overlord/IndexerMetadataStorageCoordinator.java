@@ -155,11 +155,11 @@ public interface IndexerMetadataStorageCoordinator
    */
   Set<DataSegment> announceHistoricalSegments(Set<DataSegment> segments) throws IOException;
 
-  Map<Object, SegmentIdWithShardSpec> allocatePendingSegments(
+  Map<SegmentCreateRequest, SegmentIdWithShardSpec> allocatePendingSegments(
       String dataSource,
       Interval interval,
       boolean skipSegmentLineageCheck,
-      List<Object> requests
+      List<SegmentCreateRequest> requests
   );
 
   /**

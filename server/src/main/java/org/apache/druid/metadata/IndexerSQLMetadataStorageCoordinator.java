@@ -34,6 +34,7 @@ import com.google.inject.Inject;
 import org.apache.commons.lang.StringEscapeUtils;
 import org.apache.druid.indexing.overlord.DataSourceMetadata;
 import org.apache.druid.indexing.overlord.IndexerMetadataStorageCoordinator;
+import org.apache.druid.indexing.overlord.SegmentCreateRequest;
 import org.apache.druid.indexing.overlord.SegmentPublishResult;
 import org.apache.druid.indexing.overlord.Segments;
 import org.apache.druid.java.util.common.DateTimes;
@@ -60,7 +61,6 @@ import org.apache.druid.timeline.partition.SingleDimensionShardSpec;
 import org.joda.time.DateTime;
 import org.joda.time.Interval;
 import org.joda.time.chrono.ISOChronology;
-import org.skife.jdbi.v2.Batch;
 import org.skife.jdbi.v2.Handle;
 import org.skife.jdbi.v2.PreparedBatch;
 import org.skife.jdbi.v2.Query;
@@ -88,7 +88,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -492,11 +491,11 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
   }
 
   @Override
-  public Map<Object, SegmentIdWithShardSpec> allocatePendingSegments(
+  public Map<SegmentCreateRequest, SegmentIdWithShardSpec> allocatePendingSegments(
       String dataSource,
       Interval allocateInterval,
       boolean skipSegmentLineageCheck,
-      List<Object> requests
+      List<SegmentCreateRequest> requests
   )
   {
     Preconditions.checkNotNull(dataSource, "dataSource");
@@ -505,7 +504,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     final Interval interval = allocateInterval.withChronology(ISOChronology.getInstanceUTC());
 
     @SuppressWarnings("UnstableApiUsage")
-    final Function<Object, String> sequenceShaFunction =
+    final Function<SegmentCreateRequest, String> sequenceShaFunction =
         request ->
             skipSegmentLineageCheck
             ? BaseEncoding.base16().encode(
@@ -645,12 +644,12 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     return newIdentifier;
   }
 
-  private Map<Object, SegmentIdWithShardSpec> allocatePendingSegments(
+  private Map<SegmentCreateRequest, SegmentIdWithShardSpec> allocatePendingSegments(
       final Handle handle,
       final String dataSource,
       final Interval interval,
-      final List<Object> requests,
-      final Function<Object, String> sequenceShaFunction
+      final List<SegmentCreateRequest> requests,
+      final Function<SegmentCreateRequest, String> sequenceShaFunction
   ) throws IOException
   {
     final Map<String, SegmentIdWithShardSpec> existingSegmentIds =
@@ -658,8 +657,8 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
 
     // For every request see if a segment id already exists
     final Map<Object, SegmentIdWithShardSpec> allocatedSegmentIds = new HashMap<>();
-    final List<Object> requestsForNewSegments = new ArrayList<>();
-    for (Object request : requests) {
+    final List<SegmentCreateRequest> requestsForNewSegments = new ArrayList<>();
+    for (SegmentCreateRequest request : requests) {
       String sequenceId = request.getSequenceId();
       SegmentIdWithShardSpec existingSegmentId = existingSegmentIds.get(sequenceId);
       if (existingSegmentId == null) {
@@ -670,7 +669,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     }
 
     // For each of the remaining requests, create a new segment
-    final Map<Object, SegmentIdWithShardSpec> createdSegments =
+    final Map<SegmentCreateRequest, SegmentIdWithShardSpec> createdSegments =
         createNewSegments(handle, dataSource, interval, requestsForNewSegments);
 
     // SELECT -> INSERT can fail due to races; callers must be prepared to retry.
@@ -868,10 +867,10 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
 
   private void insertPendingSegmentsIntoMetastore(
       Handle handle,
-      Map<Object, SegmentIdWithShardSpec> createdSegments,
+      Map<SegmentCreateRequest, SegmentIdWithShardSpec> createdSegments,
       String dataSource,
       Interval interval,
-      Function<Object, String> sequenceNamePrevIdSha1
+      Function<SegmentCreateRequest, String> sequenceNamePrevIdSha1
   ) throws JsonProcessingException
   {
     final PreparedBatch insertBatch = handle.prepareBatch(
@@ -884,8 +883,8 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
         connector.getQuoteString()
     ));
 
-    for (Map.Entry<Object, SegmentIdWithShardSpec> entry : createdSegments.entrySet()) {
-      final Object request = entry.getKey();
+    for (Map.Entry<SegmentCreateRequest, SegmentIdWithShardSpec> entry : createdSegments.entrySet()) {
+      final SegmentCreateRequest request = entry.getKey();
       final SegmentIdWithShardSpec segmentId = entry.getValue();
       insertBatch.bind("id", segmentId.toString())
                  .bind("dataSource", dataSource)
@@ -932,11 +931,11 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
           .execute();
   }
 
-  private Map<Object, SegmentIdWithShardSpec> createNewSegments(
+  private Map<SegmentCreateRequest, SegmentIdWithShardSpec> createNewSegments(
       Handle handle,
       String dataSource,
       Interval interval,
-      List<Object> requests
+      List<SegmentCreateRequest> requests
   ) throws IOException
   {
     // Get the time chunk and associated data segments for the given interval, if any
@@ -992,8 +991,8 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
       pendingSegments.add(committedMaxId);
     }
 
-    Map<Object, SegmentIdWithShardSpec> createdSegments = new HashMap<>();
-    for (Object request : requests) {
+    Map<SegmentCreateRequest, SegmentIdWithShardSpec> createdSegments = new HashMap<>();
+    for (SegmentCreateRequest request : requests) {
       SegmentIdWithShardSpec createdSegment = createNewSegment(
           request,
           dataSource,
@@ -1010,7 +1009,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
   }
 
   private SegmentIdWithShardSpec createNewSegment(
-      Object request,
+      SegmentCreateRequest request,
       String dataSource,
       Interval interval,
       String versionOfExistingChunk,
