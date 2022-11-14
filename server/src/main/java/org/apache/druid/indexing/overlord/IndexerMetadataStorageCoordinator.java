@@ -31,6 +31,7 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -153,6 +154,13 @@ public interface IndexerMetadataStorageCoordinator
    * @return set of segments actually added
    */
   Set<DataSegment> announceHistoricalSegments(Set<DataSegment> segments) throws IOException;
+
+  Map<Object, SegmentIdWithShardSpec> allocatePendingSegments(
+      String dataSource,
+      Interval interval,
+      boolean skipSegmentLineageCheck,
+      List<Object> requests
+  );
 
   /**
    * Allocate a new pending segment in the pending segments table. This segment identifier will never be given out

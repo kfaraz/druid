@@ -23,9 +23,11 @@ import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.indexing.overlord.LockRequestForNewSegment;
 import org.joda.time.Interval;
 
+/**
+ * Request received by the overlord for segment allocation.
+ */
 public class SegmentAllocateRequest
 {
-
   private final Task task;
   private final SegmentAllocateAction action;
   private final int maxAttempts;
@@ -64,19 +66,4 @@ public class SegmentAllocateRequest
     return attempts;
   }
 
-  public LockRequestForNewSegment createLockRequest(Interval tryInterval)
-  {
-    return new LockRequestForNewSegment(
-        action.getLockGranularity(),
-        action.getTaskLockType(),
-        task.getGroupId(),
-        action.getDataSource(),
-        tryInterval,
-        action.getPartialShardSpec(),
-        task.getPriority(),
-        action.getSequenceName(),
-        action.getPreviousSegmentId(),
-        action.isSkipSegmentLineageCheck()
-    );
-  }
 }

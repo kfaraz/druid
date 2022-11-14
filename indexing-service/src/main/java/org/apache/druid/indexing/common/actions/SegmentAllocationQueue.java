@@ -20,12 +20,15 @@
 package org.apache.druid.indexing.common.actions;
 
 import com.google.inject.Inject;
+import org.apache.druid.client.indexing.IndexingService;
+import org.apache.druid.discovery.DruidLeaderSelector;
 import org.apache.druid.indexing.common.LockGranularity;
 import org.apache.druid.indexing.common.TaskLockType;
 import org.apache.druid.indexing.common.task.IndexTaskUtils;
 import org.apache.druid.indexing.overlord.IndexerMetadataStorageCoordinator;
 import org.apache.druid.indexing.overlord.Segments;
 import org.apache.druid.indexing.overlord.TaskLockbox;
+import org.apache.druid.java.util.common.ISE;
 import org.apache.druid.java.util.common.concurrent.ScheduledExecutors;
 import org.apache.druid.java.util.common.granularity.Granularity;
 import org.apache.druid.java.util.common.logger.Logger;
@@ -59,15 +62,13 @@ import java.util.stream.Collectors;
  */
 public class SegmentAllocationQueue
 {
-  // TODO: react to leadership changes?
-  // or atleast check if it is leader before processing a batch?
-
   private static final Logger log = new Logger(SegmentAllocationQueue.class);
-  private static final long MAX_WAIT_TIME_MILLIS = 10_000;
+  private static final long MAX_WAIT_TIME_MILLIS = 5_000;
 
   private final TaskLockbox taskLockbox;
   private final ScheduledExecutorService executor;
   private final IndexerMetadataStorageCoordinator metadataStorage;
+  private final DruidLeaderSelector leaderSelector;
   private final ServiceEmitter emitter;
 
   private final ConcurrentHashMap<AllocateRequestKey, AllocateRequestBatch> keyToBatch = new ConcurrentHashMap<>();
@@ -77,19 +78,53 @@ public class SegmentAllocationQueue
   public SegmentAllocationQueue(
       TaskLockbox taskLockbox,
       IndexerMetadataStorageCoordinator metadataStorage,
+      @IndexingService DruidLeaderSelector leaderSelector,
       ServiceEmitter emitter
   )
   {
     this.emitter = emitter;
     this.taskLockbox = taskLockbox;
     this.metadataStorage = metadataStorage;
+    this.leaderSelector = leaderSelector;
     this.executor = ScheduledExecutors.fixed(1, "SegmentAllocationQueue-%s");
 
-    executor.schedule(this::processBatchesDue, MAX_WAIT_TIME_MILLIS, TimeUnit.MILLISECONDS);
+    if (leaderSelector.isLeader()) {
+      scheduleExecution(MAX_WAIT_TIME_MILLIS);
+    }
+
+    leaderSelector.registerListener(new DruidLeaderSelector.Listener()
+    {
+      @Override
+      public void becomeLeader()
+      {
+        // Start the poll on becoming leader
+        log.info("Elected leader. Starting queue processing.");
+        scheduleExecution(MAX_WAIT_TIME_MILLIS);
+      }
+
+      @Override
+      public void stopBeingLeader()
+      {
+        log.info("Not leader anymore. Stopping queue processing.");
+      }
+    });
   }
 
+  private void scheduleExecution(long delay)
+  {
+    executor.schedule(this::processBatchesDue, delay, TimeUnit.MILLISECONDS);
+  }
+
+  /**
+   * Queues a SegmentAllocateRequest. The returned future may complete successfully
+   * with a non-null value or with a non-null value.
+   */
   public Future<SegmentIdWithShardSpec> add(SegmentAllocateRequest request)
   {
+    if (!leaderSelector.isLeader()) {
+      throw new ISE("Cannot allocate segment if not leader.");
+    }
+
     SegmentAllocateAction action = request.getAction();
     boolean isExclusiveTimeChunkLock = action.getLockGranularity() == LockGranularity.TIME_CHUNK
                                        && action.getTaskLockType() == TaskLockType.EXCLUSIVE;
@@ -113,6 +148,14 @@ public class SegmentAllocationQueue
 
   private void processBatchesDue()
   {
+    // If not leader, clear the queue and do not schedule any more rounds of processing
+    if (!leaderSelector.isLeader()) {
+      log.info("Not leader anymore. Clearing [%d] batches from queue.", processingQueue.size());
+      processingQueue.clear();
+      keyToBatch.clear();
+      return;
+    }
+
     // Process all batches which are due
     AllocateRequestBatch nextBatch = processingQueue.peek();
     while (nextBatch != null && nextBatch.isDue()) {
@@ -129,7 +172,7 @@ public class SegmentAllocationQueue
       long timeElapsed = System.currentTimeMillis() - nextBatch.getQueueTime();
       nextScheduleDelay = Math.max(0, MAX_WAIT_TIME_MILLIS - timeElapsed);
     }
-    executor.schedule(this::processBatchesDue, nextScheduleDelay, TimeUnit.MILLISECONDS);
+    scheduleExecution(nextScheduleDelay);
   }
 
   private void processNextBatch()
@@ -217,7 +260,7 @@ public class SegmentAllocationQueue
    * using the preferred segment granularity. If that fails due to other nearby
    * segments, try progressively smaller granularities.
    * <p>
-   * If there are used segments for this, try only the interval of those used
+   * If there are used segments for this row, try only the interval of those used
    * segments (we assume that all of them must have the same interval).
    */
   private List<Interval> getTryIntervals(AllocateRequestKey key, Set<DataSegment> usedSegments)
@@ -301,7 +344,11 @@ public class SegmentAllocationQueue
       if (result.isSuccess()) {
         emitTaskMetric("task/action/success/count", 1L, request);
         requestToFuture.remove(request).complete(result.getSegmentId());
-      } else if (request.canRetry()) {
+        return;
+      }
+
+      log.info("Failed to allocate segment for action [%s]: %s", request.getAction(), result.getErrorMessage());
+      if (request.canRetry()) {
         log.debug(
             "Can requeue action [%s] after [%d] failed attempts.",
             request.getAction(),

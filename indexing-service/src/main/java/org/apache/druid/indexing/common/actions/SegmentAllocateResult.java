@@ -26,20 +26,10 @@ public class SegmentAllocateResult
   private final SegmentIdWithShardSpec segmentId;
   private final String errorMessage;
 
-  private SegmentAllocateResult(SegmentIdWithShardSpec segmentId, String errorMessage)
+  public SegmentAllocateResult(SegmentIdWithShardSpec segmentId, String errorMessage)
   {
     this.segmentId = segmentId;
     this.errorMessage = errorMessage;
-  }
-
-  public static SegmentAllocateResult success(SegmentIdWithShardSpec segmentId)
-  {
-    return new SegmentAllocateResult(segmentId, null);
-  }
-
-  public static SegmentAllocateResult error(String msgFormat, Object... args)
-  {
-    return new SegmentAllocateResult(null, String.format(msgFormat, args));
   }
 
   public SegmentIdWithShardSpec getSegmentId()

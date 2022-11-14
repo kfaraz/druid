@@ -36,8 +36,10 @@ import org.joda.time.Interval;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 public class TestIndexerMetadataStorageCoordinator implements IndexerMetadataStorageCoordinator
@@ -122,6 +124,17 @@ public class TestIndexerMetadataStorageCoordinator implements IndexerMetadataSto
       }
     }
     return ImmutableSet.copyOf(added);
+  }
+
+  @Override
+  public Map<Object, SegmentIdWithShardSpec> allocatePendingSegment(
+      String dataSource,
+      Interval interval,
+      boolean skipSegmentLineageCheck,
+      List<Object> requests
+  )
+  {
+    return Collections.emptyMap();
   }
 
   @Override

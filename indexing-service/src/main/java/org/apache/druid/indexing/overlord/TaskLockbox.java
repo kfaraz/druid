@@ -20,7 +20,6 @@
 package org.apache.druid.indexing.overlord;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Function;
 import com.google.common.base.Objects;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ComparisonChain;
@@ -449,52 +448,78 @@ public class TaskLockbox
 
   public List<SegmentAllocateResult> allocateSegments(
       List<SegmentAllocateRequest> requests,
-      Interval interval
+      String dataSource,
+      Interval interval,
+      LockGranularity lockGranularity
   )
   {
     giant.lock();
     try {
-      final List<SegmentAllocateResult> results = new ArrayList<>();
+      final boolean skipSegmentLineageCheck = true;
 
-      // for each request
-      // request, allocationThingy, lock, final result
+      final Map<SegmentAllocateRequest, SegmentAllocationHolder> requestsToProcess
+          = new HashMap<>();
+      final Map<SegmentAllocateRequest, SegmentAllocateResult> results
+          = new HashMap<>();
 
-      // get the lock
-      // maintain request to lock
-      // allocate a segment
-      // create a pending segment in metadata store
-      // update the lock in metadata store
-
+      final boolean isTimeChunkLock = lockGranularity == LockGranularity.TIME_CHUNK;
       for (SegmentAllocateRequest request : requests) {
-        results.add(allocateSegment(request, interval));
+        final SegmentAllocationHolder holder = new SegmentAllocationHolder(request);
+        requestsToProcess.put(request, holder);
+
+        if (!isActiveTask(holder)) {
+          requestsToProcess.remove(request);
+          results.put(request, holder.result);
+        }
       }
-      return results;
+      
+      // Allocate segments before acquiring locks if lock granularity is SEGMENT
+      if (isTimeChunkLock) {
+        acquireLocks();
+        allocateSegmentIds(dataSource, interval, skipSegmentLineageCheck, );
+      } else {
+        allocateSegmentIds(dataSource, interval, skipSegmentLineageCheck, );
+        acquireLocks();
+      }
+
+      requestsToProcess.forEach(
+          (request, holder) -> addAndPersistLocks(holder, isTimeChunkLock)
+      );
+
+      requestsToProcess.forEach((request, holder) -> results.put(request, holder.result));
+      return requests.stream()
+                     .map(requestsToProcess::get)
+                     .map(holder -> holder.result)
+                     .collect(Collectors.toList());
     }
     finally {
       giant.unlock();
     }
   }
 
-  private SegmentAllocateResult allocateSegment(
-      SegmentAllocateRequest request,
-      Interval interval
-  )
+  private boolean isActiveTask(SegmentAllocationHolder holder)
   {
-    final Task task = request.getTask();
-    final SegmentAllocateAction allocateAction = request.getAction();
+    final Task task = holder.task;
     if (!activeTasks.contains(task.getId())) {
-      return SegmentAllocateResult.error("Unable to grant lock to inactive Task [%s]", task.getId());
+      holder.markFailed("Unable to grant lock to inactive Task [%s]", task.getId());
+      return false;
     }
 
+    return true;
+  }
+
+  private boolean createLockRequest(SegmentAllocationHolder holder, Interval interval)
+  {
     SegmentIdWithShardSpec segmentId = null;
 
     // Create a task lock request for the required datasource, interval and granularity
     final LockRequest lockRequest;
-    final LockRequestForNewSegment lockRequestForNewSegment = request.createLockRequest(interval);
+    final LockRequestForNewSegment lockRequestForNewSegment = holder.createLockRequest(interval);
     if (allocateAction.getLockGranularity() == LockGranularity.SEGMENT) {
       segmentId = allocateSegmentId(lockRequestForNewSegment, lockRequestForNewSegment.getVersion());
       if (segmentId == null) {
-        return SegmentAllocateResult.error("Could not allocate segment before acquiring segment lock.");
+        holder.result = SegmentAllocateResult.error("Could not allocate segment before acquiring segment lock.");
+        return false;
       }
 
       lockRequest = new SpecificSegmentLockRequest(lockRequestForNewSegment, segmentId);
@@ -505,11 +530,13 @@ public class TaskLockbox
     // Create or find the task lock for the created lock request
     final TaskLockPosse posseToUse = createOrFindLockPosse(lockRequest);
     if (posseToUse == null) {
-      return SegmentAllocateResult.error("Could not find or create lock posse.");
+      holder.result = SegmentAllocateResult.error("Could not find or create lock posse.");
+      return false;
     }
     final TaskLock acquiredLock = posseToUse.getTaskLock();
     if (acquiredLock.isRevoked()) {
-      return SegmentAllocateResult.error("Lock was revoked.");
+      holder.result = SegmentAllocateResult.error("Lock was revoked.");
+      return false;
     }
 
     // Allocate segmentId for time chunk lock after finding/creating the lock
@@ -523,23 +550,29 @@ public class TaskLockbox
         return SegmentAllocateResult.error("Could not allocate segment after acquiring time-chunk lock.");
       }
     }
+  }
 
-    // Add to existing TaskLockPosse, if necessary
-    if (posseToUse.addTask(task)) {
+  private void addAndPersistLocks(SegmentAllocationHolder holder, boolean isTimeChunkLock)
+  {
+    final Task task = holder.task;
+    final TaskLock acquiredLock = holder.acquiredLock;
+
+    // Add task to existing TaskLockPosse, if necessary
+    if (holder.taskLockPosse.addTask(task)) {
       log.info("Added task [%s] to TaskLock [%s]", task.getId(), acquiredLock);
 
       boolean success = updateLockInStorage(task, acquiredLock);
       if (!success) {
         final Integer partitionId = isTimeChunkLock
                                     ? null : ((SegmentLock) acquiredLock).getPartitionId();
-        unlock(task, lockRequest.getInterval(), partitionId);
-        return SegmentAllocateResult.error("Could not update task lock in metadata store.");
+        unlock(task, holder.lockRequest.getInterval(), partitionId);
+        holder.markFailed("Could not update task lock in metadata store.");
       }
     } else {
       log.info("Task [%s] already present in TaskLock [%s]", task.getId(), acquiredLock.getGroupId());
     }
 
-    return SegmentAllocateResult.success(segmentId);
+    holder.markSucceeded();
   }
 
   private boolean updateLockInStorage(Task task, TaskLock taskLock)
@@ -668,6 +701,21 @@ public class TaskLockbox
     finally {
       giant.unlock();
     }
+  }
+
+  private Map<Object, SegmentIdWithShardSpec> allocateSegmentIds(
+      String dataSource,
+      Interval interval,
+      boolean skipSegmentLineageCheck,
+      List<Object> requests
+  )
+  {
+    return metadataStorageCoordinator.allocatePendingSegments(
+        dataSource,
+        interval,
+        skipSegmentLineageCheck,
+        requests
+    );
   }
 
   private SegmentIdWithShardSpec allocateSegmentId(LockRequestForNewSegment request, String version)
@@ -1328,6 +1376,52 @@ public class TaskLockbox
                     .add("taskLock", taskLock)
                     .add("taskIds", taskIds)
                     .toString();
+    }
+  }
+
+  private static class SegmentAllocationHolder {
+    private final Task task;
+    private final SegmentAllocateAction action;
+
+    private SegmentIdWithShardSpec allocatedSegment;
+    private SegmentAllocateResult result;
+    private TaskLock acquiredLock;
+    private TaskLockPosse taskLockPosse;
+    private LockRequest lockRequest;
+    private LockRequestForNewSegment lockRequestForNewSegment;
+
+    SegmentAllocationHolder(SegmentAllocateRequest request)
+    {
+      this.task = request.getTask();
+      this.action = request.getAction();
+    }
+
+    LockRequestForNewSegment createLockRequest(Interval tryInterval)
+    {
+      return new LockRequestForNewSegment(
+          action.getLockGranularity(),
+          action.getTaskLockType(),
+          task.getGroupId(),
+          action.getDataSource(),
+          tryInterval,
+          action.getPartialShardSpec(),
+          task.getPriority(),
+          action.getSequenceName(),
+          action.getPreviousSegmentId(),
+          action.isSkipSegmentLineageCheck()
+      );
+    }
+
+    void markFailed(String msgFormat, Object... args) {
+      result = new SegmentAllocateResult(null, String.format(msgFormat, args));
+    }
+
+    void markSucceeded() {
+      result = new SegmentAllocateResult(allocatedSegment, null);
+    }
+
+    void setAllocatedSegment(SegmentIdWithShardSpec segmentId) {
+      this.allocatedSegment = segmentId;
     }
   }
 }

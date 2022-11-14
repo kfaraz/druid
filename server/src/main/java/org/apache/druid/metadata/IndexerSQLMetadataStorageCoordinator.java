@@ -491,6 +491,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     return SQLMetadataConnector.DEFAULT_MAX_TRIES;
   }
 
+  @Override
   public Map<Object, SegmentIdWithShardSpec> allocatePendingSegments(
       String dataSource,
       Interval allocateInterval,
