@@ -35,6 +35,7 @@ public class TaskActionToolbox
 {
   private final TaskLockbox taskLockbox;
   private final TaskStorage taskStorage;
+  private final SegmentAllocationQueue segmentAllocationQueue;
   private final IndexerMetadataStorageCoordinator indexerMetadataStorageCoordinator;
   private final ServiceEmitter emitter;
   private final SupervisorManager supervisorManager;
@@ -57,6 +58,7 @@ public class TaskActionToolbox
     this.emitter = emitter;
     this.supervisorManager = supervisorManager;
     this.jsonMapper = jsonMapper;
+    this.segmentAllocationQueue = null;
   }
 
   public TaskLockbox getTaskLockbox()
@@ -103,4 +105,8 @@ public class TaskActionToolbox
     return Optional.absent();
   }
 
+  public SegmentAllocationQueue getSegmentAllocationQueue()
+  {
+    return segmentAllocationQueue;
+  }
 }

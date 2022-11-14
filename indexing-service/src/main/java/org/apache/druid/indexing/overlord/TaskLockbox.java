@@ -34,6 +34,9 @@ import org.apache.druid.indexing.common.SegmentLock;
 import org.apache.druid.indexing.common.TaskLock;
 import org.apache.druid.indexing.common.TaskLockType;
 import org.apache.druid.indexing.common.TimeChunkLock;
+import org.apache.druid.indexing.common.actions.SegmentAllocateAction;
+import org.apache.druid.indexing.common.actions.SegmentAllocateRequest;
+import org.apache.druid.indexing.common.actions.SegmentAllocateResult;
 import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.java.util.common.ISE;
 import org.apache.druid.java.util.common.Pair;
@@ -304,7 +307,6 @@ public class TaskLockbox
    *
    * @return {@link LockResult} containing a new or an existing lock if succeeded. Otherwise, {@link LockResult} with a
    * {@link LockResult#revoked} flag.
-   *
    * @throws InterruptedException if the current thread is interrupted
    */
   public LockResult lock(final Task task, final LockRequest request) throws InterruptedException
@@ -330,7 +332,6 @@ public class TaskLockbox
    *
    * @return {@link LockResult} containing a new or an existing lock if succeeded. Otherwise, {@link LockResult} with a
    * {@link LockResult#revoked} flag.
-   *
    * @throws InterruptedException if the current thread is interrupted
    */
   public LockResult lock(final Task task, final LockRequest request, long timeoutMs) throws InterruptedException
@@ -358,7 +359,6 @@ public class TaskLockbox
    *
    * @return {@link LockResult} containing a new or an existing lock if succeeded. Otherwise, {@link LockResult} with a
    * {@link LockResult#revoked} flag.
-   *
    * @throws IllegalStateException if the task is not a valid active task
    */
   public LockResult tryLock(final Task task, final LockRequest request)
@@ -373,6 +373,7 @@ public class TaskLockbox
 
       SegmentIdWithShardSpec newSegmentId = null;
       final LockRequest convertedRequest;
+      boolean shouldAllocateSegment = false;
       if (request instanceof LockRequestForNewSegment) {
         final LockRequestForNewSegment lockRequestForNewSegment = (LockRequestForNewSegment) request;
         if (lockRequestForNewSegment.getGranularity() == LockGranularity.SEGMENT) {
@@ -382,25 +383,31 @@ public class TaskLockbox
           }
           convertedRequest = new SpecificSegmentLockRequest(lockRequestForNewSegment, newSegmentId);
         } else {
+          // SegmentId for a time chunk lock must be allocated after the lock is created/found
           convertedRequest = new TimeChunkLockRequest(lockRequestForNewSegment);
+          shouldAllocateSegment = true;
         }
       } else {
         convertedRequest = request;
       }
 
       final TaskLockPosse posseToUse = createOrFindLockPosse(convertedRequest);
-      if (posseToUse != null && !posseToUse.getTaskLock().isRevoked()) {
-        if (request instanceof LockRequestForNewSegment) {
-          final LockRequestForNewSegment lockRequestForNewSegment = (LockRequestForNewSegment) request;
-          if (lockRequestForNewSegment.getGranularity() == LockGranularity.TIME_CHUNK) {
-            if (newSegmentId != null) {
-              throw new ISE(
-                  "SegmentId must be allocated after getting a timeChunk lock,"
-                  + " but we already have [%s] before getting the lock?",
-                  newSegmentId
-              );
-            }
-            newSegmentId = allocateSegmentId(lockRequestForNewSegment, posseToUse.getTaskLock().getVersion());
+      if (posseToUse == null) {
+        return LockResult.fail();
+      } else if (posseToUse.getTaskLock().isRevoked()) {
+        return LockResult.revoked(posseToUse.getTaskLock());
+      } else {
+        // Allocate segment for a LockRequestForNewSegment, if required
+        if (shouldAllocateSegment) {
+          newSegmentId = allocateSegmentId(
+              (LockRequestForNewSegment) request,
+              posseToUse.getTaskLock().getVersion()
+          );
+          if (newSegmentId == null) {
+            // TODO: If this is a new posse that has been created, delete it from the map?
+            //  unlock?
+            // if (posseToUse.isEmpty()) cleanup(posseToUse);
+            return LockResult.fail();
           }
         }
 
@@ -433,16 +440,123 @@ public class TaskLockbox
           log.info("Task[%s] already present in TaskLock[%s]", task.getId(), posseToUse.getTaskLock().getGroupId());
           return LockResult.ok(posseToUse.getTaskLock(), newSegmentId);
         }
-      } else {
-        final boolean lockRevoked = posseToUse != null && posseToUse.getTaskLock().isRevoked();
-        if (lockRevoked) {
-          return LockResult.revoked(posseToUse.getTaskLock());
-        }
-        return LockResult.fail();
       }
     }
     finally {
       giant.unlock();
+    }
+  }
+
+  public List<SegmentAllocateResult> allocateSegments(
+      List<SegmentAllocateRequest> requests,
+      Interval interval
+  )
+  {
+    giant.lock();
+    try {
+      final List<SegmentAllocateResult> results = new ArrayList<>();
+
+      // for each request
+      // request, allocationThingy, lock, final result
+
+      // get the lock
+      // maintain request to lock
+      // allocate a segment
+      // create a pending segment in metadata store
+      // update the lock in metadata store
+
+      for (SegmentAllocateRequest request : requests) {
+        results.add(allocateSegment(request, interval));
+      }
+      return results;
+    }
+    finally {
+      giant.unlock();
+    }
+  }
+
+  private SegmentAllocateResult allocateSegment(
+      SegmentAllocateRequest request,
+      Interval interval
+  )
+  {
+    final Task task = request.getTask();
+    final SegmentAllocateAction allocateAction = request.getAction();
+    if (!activeTasks.contains(task.getId())) {
+      return SegmentAllocateResult.error("Unable to grant lock to inactive Task [%s]", task.getId());
+    }
+
+    SegmentIdWithShardSpec segmentId = null;
+
+    // Create a task lock request for the required datasource, interval and granularity
+    final LockRequest lockRequest;
+    final LockRequestForNewSegment lockRequestForNewSegment = request.createLockRequest(interval);
+    if (allocateAction.getLockGranularity() == LockGranularity.SEGMENT) {
+      segmentId = allocateSegmentId(lockRequestForNewSegment, lockRequestForNewSegment.getVersion());
+      if (segmentId == null) {
+        return SegmentAllocateResult.error("Could not allocate segment before acquiring segment lock.");
+      }
+
+      lockRequest = new SpecificSegmentLockRequest(lockRequestForNewSegment, segmentId);
+    } else {
+      lockRequest = new TimeChunkLockRequest(lockRequestForNewSegment);
+    }
+
+    // Create or find the task lock for the created lock request
+    final TaskLockPosse posseToUse = createOrFindLockPosse(lockRequest);
+    if (posseToUse == null) {
+      return SegmentAllocateResult.error("Could not find or create lock posse.");
+    }
+    final TaskLock acquiredLock = posseToUse.getTaskLock();
+    if (acquiredLock.isRevoked()) {
+      return SegmentAllocateResult.error("Lock was revoked.");
+    }
+
+    // Allocate segmentId for time chunk lock after finding/creating the lock
+    final boolean isTimeChunkLock = acquiredLock.getGranularity() == LockGranularity.TIME_CHUNK;
+    if (isTimeChunkLock) {
+      segmentId = allocateSegmentId(lockRequestForNewSegment, acquiredLock.getVersion());
+      if (segmentId == null) {
+        // TODO: If this is a new posse that has been created, delete it from the map?
+        //  unlock?
+        // if (posseToUse.isEmpty()) cleanup(posseToUse);
+        return SegmentAllocateResult.error("Could not allocate segment after acquiring time-chunk lock.");
+      }
+    }
+
+    // Add to existing TaskLockPosse, if necessary
+    if (posseToUse.addTask(task)) {
+      log.info("Added task [%s] to TaskLock [%s]", task.getId(), acquiredLock);
+
+      boolean success = updateLockInStorage(task, acquiredLock);
+      if (!success) {
+        final Integer partitionId = isTimeChunkLock
+                                    ? null : ((SegmentLock) acquiredLock).getPartitionId();
+        unlock(task, lockRequest.getInterval(), partitionId);
+        return SegmentAllocateResult.error("Could not update task lock in metadata store.");
+      }
+    } else {
+      log.info("Task [%s] already present in TaskLock [%s]", task.getId(), acquiredLock.getGroupId());
+    }
+
+    return SegmentAllocateResult.success(segmentId);
+  }
+
+  private boolean updateLockInStorage(Task task, TaskLock taskLock)
+  {
+    try {
+      taskStorage.addLock(task.getId(), taskLock);
+      return true;
+    }
+    catch (Exception e) {
+      log.makeAlert("Failed to persist lock in storage")
+         .addData("task", task.getId())
+         .addData("dataSource", taskLock.getDataSource())
+         .addData("interval", taskLock.getInterval())
+         .addData("version", taskLock.getVersion())
+         .emit();
+
+      return false;
     }
   }
 
@@ -537,7 +651,6 @@ public class TaskLockbox
    * monotonicity and that callers specifying {@code preferredVersion} are doing the right thing.
    *
    * @param request request to lock
-   *
    * @return a new {@link TaskLockPosse}
    */
   private TaskLockPosse createNewTaskLockPosse(LockRequest request)
@@ -573,7 +686,7 @@ public class TaskLockbox
   /**
    * Perform the given action with a guarantee that the locks of the task are not revoked in the middle of action.  This
    * method first checks that all locks for the given task and intervals are valid and perform the right action.
-   *
+   * <p>
    * The given action should be finished as soon as possible because all other methods in this class are blocked until
    * this method is finished.
    *
@@ -660,7 +773,9 @@ public class TaskLockbox
         final TaskLock revokedLock = lock.revokedCopy();
         taskStorage.replaceLock(taskId, lock, revokedLock);
 
-        final List<TaskLockPosse> possesHolder = running.get(task.getDataSource()).get(lock.getInterval().getStart()).get(lock.getInterval());
+        final List<TaskLockPosse> possesHolder = running.get(task.getDataSource())
+                                                        .get(lock.getInterval().getStart())
+                                                        .get(lock.getInterval());
         final TaskLockPosse foundPosse = possesHolder.stream()
                                                      .filter(posse -> posse.getTaskLock().equals(lock))
                                                      .findFirst()
@@ -688,16 +803,7 @@ public class TaskLockbox
     giant.lock();
 
     try {
-      return Lists.transform(
-          findLockPossesForTask(task), new Function<TaskLockPosse, TaskLock>()
-          {
-            @Override
-            public TaskLock apply(TaskLockPosse taskLockPosse)
-            {
-              return taskLockPosse.getTaskLock();
-            }
-          }
-      );
+      return Lists.transform(findLockPossesForTask(task), TaskLockPosse::getTaskLock);
     }
     finally {
       giant.unlock();
@@ -774,7 +880,7 @@ public class TaskLockbox
    * Release lock held for a task on a particular interval. Does nothing if the task does not currently
    * hold the mentioned lock.
    *
-   * @param task task to unlock
+   * @param task     task to unlock
    * @param interval interval to unlock
    */
   public void unlock(final Task task, final Interval interval, @Nullable Integer partitionId)
@@ -1206,7 +1312,7 @@ public class TaskLockbox
 
       TaskLockPosse that = (TaskLockPosse) o;
       return java.util.Objects.equals(taskLock, that.taskLock) &&
-              java.util.Objects.equals(taskIds, that.taskIds);
+             java.util.Objects.equals(taskIds, that.taskIds);
     }
 
     @Override

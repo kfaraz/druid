@@ -32,7 +32,6 @@ import org.apache.druid.indexing.overlord.LockResult;
 import org.apache.druid.indexing.overlord.Segments;
 import org.apache.druid.java.util.common.IAE;
 import org.apache.druid.java.util.common.ISE;
-import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.granularity.Granularity;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.segment.realtime.appenderator.SegmentIdWithShardSpec;
@@ -47,6 +46,7 @@ import javax.annotation.Nullable;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.Future;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
@@ -180,11 +180,19 @@ public class SegmentAllocateAction implements TaskAction<SegmentIdWithShardSpec>
     };
   }
 
+  public Future<SegmentIdWithShardSpec> performAsync(Task task, TaskActionToolbox toolbox)
+  {
+    if (!task.getDataSource().equals(dataSource)) {
+      throw new IAE("Task dataSource must match action dataSource, [%s] != [%s].", task.getDataSource(), dataSource);
+    }
+
+    return toolbox.getSegmentAllocationQueue().add(
+        new SegmentAllocateRequest(task, this, MAX_ATTEMPTS)
+    );
+  }
+
   @Override
-  public SegmentIdWithShardSpec perform(
-      final Task task,
-      final TaskActionToolbox toolbox
-  )
+  public SegmentIdWithShardSpec perform(final Task task, final TaskActionToolbox toolbox)
   {
     int attempt = 0;
     while (true) {
@@ -260,7 +268,7 @@ public class SegmentAllocateAction implements TaskAction<SegmentIdWithShardSpec>
                                                    .collect(Collectors.toList());
     for (Interval tryInterval : tryIntervals) {
       if (tryInterval.contains(rowInterval)) {
-        final SegmentIdWithShardSpec identifier = tryAllocate(toolbox, task, tryInterval, rowInterval, false);
+        final SegmentIdWithShardSpec identifier = tryAllocate(toolbox, task, tryInterval);
         if (identifier != null) {
           return identifier;
         }
@@ -276,28 +284,37 @@ public class SegmentAllocateAction implements TaskAction<SegmentIdWithShardSpec>
       DataSegment usedSegment
   )
   {
-    // Existing segment(s) exist for this row; use the interval of the first one.
-    if (!usedSegment.getInterval().contains(rowInterval)) {
+    if (usedSegment.getInterval().contains(rowInterval)) {
+      final SegmentIdWithShardSpec allocatedSegment =
+          tryAllocate(toolbox, task, usedSegment.getInterval());
+
+      if (allocatedSegment == null) {
+        log.error(
+            "Could not allocate segment for rowInterval[%s] segmentInterval[%s]",
+            rowInterval,
+            usedSegment.getInterval()
+        );
+      }
+
+      return allocatedSegment;
+    } else {
       log.error(
           "The interval of existing segment[%s] doesn't contain rowInterval[%s]",
           usedSegment.getId(),
           rowInterval
       );
       return null;
-    } else {
-      // If segment allocation failed here, it is highly likely an unrecoverable error. We log here for easier
-      // debugging.
-      return tryAllocate(toolbox, task, usedSegment.getInterval(), rowInterval, true);
     }
   }
 
-  private SegmentIdWithShardSpec tryAllocate(
-      TaskActionToolbox toolbox,
-      Task task,
-      Interval tryInterval,
-      Interval rowInterval,
-      boolean logOnFail
-  )
+  /**
+   * Tries to allocate a segment for the given task and interval, by acquiring
+   * the corresponding task lock.
+   * <p>
+   * Returns null if the task lock could not be acquired and/or the segment
+   * could not be allocated due to another conflicting segment.
+   */
+  private SegmentIdWithShardSpec tryAllocate(TaskActionToolbox toolbox, Task task, Interval tryInterval)
   {
     // This action is always used by appending tasks, so if it is a time_chunk lock then we allow it to be
     // shared with other appending tasks as well
@@ -318,39 +335,9 @@ public class SegmentAllocateAction implements TaskAction<SegmentIdWithShardSpec>
     );
 
     if (lockResult.isRevoked()) {
-      // We had acquired a lock but it was preempted by other locks
       throw new ISE("The lock for interval[%s] is preempted and no longer valid", tryInterval);
-    }
-
-    if (lockResult.isOk()) {
-      final SegmentIdWithShardSpec identifier = lockResult.getNewSegmentId();
-      if (identifier != null) {
-        return identifier;
-      } else {
-        final String msg = StringUtils.format(
-            "Could not allocate pending segment for rowInterval[%s], segmentInterval[%s].",
-            rowInterval,
-            tryInterval
-        );
-        if (logOnFail) {
-          log.error(msg);
-        } else {
-          log.debug(msg);
-        }
-        return null;
-      }
     } else {
-      final String msg = StringUtils.format(
-          "Could not acquire lock for rowInterval[%s], segmentInterval[%s].",
-          rowInterval,
-          tryInterval
-      );
-      if (logOnFail) {
-        log.error(msg);
-      } else {
-        log.debug(msg);
-      }
-      return null;
+      return lockResult.getNewSegmentId();
     }
   }
 
