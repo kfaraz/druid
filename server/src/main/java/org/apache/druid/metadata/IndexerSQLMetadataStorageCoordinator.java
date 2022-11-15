@@ -659,7 +659,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     final Map<SegmentCreateRequest, SegmentIdWithShardSpec> allocatedSegmentIds = new HashMap<>();
     final List<SegmentCreateRequest> requestsForNewSegments = new ArrayList<>();
     for (SegmentCreateRequest request : requests) {
-      SegmentIdWithShardSpec existingSegmentId = existingSegmentIds.get(request.getSequenceId());
+      SegmentIdWithShardSpec existingSegmentId = existingSegmentIds.get(request.getUniqueSequenceId());
       if (existingSegmentId == null) {
         requestsForNewSegments.add(request);
       } else {
@@ -1822,7 +1822,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
 
     public String getSequenceId()
     {
-      return SegmentCreateRequest.getSequenceId(sequenceName, previousSegmentId);
+      return SegmentCreateRequest.getUniqueSequenceId(sequenceName, previousSegmentId);
     }
   }
 

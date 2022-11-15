@@ -47,6 +47,7 @@ public class TaskActionToolbox
       TaskLockbox taskLockbox,
       TaskStorage taskStorage,
       IndexerMetadataStorageCoordinator indexerMetadataStorageCoordinator,
+      SegmentAllocationQueue segmentAllocationQueue,
       ServiceEmitter emitter,
       SupervisorManager supervisorManager,
       @Json ObjectMapper jsonMapper
@@ -58,7 +59,27 @@ public class TaskActionToolbox
     this.emitter = emitter;
     this.supervisorManager = supervisorManager;
     this.jsonMapper = jsonMapper;
-    this.segmentAllocationQueue = null;
+    this.segmentAllocationQueue = segmentAllocationQueue;
+  }
+
+  public TaskActionToolbox(
+      TaskLockbox taskLockbox,
+      TaskStorage taskStorage,
+      IndexerMetadataStorageCoordinator indexerMetadataStorageCoordinator,
+      ServiceEmitter emitter,
+      SupervisorManager supervisorManager,
+      @Json ObjectMapper jsonMapper
+  )
+  {
+    this(
+        taskLockbox,
+        taskStorage,
+        indexerMetadataStorageCoordinator,
+        null,
+        emitter,
+        supervisorManager,
+        jsonMapper
+    );
   }
 
   public TaskLockbox getTaskLockbox()

@@ -21,6 +21,10 @@ package org.apache.druid.indexing.overlord;
 
 import org.apache.druid.timeline.partition.PartialShardSpec;
 
+/**
+ * Contains information used by {@link IndexerMetadataStorageCoordinator} for
+ * creating a new segment.
+ */
 public class SegmentCreateRequest
 {
   private final String sequenceName;
@@ -36,14 +40,14 @@ public class SegmentCreateRequest
   )
   {
     this.sequenceName = sequenceName;
-    this.previousSegmentId = previousSegmentId;
+    this.previousSegmentId = previousSegmentId == null ? "" : previousSegmentId;
     this.version = version;
     this.partialShardSpec = partialShardSpec;
   }
 
-  public String getSequenceId()
+  public String getUniqueSequenceId()
   {
-    return getSequenceId(sequenceName, previousSegmentId);
+    return getUniqueSequenceId(sequenceName, previousSegmentId);
   }
 
   public String getSequenceName()
@@ -51,6 +55,10 @@ public class SegmentCreateRequest
     return sequenceName;
   }
 
+  /**
+   * Non-null previous segment id. This can be used for persisting to the
+   * pending segments table in the metadata store.
+   */
   public String getPreviousSegmentId()
   {
     return previousSegmentId;
@@ -66,7 +74,11 @@ public class SegmentCreateRequest
     return partialShardSpec;
   }
 
-  public static String getSequenceId(String sequenceName, String previousSegmentId)
+  /**
+   * Returns a String representing (sequenceName + previousSegmentId) used to
+   * uniquely identify a segment.
+   */
+  public static String getUniqueSequenceId(String sequenceName, String previousSegmentId)
   {
     return sequenceName + "####" + previousSegmentId;
   }

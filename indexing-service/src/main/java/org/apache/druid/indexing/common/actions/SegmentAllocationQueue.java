@@ -60,7 +60,7 @@ import java.util.stream.Collectors;
 /**
  * Queue for {@link SegmentAllocateRequest}s.
  */
-public class SegmentAllocationQueue
+public class SegmentAllocationQueue implements DruidLeaderSelector.Listener
 {
   private static final Logger log = new Logger(SegmentAllocationQueue.class);
   private static final long MAX_WAIT_TIME_MILLIS = 5_000;
@@ -89,28 +89,12 @@ public class SegmentAllocationQueue
     this.executor = ScheduledExecutors.fixed(1, "SegmentAllocationQueue-%s");
 
     if (leaderSelector.isLeader()) {
-      scheduleExecution(MAX_WAIT_TIME_MILLIS);
+      scheduleQueuePoll(MAX_WAIT_TIME_MILLIS);
     }
-
-    leaderSelector.registerListener(new DruidLeaderSelector.Listener()
-    {
-      @Override
-      public void becomeLeader()
-      {
-        // Start the poll on becoming leader
-        log.info("Elected leader. Starting queue processing.");
-        scheduleExecution(MAX_WAIT_TIME_MILLIS);
-      }
-
-      @Override
-      public void stopBeingLeader()
-      {
-        log.info("Not leader anymore. Stopping queue processing.");
-      }
-    });
+    leaderSelector.registerListener(this);
   }
 
-  private void scheduleExecution(long delay)
+  private void scheduleQueuePoll(long delay)
   {
     executor.schedule(this::processBatchesDue, delay, TimeUnit.MILLISECONDS);
   }
@@ -172,7 +156,7 @@ public class SegmentAllocationQueue
       long timeElapsed = System.currentTimeMillis() - nextBatch.getQueueTime();
       nextScheduleDelay = Math.max(0, MAX_WAIT_TIME_MILLIS - timeElapsed);
     }
-    scheduleExecution(nextScheduleDelay);
+    scheduleQueuePoll(nextScheduleDelay);
   }
 
   private void processNextBatch()
@@ -193,7 +177,7 @@ public class SegmentAllocationQueue
 
     final int batchSize = requestBatch.size();
     final Set<DataSegment> usedSegments = retrieveUsedSegments(requestKey);
-    final int successCount = processRequestsInBatch(requestBatch, usedSegments);
+    final int successCount = allocateSegmentsForBatch(requestBatch, usedSegments);
 
     emitBatchMetric("task/action/batch/runTime", (System.currentTimeMillis() - startTimeMillis), requestKey);
     log.info("Successfully processed [%d / %d] requests in batch [%s].", successCount, batchSize, requestKey);
@@ -234,7 +218,7 @@ public class SegmentAllocationQueue
     );
   }
 
-  private int processRequestsInBatch(AllocateRequestBatch requestBatch, Set<DataSegment> usedSegments)
+  private int allocateSegmentsForBatch(AllocateRequestBatch requestBatch, Set<DataSegment> usedSegments)
   {
     final AllocateRequestKey requestKey = requestBatch.key;
     final List<Interval> tryIntervals = getTryIntervals(requestKey, usedSegments);
@@ -250,6 +234,7 @@ public class SegmentAllocationQueue
           requests,
           requestKey.dataSource,
           tryInterval,
+          requestKey.skipSegmentLineageCheck,
           requestKey.lockGranularity
       );
 
@@ -320,6 +305,21 @@ public class SegmentAllocationQueue
     metricBuilder.setDimension("taskActionType", SegmentAllocateAction.TYPE);
     metricBuilder.setDimension(DruidMetrics.DATASOURCE, key.dataSource);
     emitter.emit(metricBuilder.build(metric, value));
+  }
+
+  @Override
+  public void becomeLeader()
+  {
+    log.info("Elected leader. Starting queue processing.");
+
+    // Start polling the queue
+    scheduleQueuePoll(MAX_WAIT_TIME_MILLIS);
+  }
+
+  @Override
+  public void stopBeingLeader()
+  {
+    log.info("Not leader anymore. Stopping queue processing.");
   }
 
   /**
@@ -406,7 +406,6 @@ public class SegmentAllocationQueue
     private final Granularity queryGranularity;
     private final Granularity preferredSegmentGranularity;
 
-    // TODO: finalize which of these properties are actually needed/correct
     private final boolean skipSegmentLineageCheck;
     private final LockGranularity lockGranularity;
     private final TaskLockType taskLockType;

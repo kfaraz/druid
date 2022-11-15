@@ -37,7 +37,6 @@ import org.apache.druid.indexing.common.actions.SegmentAllocateAction;
 import org.apache.druid.indexing.common.actions.SegmentAllocateRequest;
 import org.apache.druid.indexing.common.actions.SegmentAllocateResult;
 import org.apache.druid.indexing.common.task.Task;
-import org.apache.druid.indexing.common.task.batch.parallel.SegmentAllocationRequest;
 import org.apache.druid.java.util.common.ISE;
 import org.apache.druid.java.util.common.Pair;
 import org.apache.druid.java.util.common.guava.Comparators;
@@ -457,20 +456,22 @@ public class TaskLockbox
    * successfully and others failed. In that case, only the failed ones should be
    * retried.
    *
-   * @param requests        List of allocation requests
-   * @param dataSource      Datasource for which segment is to be allocated.
-   * @param interval        Interval for which segment is to be allocated.
-   * @param lockGranularity Granularity of task lock
+   * @param requests                List of allocation requests
+   * @param dataSource              Datasource for which segment is to be allocated.
+   * @param interval                Interval for which segment is to be allocated.
+   * @param skipSegmentLineageCheck Whether lineage check is to be skipped
+   *                                (this is true for streaming ingestion)
+   * @param lockGranularity         Granularity of task lock
    * @return List of allocation results in the same order as the requests.
    */
   public List<SegmentAllocateResult> allocateSegments(
       List<SegmentAllocateRequest> requests,
       String dataSource,
       Interval interval,
+      boolean skipSegmentLineageCheck,
       LockGranularity lockGranularity
   )
   {
-    final boolean skipSegmentLineageCheck = true;
     final boolean isTimeChunkLock = lockGranularity == LockGranularity.TIME_CHUNK;
 
     final AllocationHolderList holderList = new AllocationHolderList(requests, interval);
@@ -479,11 +480,11 @@ public class TaskLockbox
     giant.lock();
     try {
       if (isTimeChunkLock) {
-        holderList.pending.forEach(holder -> acquireLocks(holder, true));
+        holderList.pending.forEach(holder -> acquireTaskLock(holder, true));
         allocateSegmentIds(dataSource, interval, skipSegmentLineageCheck, holderList.pending);
       } else {
         allocateSegmentIds(dataSource, interval, skipSegmentLineageCheck, holderList.pending);
-        holderList.pending.forEach(holder -> acquireLocks(holder, false));
+        holderList.pending.forEach(holder -> acquireTaskLock(holder, false));
       }
 
       // TODO: for failed allocations, cleanup newly created locks from the posse map
@@ -502,18 +503,18 @@ public class TaskLockbox
    */
   private void verifyTaskIsActive(SegmentAllocationHolder holder)
   {
-    final Task task = holder.task;
-    if (!activeTasks.contains(task.getId())) {
-      holder.markFailed("Unable to grant lock to inactive Task [%s]", task.getId());
+    final String taskId = holder.task.getId();
+    if (!activeTasks.contains(taskId)) {
+      holder.markFailed("Unable to grant lock to inactive Task [%s]", taskId);
     }
   }
 
   /**
-   * Creates lock requests and creates or finds the lock for that request.
+   * Creates a task lock request and creates or finds the lock for that request.
    * Marks the segment allocation as failed if the lock could not be acquired or
    * was revoked.
    */
-  private void acquireLocks(SegmentAllocationHolder holder, boolean isTimeChunkLock)
+  private void acquireTaskLock(SegmentAllocationHolder holder, boolean isTimeChunkLock)
   {
     final LockRequest lockRequest;
     final LockRequestForNewSegment lockRequestForNewSegment = holder.createLockRequest();
@@ -704,8 +705,12 @@ public class TaskLockbox
       Collection<SegmentAllocationHolder> holders
   )
   {
+    if (holders.isEmpty()) {
+      return;
+    }
+
     final List<SegmentCreateRequest> createRequests = holders.stream()
-        .map(holder -> holder.createRequest)
+        .map(SegmentAllocationHolder::getSegmentRequest)
         .collect(Collectors.toList());
 
     Map<SegmentCreateRequest, SegmentIdWithShardSpec> allocatedSegments =
@@ -717,7 +722,7 @@ public class TaskLockbox
         );
 
     for (SegmentAllocationHolder holder : holders) {
-      SegmentIdWithShardSpec segmentId = allocatedSegments.get(holder.createRequest);
+      SegmentIdWithShardSpec segmentId = allocatedSegments.get(holder.getSegmentRequest());
       if (segmentId == null) {
         holder.markFailed("Could not allocate segment.");
       } else {
@@ -776,7 +781,7 @@ public class TaskLockbox
           .allMatch(interval -> {
             final List<TaskLockPosse> lockPosses = getOnlyTaskLockPosseContainingInterval(task, interval);
             return lockPosses.stream().map(TaskLockPosse::getTaskLock).noneMatch(
-                lock -> lock.isRevoked()
+                TaskLock::isRevoked
             );
           });
     }
@@ -1406,6 +1411,9 @@ public class TaskLockbox
 
   }
 
+  /**
+   * Contains the task, request, lock and final result for a segment allocation.
+   */
   private static class SegmentAllocationHolder
   {
     final AllocationHolderList list;
@@ -1413,14 +1421,13 @@ public class TaskLockbox
     final Task task;
     final Interval interval;
     final SegmentAllocateAction action;
+    SegmentCreateRequest segmentRequest;
 
     SegmentIdWithShardSpec allocatedSegment;
     SegmentAllocateResult result;
     TaskLock acquiredLock;
     TaskLockPosse taskLockPosse;
     LockRequest lockRequest;
-    LockRequestForNewSegment lockRequestForNewSegment;
-    SegmentCreateRequest createRequest;
 
     SegmentAllocationHolder(SegmentAllocateRequest request, Interval interval, AllocationHolderList list)
     {
@@ -1444,6 +1451,21 @@ public class TaskLockbox
           action.getPreviousSegmentId(),
           action.isSkipSegmentLineageCheck()
       );
+    }
+
+    SegmentCreateRequest getSegmentRequest()
+    {
+      // Initialize the first time this is requested
+      if (segmentRequest == null) {
+        segmentRequest = new SegmentCreateRequest(
+            action.getSequenceName(),
+            action.getPreviousSegmentId(),
+            acquiredLock.getVersion(),
+            action.getPartialShardSpec()
+        );
+      }
+
+      return segmentRequest;
     }
 
     void markFailed(String msgFormat, Object... args) {
