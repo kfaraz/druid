@@ -37,6 +37,7 @@ import org.apache.druid.indexing.common.actions.SegmentAllocateAction;
 import org.apache.druid.indexing.common.actions.SegmentAllocateRequest;
 import org.apache.druid.indexing.common.actions.SegmentAllocateResult;
 import org.apache.druid.indexing.common.task.Task;
+import org.apache.druid.indexing.common.task.batch.parallel.SegmentAllocationRequest;
 import org.apache.druid.java.util.common.ISE;
 import org.apache.druid.java.util.common.Pair;
 import org.apache.druid.java.util.common.guava.Comparators;
@@ -72,7 +73,7 @@ import java.util.stream.StreamSupport;
  * a new segment. Task lock might involve version assignment.
  *
  * - When a task locks an interval or a new segment, it is assigned a new version string that it can use to publish
- *  segments.
+ *   segments.
  * - When a task locks a existing segment, it doesn't need to be assigned a new version.
  *
  * Note that tasks of higher priorities can revoke locks of tasks of lower priorities.
@@ -360,7 +361,7 @@ public class TaskLockbox
    *
    * @return {@link LockResult} containing a new or an existing lock if succeeded. Otherwise, {@link LockResult} with a
    * {@link LockResult#revoked} flag.
-   * 
+   *
    * @throws IllegalStateException if the task is not a valid active task
    */
   public LockResult tryLock(final Task task, final LockRequest request)
@@ -472,25 +473,22 @@ public class TaskLockbox
     final boolean skipSegmentLineageCheck = true;
     final boolean isTimeChunkLock = lockGranularity == LockGranularity.TIME_CHUNK;
 
-    final AllocationHolderList holderList = new AllocationHolderList();
-    for (SegmentAllocateRequest request : requests) {
-      holderList.create(request, interval);
-    }
-    verifyActiveTasks(holderList.pending);
+    final AllocationHolderList holderList = new AllocationHolderList(requests, interval);
+    holderList.pending.forEach(this::verifyTaskIsActive);
 
     giant.lock();
     try {
       if (isTimeChunkLock) {
-        holderList.pending.forEach(h -> acquireLocks(h, true));
+        holderList.pending.forEach(holder -> acquireLocks(holder, true));
         allocateSegmentIds(dataSource, interval, skipSegmentLineageCheck, holderList.pending);
       } else {
         allocateSegmentIds(dataSource, interval, skipSegmentLineageCheck, holderList.pending);
-        holderList.pending.forEach(h -> acquireLocks(h, false));
+        holderList.pending.forEach(holder -> acquireLocks(holder, false));
       }
 
       // TODO: for failed allocations, cleanup newly created locks from the posse map
 
-      holderList.pending.forEach(h -> addTaskAndPersistLocks(h, isTimeChunkLock));
+      holderList.pending.forEach(holder -> addTaskAndPersistLocks(holder, isTimeChunkLock));
     }
     finally {
       giant.unlock();
@@ -499,18 +497,21 @@ public class TaskLockbox
     return holderList.all.stream().map(holder -> holder.result).collect(Collectors.toList());
   }
 
-  private void verifyActiveTasks(Collection<SegmentAllocationHolder> holders)
+  /**
+   * Marks the segment allocation as failed if the underlying task is not active.
+   */
+  private void verifyTaskIsActive(SegmentAllocationHolder holder)
   {
-    for (SegmentAllocationHolder holder : holders) {
-      final Task task = holder.task;
-      if (!activeTasks.contains(task.getId())) {
-        holder.markFailed("Unable to grant lock to inactive Task [%s]", task.getId());
-      }
+    final Task task = holder.task;
+    if (!activeTasks.contains(task.getId())) {
+      holder.markFailed("Unable to grant lock to inactive Task [%s]", task.getId());
     }
   }
 
   /**
    * Creates lock requests and creates or finds the lock for that request.
+   * Marks the segment allocation as failed if the lock could not be acquired or
+   * was revoked.
    */
   private void acquireLocks(SegmentAllocationHolder holder, boolean isTimeChunkLock)
   {
@@ -539,7 +540,8 @@ public class TaskLockbox
 
   /**
    * Adds the task to the found lock posse if not already added and updates
-   * in the metadata store.
+   * in the metadata store. Marks the segment allocation as failed if the update
+   * did not succeed.
    */
   private void addTaskAndPersistLocks(SegmentAllocationHolder holder, boolean isTimeChunkLock)
   {
@@ -1338,7 +1340,6 @@ public class TaskLockbox
             } else {
               throw new ISE("Unknown request type[%s]", request);
             }
-            //noinspection SuspiciousIndentAfterControlStatement
           default:
             throw new ISE("Unknown lock type[%s]", taskLock.getType());
         }
@@ -1390,10 +1391,13 @@ public class TaskLockbox
     final List<SegmentAllocationHolder> all = new ArrayList<>();
     final Set<SegmentAllocationHolder> pending = new HashSet<>();
 
-    void create(SegmentAllocateRequest request, Interval interval) {
-      SegmentAllocationHolder holder = new SegmentAllocationHolder(request, interval, this);
-      all.add(holder);
-      pending.add(holder);
+    AllocationHolderList(List<SegmentAllocateRequest> requests, Interval interval)
+    {
+      for (SegmentAllocateRequest request : requests) {
+        SegmentAllocationHolder holder = new SegmentAllocationHolder(request, interval, this);
+        all.add(holder);
+        pending.add(holder);
+      }
     }
 
     void markCompleted(SegmentAllocationHolder holder) {
