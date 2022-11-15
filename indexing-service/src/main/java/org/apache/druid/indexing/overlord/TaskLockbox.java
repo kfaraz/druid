@@ -70,11 +70,11 @@ import java.util.stream.StreamSupport;
  * or a segment if no other task outside their group has locked an overlapping interval for the same datasource or
  * the same segments. Note that TaskLockbox is also responsible for allocating segmentIds when a task requests to lock
  * a new segment. Task lock might involve version assignment.
- * <p>
+ *
  * - When a task locks an interval or a new segment, it is assigned a new version string that it can use to publish
- * segments.
+ *  segments.
  * - When a task locks a existing segment, it doesn't need to be assigned a new version.
- * <p>
+ *
  * Note that tasks of higher priorities can revoke locks of tasks of lower priorities.
  */
 public class TaskLockbox
@@ -162,8 +162,8 @@ public class TaskLockbox
         // Create a new taskLock if it doesn't have a proper priority,
         // so that every taskLock in memory has the priority.
         final TaskLock savedTaskLockWithPriority = savedTaskLock.getPriority() == null
-                                                   ? savedTaskLock.withPriority(task.getPriority())
-                                                   : savedTaskLock;
+                                      ? savedTaskLock.withPriority(task.getPriority())
+                                      : savedTaskLock;
 
         final TaskLockPosse taskLockPosse = verifyAndCreateOrFindLockPosse(
             task,
@@ -306,6 +306,7 @@ public class TaskLockbox
    *
    * @return {@link LockResult} containing a new or an existing lock if succeeded. Otherwise, {@link LockResult} with a
    * {@link LockResult#revoked} flag.
+   *
    * @throws InterruptedException if the current thread is interrupted
    */
   public LockResult lock(final Task task, final LockRequest request) throws InterruptedException
@@ -331,6 +332,7 @@ public class TaskLockbox
    *
    * @return {@link LockResult} containing a new or an existing lock if succeeded. Otherwise, {@link LockResult} with a
    * {@link LockResult#revoked} flag.
+   *
    * @throws InterruptedException if the current thread is interrupted
    */
   public LockResult lock(final Task task, final LockRequest request, long timeoutMs) throws InterruptedException
@@ -358,6 +360,7 @@ public class TaskLockbox
    *
    * @return {@link LockResult} containing a new or an existing lock if succeeded. Otherwise, {@link LockResult} with a
    * {@link LockResult#revoked} flag.
+   * 
    * @throws IllegalStateException if the task is not a valid active task
    */
   public LockResult tryLock(final Task task, final LockRequest request)
