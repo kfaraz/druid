@@ -410,6 +410,9 @@ public class SegmentAllocationQueue implements DruidLeaderSelector.Listener
     private final LockGranularity lockGranularity;
     private final TaskLockType taskLockType;
 
+    private final boolean useNonRootGenPartitionSpace;
+    private final int hash;
+
     static AllocateRequestKey forAction(SegmentAllocateAction action)
     {
       return new AllocateRequestKey(action);
@@ -424,8 +427,21 @@ public class SegmentAllocationQueue implements DruidLeaderSelector.Listener
       this.lockGranularity = action.getLockGranularity();
       this.taskLockType = action.getTaskLockType();
 
+      this.useNonRootGenPartitionSpace = action.getPartialShardSpec()
+                                               .useNonRootGenerationPartitionSpace();
       this.rowInterval = queryGranularity.bucket(action.getTimestamp())
                                          .withChronology(ISOChronology.getInstanceUTC());
+
+      this.hash = Objects.hash(
+          skipSegmentLineageCheck,
+          useNonRootGenPartitionSpace,
+          dataSource,
+          rowInterval,
+          queryGranularity,
+          preferredSegmentGranularity,
+          lockGranularity,
+          taskLockType
+      );
     }
 
     @Override
@@ -439,6 +455,7 @@ public class SegmentAllocationQueue implements DruidLeaderSelector.Listener
       }
       AllocateRequestKey that = (AllocateRequestKey) o;
       return skipSegmentLineageCheck == that.skipSegmentLineageCheck
+             && useNonRootGenPartitionSpace == that.useNonRootGenPartitionSpace
              && dataSource.equals(that.dataSource)
              && rowInterval.equals(that.rowInterval)
              && queryGranularity.equals(that.queryGranularity)
@@ -450,15 +467,7 @@ public class SegmentAllocationQueue implements DruidLeaderSelector.Listener
     @Override
     public int hashCode()
     {
-      return Objects.hash(
-          dataSource,
-          rowInterval,
-          queryGranularity,
-          preferredSegmentGranularity,
-          skipSegmentLineageCheck,
-          lockGranularity,
-          taskLockType
-      );
+      return hash;
     }
 
     @Override

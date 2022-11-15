@@ -155,6 +155,20 @@ public interface IndexerMetadataStorageCoordinator
    */
   Set<DataSegment> announceHistoricalSegments(Set<DataSegment> segments) throws IOException;
 
+  /**
+   * Allocates pending segments for the given requests in the pending segments table.
+   * The segment id allocated for a request will not be given out again unless a
+   * request is made with the same {@link SegmentCreateRequest}.
+   *
+   * @param dataSource              dataSource for which to allocate a segment
+   * @param interval                interval for which to allocate a segment
+   * @param skipSegmentLineageCheck if true, perform lineage validation using previousSegmentId for this sequence.
+   *                                Should be set to false if replica tasks would index events in same order
+   * @param requests                Requests for which to allocate segments. All
+   *                                the requests must share the same partition space.
+   * @return Map from request to allocated segment id. The map does not contain
+   * entries for failed requests.
+   */
   Map<SegmentCreateRequest, SegmentIdWithShardSpec> allocatePendingSegments(
       String dataSource,
       Interval interval,

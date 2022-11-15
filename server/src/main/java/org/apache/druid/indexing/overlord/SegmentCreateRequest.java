@@ -24,12 +24,16 @@ import org.apache.druid.timeline.partition.PartialShardSpec;
 /**
  * Contains information used by {@link IndexerMetadataStorageCoordinator} for
  * creating a new segment.
+ * <p>
+ * The {@code sequenceName} and {@code previousSegmentId} fields are meant to
+ * make it easy for two independent ingestion tasks to produce the same series
+ * of segments.
  */
 public class SegmentCreateRequest
 {
+  private final String version;
   private final String sequenceName;
   private final String previousSegmentId;
-  private final String version;
   private final PartialShardSpec partialShardSpec;
 
   public SegmentCreateRequest(

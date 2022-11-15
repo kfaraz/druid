@@ -724,7 +724,7 @@ public class TaskLockbox
     for (SegmentAllocationHolder holder : holders) {
       SegmentIdWithShardSpec segmentId = allocatedSegments.get(holder.getSegmentRequest());
       if (segmentId == null) {
-        holder.markFailed("Could not allocate segment.");
+        holder.markFailed("Storage coordinator could not allocate segment.");
       } else {
         holder.setAllocatedSegment(segmentId);
       }
@@ -1391,6 +1391,9 @@ public class TaskLockbox
     }
   }
 
+  /**
+   * Maintains a list of pending allocation holders.
+   */
   private static class AllocationHolderList
   {
     final List<SegmentAllocationHolder> all = new ArrayList<>();
@@ -1405,10 +1408,10 @@ public class TaskLockbox
       }
     }
 
-    void markCompleted(SegmentAllocationHolder holder) {
+    void markCompleted(SegmentAllocationHolder holder)
+    {
       pending.remove(holder);
     }
-
   }
 
   /**
@@ -1468,17 +1471,20 @@ public class TaskLockbox
       return segmentRequest;
     }
 
-    void markFailed(String msgFormat, Object... args) {
+    void markFailed(String msgFormat, Object... args)
+    {
       list.markCompleted(this);
       result = new SegmentAllocateResult(null, String.format(msgFormat, args));
     }
 
-    void markSucceeded() {
+    void markSucceeded()
+    {
       list.markCompleted(this);
       result = new SegmentAllocateResult(allocatedSegment, null);
     }
 
-    void setAllocatedSegment(SegmentIdWithShardSpec segmentId) {
+    void setAllocatedSegment(SegmentIdWithShardSpec segmentId)
+    {
       this.allocatedSegment = segmentId;
     }
   }

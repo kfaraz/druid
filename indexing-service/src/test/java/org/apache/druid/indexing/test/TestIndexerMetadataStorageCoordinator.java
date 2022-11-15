@@ -25,6 +25,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import org.apache.druid.indexing.overlord.DataSourceMetadata;
 import org.apache.druid.indexing.overlord.IndexerMetadataStorageCoordinator;
+import org.apache.druid.indexing.overlord.SegmentCreateRequest;
 import org.apache.druid.indexing.overlord.SegmentPublishResult;
 import org.apache.druid.indexing.overlord.Segments;
 import org.apache.druid.jackson.DefaultObjectMapper;
@@ -127,11 +128,11 @@ public class TestIndexerMetadataStorageCoordinator implements IndexerMetadataSto
   }
 
   @Override
-  public Map<Object, SegmentIdWithShardSpec> allocatePendingSegment(
+  public Map<SegmentCreateRequest, SegmentIdWithShardSpec> allocatePendingSegments(
       String dataSource,
       Interval interval,
       boolean skipSegmentLineageCheck,
-      List<Object> requests
+      List<SegmentCreateRequest> requests
   )
   {
     return Collections.emptyMap();

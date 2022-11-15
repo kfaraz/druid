@@ -20,8 +20,6 @@
 package org.apache.druid.indexing.common.actions;
 
 import org.apache.druid.indexing.common.task.Task;
-import org.apache.druid.indexing.overlord.LockRequestForNewSegment;
-import org.joda.time.Interval;
 
 /**
  * Request received by the overlord for segment allocation.

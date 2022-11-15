@@ -950,6 +950,10 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
       return Collections.emptyMap();
     }
 
+    // Shard spec of any of the requests (as they are all compatible) used to
+    // identify existing shard specs that share partition space with the requested ones.
+    final PartialShardSpec partialShardSpec = requests.get(0).getPartialShardSpec();
+
     // max partitionId of published data segments which share the same partition space.
     SegmentIdWithShardSpec committedMaxId = null;
 
