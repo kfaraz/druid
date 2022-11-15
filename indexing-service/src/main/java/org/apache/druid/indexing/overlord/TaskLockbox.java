@@ -372,7 +372,6 @@ public class TaskLockbox
 
       SegmentIdWithShardSpec newSegmentId = null;
       final LockRequest convertedRequest;
-      boolean shouldAllocateSegment = false;
       if (request instanceof LockRequestForNewSegment) {
         final LockRequestForNewSegment lockRequestForNewSegment = (LockRequestForNewSegment) request;
         if (lockRequestForNewSegment.getGranularity() == LockGranularity.SEGMENT) {
@@ -382,31 +381,25 @@ public class TaskLockbox
           }
           convertedRequest = new SpecificSegmentLockRequest(lockRequestForNewSegment, newSegmentId);
         } else {
-          // SegmentId for a time chunk lock must be allocated after the lock is created/found
           convertedRequest = new TimeChunkLockRequest(lockRequestForNewSegment);
-          shouldAllocateSegment = true;
         }
       } else {
         convertedRequest = request;
       }
 
       final TaskLockPosse posseToUse = createOrFindLockPosse(convertedRequest);
-      if (posseToUse == null) {
-        return LockResult.fail();
-      } else if (posseToUse.getTaskLock().isRevoked()) {
-        return LockResult.revoked(posseToUse.getTaskLock());
-      } else {
-        // Allocate segment for a LockRequestForNewSegment, if required
-        if (shouldAllocateSegment) {
-          newSegmentId = allocateSegmentId(
-              (LockRequestForNewSegment) request,
-              posseToUse.getTaskLock().getVersion()
-          );
-          if (newSegmentId == null) {
-            // TODO: If this is a new posse that has been created, delete it from the map?
-            //  unlock?
-            // if (posseToUse.isEmpty()) cleanup(posseToUse);
-            return LockResult.fail();
+      if (posseToUse != null && !posseToUse.getTaskLock().isRevoked()) {
+        if (request instanceof LockRequestForNewSegment) {
+          final LockRequestForNewSegment lockRequestForNewSegment = (LockRequestForNewSegment) request;
+          if (lockRequestForNewSegment.getGranularity() == LockGranularity.TIME_CHUNK) {
+            if (newSegmentId != null) {
+              throw new ISE(
+                  "SegmentId must be allocated after getting a timeChunk lock,"
+                  + " but we already have [%s] before getting the lock?",
+                  newSegmentId
+              );
+            }
+            newSegmentId = allocateSegmentId(lockRequestForNewSegment, posseToUse.getTaskLock().getVersion());
           }
         }
 
@@ -439,6 +432,12 @@ public class TaskLockbox
           log.info("Task[%s] already present in TaskLock[%s]", task.getId(), posseToUse.getTaskLock().getGroupId());
           return LockResult.ok(posseToUse.getTaskLock(), newSegmentId);
         }
+      } else {
+        final boolean lockRevoked = posseToUse != null && posseToUse.getTaskLock().isRevoked();
+        if (lockRevoked) {
+          return LockResult.revoked(posseToUse.getTaskLock());
+        }
+        return LockResult.fail();
       }
     }
     finally {
@@ -446,6 +445,20 @@ public class TaskLockbox
     }
   }
 
+  /**
+   * Attempts to allocate segments for the given requests. Each request contains
+   * a {@link Task} and a {@link SegmentAllocateAction}. This method tries to
+   * acquire the task locks on the required intervals/segments and then performs
+   * a batch allocation of segments. It is possible that some requests succeed
+   * successfully and others failed. In that case, only the failed ones should be
+   * retried.
+   *
+   * @param requests        List of allocation requests
+   * @param dataSource      Datasource for which segment is to be allocated.
+   * @param interval        Interval for which segment is to be allocated.
+   * @param lockGranularity Granularity of task lock
+   * @return List of allocation results in the same order as the requests.
+   */
   public List<SegmentAllocateResult> allocateSegments(
       List<SegmentAllocateRequest> requests,
       String dataSource,
@@ -458,21 +471,23 @@ public class TaskLockbox
 
     final AllocationHolderList holderList = new AllocationHolderList();
     for (SegmentAllocateRequest request : requests) {
-      holderList.create(request);
+      holderList.create(request, interval);
     }
     verifyActiveTasks(holderList.pending);
 
     giant.lock();
     try {
       if (isTimeChunkLock) {
-        acquireLocks(holderList.pending, true);
+        holderList.pending.forEach(h -> acquireLocks(h, true));
         allocateSegmentIds(dataSource, interval, skipSegmentLineageCheck, holderList.pending);
       } else {
         allocateSegmentIds(dataSource, interval, skipSegmentLineageCheck, holderList.pending);
-        acquireLocks(holderList.pending, false);
+        holderList.pending.forEach(h -> acquireLocks(h, false));
       }
 
-      addTaskAndPersistLocks(holderList.pending, isTimeChunkLock);
+      // TODO: for failed allocations, cleanup newly created locks from the posse map
+
+      holderList.pending.forEach(h -> addTaskAndPersistLocks(h, isTimeChunkLock));
     }
     finally {
       giant.unlock();
@@ -494,59 +509,56 @@ public class TaskLockbox
   /**
    * Creates lock requests and creates or finds the lock for that request.
    */
-  private void acquireLocks(Collection<SegmentAllocationHolder> holders, boolean isTimeChunkLock)
+  private void acquireLocks(SegmentAllocationHolder holder, boolean isTimeChunkLock)
   {
-    for (SegmentAllocationHolder holder : holders) {
-      final LockRequest lockRequest;
-      final LockRequestForNewSegment lockRequestForNewSegment = holder.createLockRequest();
-      if (isTimeChunkLock) {
-        lockRequest = new TimeChunkLockRequest(lockRequestForNewSegment);
-      } else {
-        lockRequest = new SpecificSegmentLockRequest(lockRequestForNewSegment, holder.allocatedSegment);
-      }
+    final LockRequest lockRequest;
+    final LockRequestForNewSegment lockRequestForNewSegment = holder.createLockRequest();
+    if (isTimeChunkLock) {
+      lockRequest = new TimeChunkLockRequest(lockRequestForNewSegment);
+    } else {
+      lockRequest = new SpecificSegmentLockRequest(lockRequestForNewSegment, holder.allocatedSegment);
+    }
 
-      // Create or find the task lock for the created lock request
-      final TaskLockPosse posseToUse = createOrFindLockPosse(lockRequest);
-      final TaskLock acquiredLock = posseToUse == null ? null : posseToUse.getTaskLock();
-      if (posseToUse == null) {
-        holder.markFailed("Could not find or create lock posse.");
-      } else if (acquiredLock.isRevoked()) {
-        holder.markFailed("Lock was revoked.");
-      } else {
-        // Update the holder
-        holder.lockRequest = lockRequest;
-        holder.taskLockPosse = posseToUse;
-        holder.acquiredLock = acquiredLock;
-      }
+    // Create or find the task lock for the created lock request
+    final TaskLockPosse posseToUse = createOrFindLockPosse(lockRequest);
+    final TaskLock acquiredLock = posseToUse == null ? null : posseToUse.getTaskLock();
+    if (posseToUse == null) {
+      holder.markFailed("Could not find or create lock posse.");
+    } else if (acquiredLock.isRevoked()) {
+      holder.markFailed("Lock was revoked.");
+    } else {
+      // Update the holder
+      holder.lockRequest = lockRequest;
+      holder.taskLockPosse = posseToUse;
+      holder.acquiredLock = acquiredLock;
     }
   }
 
   /**
-   * Adds the task to the found lock posse, if not already added and updates in
-   * the metadata store.
+   * Adds the task to the found lock posse if not already added and updates
+   * in the metadata store.
    */
-  private void addTaskAndPersistLocks(Collection<SegmentAllocationHolder> holders, boolean isTimeChunkLock)
+  private void addTaskAndPersistLocks(SegmentAllocationHolder holder, boolean isTimeChunkLock)
   {
-    for (SegmentAllocationHolder holder : holders) {
-      final Task task = holder.task;
-      final TaskLock acquiredLock = holder.acquiredLock;
+    final Task task = holder.task;
+    final TaskLock acquiredLock = holder.acquiredLock;
 
-      if (holder.taskLockPosse.addTask(task)) {
-        log.info("Added task [%s] to TaskLock [%s]", task.getId(), acquiredLock);
+    if (holder.taskLockPosse.addTask(task)) {
+      log.info("Added task [%s] to TaskLock [%s]", task.getId(), acquiredLock);
 
-        boolean success = updateLockInStorage(task, acquiredLock);
-        if (!success) {
-          final Integer partitionId = isTimeChunkLock
-                                      ? null : ((SegmentLock) acquiredLock).getPartitionId();
-          unlock(task, holder.lockRequest.getInterval(), partitionId);
-          holder.markFailed("Could not update task lock in metadata store.");
-        }
-      } else {
-        log.info("Task [%s] already present in TaskLock [%s]", task.getId(), acquiredLock.getGroupId());
+      // This can also be batched later
+      boolean success = updateLockInStorage(task, acquiredLock);
+      if (!success) {
+        final Integer partitionId = isTimeChunkLock
+                                    ? null : ((SegmentLock) acquiredLock).getPartitionId();
+        unlock(task, holder.lockRequest.getInterval(), partitionId);
+        holder.markFailed("Could not update task lock in metadata store.");
       }
-
-      holder.markSucceeded();
+    } else {
+      log.info("Task [%s] already present in TaskLock [%s]", task.getId(), acquiredLock.getGroupId());
     }
+
+    holder.markSucceeded();
   }
 
   private boolean updateLockInStorage(Task task, TaskLock taskLock)
@@ -1375,11 +1387,10 @@ public class TaskLockbox
     final List<SegmentAllocationHolder> all = new ArrayList<>();
     final Set<SegmentAllocationHolder> pending = new HashSet<>();
 
-    SegmentAllocationHolder create(SegmentAllocateRequest request) {
-      SegmentAllocationHolder holder = new SegmentAllocationHolder(request, this);
+    void create(SegmentAllocateRequest request, Interval interval) {
+      SegmentAllocationHolder holder = new SegmentAllocationHolder(request, interval, this);
       all.add(holder);
       pending.add(holder);
-      return holder;
     }
 
     void markCompleted(SegmentAllocationHolder holder) {
@@ -1393,6 +1404,7 @@ public class TaskLockbox
     final AllocationHolderList list;
 
     final Task task;
+    final Interval interval;
     final SegmentAllocateAction action;
 
     SegmentIdWithShardSpec allocatedSegment;
@@ -1403,21 +1415,22 @@ public class TaskLockbox
     LockRequestForNewSegment lockRequestForNewSegment;
     SegmentCreateRequest createRequest;
 
-    SegmentAllocationHolder(SegmentAllocateRequest request, AllocationHolderList list)
+    SegmentAllocationHolder(SegmentAllocateRequest request, Interval interval, AllocationHolderList list)
     {
       this.list = list;
+      this.interval = interval;
       this.task = request.getTask();
       this.action = request.getAction();
     }
 
-    LockRequestForNewSegment createLockRequest(Interval tryInterval)
+    LockRequestForNewSegment createLockRequest()
     {
       return new LockRequestForNewSegment(
           action.getLockGranularity(),
           action.getTaskLockType(),
           task.getGroupId(),
           action.getDataSource(),
-          tryInterval,
+          interval,
           action.getPartialShardSpec(),
           task.getPriority(),
           action.getSequenceName(),
