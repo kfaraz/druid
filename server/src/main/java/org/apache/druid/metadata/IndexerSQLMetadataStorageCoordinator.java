@@ -656,11 +656,10 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
         checkAndGetExistingSegmentIds(handle, dataSource, interval);
 
     // For every request see if a segment id already exists
-    final Map<Object, SegmentIdWithShardSpec> allocatedSegmentIds = new HashMap<>();
+    final Map<SegmentCreateRequest, SegmentIdWithShardSpec> allocatedSegmentIds = new HashMap<>();
     final List<SegmentCreateRequest> requestsForNewSegments = new ArrayList<>();
     for (SegmentCreateRequest request : requests) {
-      String sequenceId = request.getSequenceId();
-      SegmentIdWithShardSpec existingSegmentId = existingSegmentIds.get(sequenceId);
+      SegmentIdWithShardSpec existingSegmentId = existingSegmentIds.get(request.getSequenceId());
       if (existingSegmentId == null) {
         requestsForNewSegments.add(request);
       } else {
@@ -836,8 +835,6 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
 
         return new CheckExistingSegmentIdResult(true, existingIdentifier);
       } else {
-        // TODO: this should just be an exception as retrying will not fix this issue
-        //  unless the pending segment graduates and gets published
         log.warn(
             "Cannot use existing pending segment [%s] for sequence[%s] (previous = [%s]) in DB, "
             + "does not match requested interval[%s]",
@@ -892,7 +889,6 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
                  .bind("start", interval.getStart().toString())
                  .bind("end", interval.getEnd().toString())
                  .bind("sequence_name", request.getSequenceName())
-                 // TODO: prev segment id should be non-null
                  .bind("sequence_prev_id", request.getPreviousSegmentId())
                  .bind("sequence_name_prev_id_sha1", sequenceNamePrevIdSha1.apply(request))
                  .bind("payload", jsonMapper.writeValueAsBytes(segmentId));
@@ -1775,6 +1771,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
   private static class PendingSegmentsRecord
   {
     private final String sequenceName;
+    private final String previousSegmentId;
     private final Interval interval;
     private final byte[] payload;
 
@@ -1784,6 +1781,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
      *   <li>start</li>
      *   <li>end</li>
      *   <li>sequence_name</li>
+     *   <li>previous_segment_id</li>
      *   <li>payload</li>
      * </ol>
      */
@@ -1795,7 +1793,8 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
         return new PendingSegmentsRecord(
             new Interval(startTime.toInstant(), endTime.toInstant()),
             resultSet.getString(3),
-            resultSet.getBytes(4)
+            resultSet.getString(4),
+            resultSet.getBytes(5)
         );
       }
       catch (SQLException e) {
@@ -1803,11 +1802,12 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
       }
     }
 
-    PendingSegmentsRecord(Interval interval, String sequenceName, byte[] payload)
+    PendingSegmentsRecord(Interval interval, String sequenceName, String previousSegmentId, byte[] payload)
     {
-      this.sequenceName = sequenceName;
       this.interval = interval;
       this.payload = payload;
+      this.sequenceName = sequenceName;
+      this.previousSegmentId = previousSegmentId;
     }
 
     public byte[] getPayload()
@@ -1822,7 +1822,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
 
     public String getSequenceId()
     {
-      return null;
+      return SegmentCreateRequest.getSequenceId(sequenceName, previousSegmentId);
     }
   }
 

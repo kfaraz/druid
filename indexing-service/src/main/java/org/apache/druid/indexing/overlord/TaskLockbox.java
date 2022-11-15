@@ -453,18 +453,17 @@ public class TaskLockbox
       LockGranularity lockGranularity
   )
   {
+    final boolean skipSegmentLineageCheck = true;
+    final boolean isTimeChunkLock = lockGranularity == LockGranularity.TIME_CHUNK;
+
+    final AllocationHolderList holderList = new AllocationHolderList();
+    for (SegmentAllocateRequest request : requests) {
+      holderList.create(request);
+    }
+    verifyActiveTasks(holderList.pending);
+
     giant.lock();
     try {
-      final boolean skipSegmentLineageCheck = true;
-      final boolean isTimeChunkLock = lockGranularity == LockGranularity.TIME_CHUNK;
-
-      final AllocationHolderList holderList = new AllocationHolderList();
-      for (SegmentAllocateRequest request : requests) {
-        holderList.createHolder(request);
-      }
-
-      verifyActiveTasks(holderList);
-
       if (isTimeChunkLock) {
         acquireLocks(holderList.pending, true);
         allocateSegmentIds(dataSource, interval, skipSegmentLineageCheck, holderList.pending);
@@ -474,17 +473,17 @@ public class TaskLockbox
       }
 
       addTaskAndPersistLocks(holderList.pending, isTimeChunkLock);
-
-      return holderList.all.stream().map(holder -> holder.result).collect(Collectors.toList());
     }
     finally {
       giant.unlock();
     }
+
+    return holderList.all.stream().map(holder -> holder.result).collect(Collectors.toList());
   }
 
-  private void verifyActiveTasks(AllocationHolderList holders)
+  private void verifyActiveTasks(Collection<SegmentAllocationHolder> holders)
   {
-    for (SegmentAllocationHolder holder : holders.pending) {
+    for (SegmentAllocationHolder holder : holders) {
       final Task task = holder.task;
       if (!activeTasks.contains(task.getId())) {
         holder.markFailed("Unable to grant lock to inactive Task [%s]", task.getId());
@@ -499,23 +498,25 @@ public class TaskLockbox
   {
     for (SegmentAllocationHolder holder : holders) {
       final LockRequest lockRequest;
+      final LockRequestForNewSegment lockRequestForNewSegment = holder.createLockRequest();
       if (isTimeChunkLock) {
-        lockRequest = new TimeChunkLockRequest(holder.lockRequestForNewSegment);
+        lockRequest = new TimeChunkLockRequest(lockRequestForNewSegment);
       } else {
-        lockRequest = new SpecificSegmentLockRequest(holder.lockRequestForNewSegment, holder.allocatedSegment);
+        lockRequest = new SpecificSegmentLockRequest(lockRequestForNewSegment, holder.allocatedSegment);
       }
-      holder.lockRequest = lockRequest;
 
       // Create or find the task lock for the created lock request
       final TaskLockPosse posseToUse = createOrFindLockPosse(lockRequest);
+      final TaskLock acquiredLock = posseToUse == null ? null : posseToUse.getTaskLock();
       if (posseToUse == null) {
         holder.markFailed("Could not find or create lock posse.");
-        return;
-      }
-
-      final TaskLock acquiredLock = posseToUse.getTaskLock();
-      if (acquiredLock.isRevoked()) {
+      } else if (acquiredLock.isRevoked()) {
         holder.markFailed("Lock was revoked.");
+      } else {
+        // Update the holder
+        holder.lockRequest = lockRequest;
+        holder.taskLockPosse = posseToUse;
+        holder.acquiredLock = acquiredLock;
       }
     }
   }
@@ -1374,7 +1375,7 @@ public class TaskLockbox
     final List<SegmentAllocationHolder> all = new ArrayList<>();
     final Set<SegmentAllocationHolder> pending = new HashSet<>();
 
-    SegmentAllocationHolder createHolder(SegmentAllocateRequest request) {
+    SegmentAllocationHolder create(SegmentAllocateRequest request) {
       SegmentAllocationHolder holder = new SegmentAllocationHolder(request, this);
       all.add(holder);
       pending.add(holder);

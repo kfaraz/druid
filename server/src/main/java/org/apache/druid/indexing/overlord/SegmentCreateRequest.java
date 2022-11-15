@@ -23,29 +23,51 @@ import org.apache.druid.timeline.partition.PartialShardSpec;
 
 public class SegmentCreateRequest
 {
+  private final String sequenceName;
+  private final String previousSegmentId;
+  private final String version;
+  private final PartialShardSpec partialShardSpec;
+
+  public SegmentCreateRequest(
+      String sequenceName,
+      String previousSegmentId,
+      String version,
+      PartialShardSpec partialShardSpec
+  )
+  {
+    this.sequenceName = sequenceName;
+    this.previousSegmentId = previousSegmentId;
+    this.version = version;
+    this.partialShardSpec = partialShardSpec;
+  }
 
   public String getSequenceId()
   {
-    return null;
+    return getSequenceId(sequenceName, previousSegmentId);
   }
 
   public String getSequenceName()
   {
-    return null;
+    return sequenceName;
   }
 
   public String getPreviousSegmentId()
   {
-    return null;
+    return previousSegmentId;
   }
 
   public String getVersion()
   {
-    return null;
+    return version;
   }
 
   public PartialShardSpec getPartialShardSpec()
   {
-    return null;
+    return partialShardSpec;
+  }
+
+  public static String getSequenceId(String sequenceName, String previousSegmentId)
+  {
+    return sequenceName + "####" + previousSegmentId;
   }
 }
