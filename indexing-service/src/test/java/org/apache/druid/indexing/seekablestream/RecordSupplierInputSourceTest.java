@@ -118,7 +118,8 @@ public class RecordSupplierInputSourceTest extends InitializedNullHandlingTest
             ColumnsFilter.all()
         ),
         inputFormat,
-        temporaryFolder.newFolder()
+        temporaryFolder.newFolder(),
+        new InputStats()
     );
 
     int read = 0;

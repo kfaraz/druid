@@ -26,6 +26,7 @@ import org.apache.druid.data.input.InputRowSchema;
 import org.apache.druid.data.input.InputSource;
 import org.apache.druid.data.input.InputSourceReader;
 import org.apache.druid.data.input.InputSplit;
+import org.apache.druid.data.input.InputStats;
 import org.apache.druid.data.input.SplitHintSpec;
 import org.apache.druid.data.input.impl.JsonInputFormat;
 import org.apache.druid.data.input.impl.SplittableInputSource;
@@ -199,7 +200,8 @@ public class ExternalInputSpecSlicerTest
     public InputSourceReader reader(
         InputRowSchema inputRowSchema,
         @Nullable InputFormat inputFormat,
-        File temporaryDirectory
+        File temporaryDirectory,
+        InputStats inputStats
     )
     {
       throw new UnsupportedOperationException();
@@ -258,7 +260,8 @@ public class ExternalInputSpecSlicerTest
     public InputSourceReader reader(
         InputRowSchema inputRowSchema,
         @Nullable InputFormat inputFormat,
-        File temporaryDirectory
+        File temporaryDirectory,
+        InputStats inputStats
     )
     {
       throw new UnsupportedOperationException();

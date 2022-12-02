@@ -26,6 +26,7 @@ import org.apache.druid.data.input.InputRow;
 import org.apache.druid.data.input.InputRowSchema;
 import org.apache.druid.data.input.InputSource;
 import org.apache.druid.data.input.InputSourceReader;
+import org.apache.druid.data.input.InputStats;
 import org.apache.druid.data.input.impl.DimensionsSpec;
 import org.apache.druid.data.input.impl.InlineInputSource;
 import org.apache.druid.data.input.impl.TimestampSpec;
@@ -134,6 +135,7 @@ public class ExternalInputSliceReader implements InputSliceReader
     if (!temporaryDirectory.exists() && !temporaryDirectory.mkdir()) {
       throw new ISE("Cannot create temporary directory at [%s]", temporaryDirectory);
     }
+    final InputStats inputStats = new InputStats();
     return Iterators.transform(
         inputSources.iterator(),
         inputSource -> {
@@ -142,11 +144,11 @@ public class ExternalInputSliceReader implements InputSliceReader
 
           if (incrementCounters) {
             reader = new CountableInputSourceReader(
-                inputSource.reader(schema, inputFormat, temporaryDirectory),
+                inputSource.reader(schema, inputFormat, temporaryDirectory, inputStats),
                 channelCounters
             );
           } else {
-            reader = inputSource.reader(schema, inputFormat, temporaryDirectory);
+            reader = inputSource.reader(schema, inputFormat, temporaryDirectory, inputStats);
           }
 
           final SegmentId segmentId = SegmentId.dummy("dummy");
