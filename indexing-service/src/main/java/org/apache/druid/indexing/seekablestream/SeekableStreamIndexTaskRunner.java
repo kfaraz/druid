@@ -40,6 +40,7 @@ import org.apache.druid.data.input.Committer;
 import org.apache.druid.data.input.InputFormat;
 import org.apache.druid.data.input.InputRow;
 import org.apache.druid.data.input.InputRowSchema;
+import org.apache.druid.data.input.InputStats;
 import org.apache.druid.data.input.impl.ByteEntity;
 import org.apache.druid.data.input.impl.InputRowParser;
 import org.apache.druid.discovery.DiscoveryDruidNode;
@@ -232,6 +233,7 @@ public abstract class SeekableStreamIndexTaskRunner<PartitionIdType, SequenceOff
 
   protected volatile boolean pauseRequested = false;
   private volatile long nextCheckpointTime;
+  private final InputStats inputStats;
 
   private volatile CopyOnWriteArrayList<SequenceMetadata<PartitionIdType, SequenceOffsetType>> sequences;
   private volatile Throwable backgroundThreadException;
@@ -240,7 +242,8 @@ public abstract class SeekableStreamIndexTaskRunner<PartitionIdType, SequenceOff
       final SeekableStreamIndexTask<PartitionIdType, SequenceOffsetType, RecordType> task,
       @Nullable final InputRowParser<ByteBuffer> parser,
       final AuthorizerMapper authorizerMapper,
-      final LockGranularity lockGranularityToUse
+      final LockGranularity lockGranularityToUse,
+      InputStats inputStats
   )
   {
     Preconditions.checkNotNull(task);
@@ -256,7 +259,7 @@ public abstract class SeekableStreamIndexTaskRunner<PartitionIdType, SequenceOff
     this.sequences = new CopyOnWriteArrayList<>();
     this.ingestionState = IngestionState.NOT_STARTED;
     this.lockGranularityToUse = lockGranularityToUse;
-
+    this.inputStats = inputStats;
     resetNextCheckpointTime();
   }
 
@@ -621,6 +624,10 @@ public abstract class SeekableStreamIndexTaskRunner<PartitionIdType, SequenceOff
 
           SequenceMetadata<PartitionIdType, SequenceOffsetType> sequenceToCheckpoint = null;
           for (OrderedPartitionableRecord<PartitionIdType, SequenceOffsetType, RecordType> record : records) {
+            // sdas: update this
+            // the buffer's capacity is the array length of the bytes in the ByteEntity
+            final long processedBytes = record.getData().parallelStream().mapToLong(value -> value.getBuffer().capacity()).reduce(0, Long::sum);
+            getInputStats().incrementProcessedBytes(processedBytes);
             final boolean shouldProcess = verifyRecordInRange(record.getPartitionId(), record.getSequenceNumber());
 
             log.trace(
@@ -920,6 +927,11 @@ public abstract class SeekableStreamIndexTaskRunner<PartitionIdType, SequenceOff
 
     toolbox.getTaskReportFileWriter().write(task.getId(), getTaskCompletionReports(null, handoffWaitMs));
     return TaskStatus.success(task.getId());
+  }
+
+  public InputStats getInputStats()
+  {
+    return inputStats;
   }
 
   private void checkPublishAndHandoffFailure() throws ExecutionException, InterruptedException

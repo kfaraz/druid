@@ -23,6 +23,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.google.common.base.Optional;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.errorprone.annotations.concurrent.GuardedBy;
 import org.apache.druid.client.indexing.ClientCompactionTaskTransformSpec;
 import org.apache.druid.data.input.FirehoseFactory;
@@ -30,6 +31,7 @@ import org.apache.druid.data.input.InputFormat;
 import org.apache.druid.data.input.InputRow;
 import org.apache.druid.data.input.InputSource;
 import org.apache.druid.data.input.InputSourceReader;
+import org.apache.druid.data.input.InputStats;
 import org.apache.druid.data.input.impl.DimensionsSpec;
 import org.apache.druid.indexing.common.LockGranularity;
 import org.apache.druid.indexing.common.TaskLock;
@@ -60,6 +62,8 @@ import org.apache.druid.java.util.common.granularity.GranularityType;
 import org.apache.druid.java.util.common.granularity.IntervalsByGranularity;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.java.util.emitter.service.ServiceMetricEvent;
+import org.apache.druid.java.util.metrics.InputStatsMonitor;
+import org.apache.druid.query.DruidMetrics;
 import org.apache.druid.query.SegmentDescriptor;
 import org.apache.druid.segment.handoff.SegmentHandoffNotifier;
 import org.apache.druid.segment.incremental.ParseExceptionHandler;
@@ -111,6 +115,7 @@ public abstract class AbstractBatchIndexTask extends AbstractTask
 
   protected boolean segmentAvailabilityConfirmationCompleted = false;
   protected long segmentAvailabilityWaitTimeMs = 0L;
+  private final InputStats inputStats;
 
   @GuardedBy("this")
   private final TaskResourceCleaner resourceCloserOnAbnormalExit = new TaskResourceCleaner();
@@ -129,6 +134,7 @@ public abstract class AbstractBatchIndexTask extends AbstractTask
   {
     super(id, dataSource, context, ingestionMode);
     maxAllowedLockCount = -1;
+    this.inputStats = new InputStats();
   }
 
   protected AbstractBatchIndexTask(
@@ -143,6 +149,7 @@ public abstract class AbstractBatchIndexTask extends AbstractTask
   {
     super(id, groupId, taskResource, dataSource, context, ingestionMode);
     this.maxAllowedLockCount = maxAllowedLockCount;
+    this.inputStats = new InputStats();
   }
 
   /**
@@ -165,7 +172,7 @@ public abstract class AbstractBatchIndexTask extends AbstractTask
         throw new ISE("Cannot start; not ready!");
       }
     }
-
+    toolbox.addMonitor(new InputStatsMonitor(inputStats, getMetricsDimensions()));
     synchronized (this) {
       if (stopped) {
         return "Attempting to run a task that has been stopped. See overlord & task logs for more details.";
@@ -206,14 +213,16 @@ public abstract class AbstractBatchIndexTask extends AbstractTask
       @Nullable InputFormat inputFormat,
       Predicate<InputRow> rowFilter,
       RowIngestionMeters ingestionMeters,
-      ParseExceptionHandler parseExceptionHandler
+      ParseExceptionHandler parseExceptionHandler,
+      InputStats inputStats
   ) throws IOException
   {
     final InputSourceReader inputSourceReader = dataSchema.getTransformSpec().decorate(
         inputSource.reader(
             InputRowSchemas.fromDataSchema(dataSchema),
             inputFormat,
-            tmpDir
+            tmpDir,
+            inputStats
         )
     );
     return new FilteringCloseableInputRowIterator(
@@ -233,6 +242,20 @@ public abstract class AbstractBatchIndexTask extends AbstractTask
       final Optional<Interval> optInterval = granularitySpec.bucketInterval(inputRow.getTimestamp());
       return optInterval.isPresent();
     };
+  }
+
+  public InputStats getInputStats()
+  {
+    return inputStats;
+  }
+
+  public Map<String, String[]> getMetricsDimensions()
+  {
+    return ImmutableMap.of(
+        DruidMetrics.TASK_ID, new String[] {getId()},
+        DruidMetrics.TASK_TYPE, new String[] {getType()},
+        DruidMetrics.DATASOURCE, new String[] {getDataSource()}
+    );
   }
 
   /**
