@@ -165,6 +165,7 @@ public abstract class AbstractBatchIndexTask extends AbstractTask
         throw new ISE("Cannot start; not ready!");
       }
     }
+
     synchronized (this) {
       if (stopped) {
         return "Attempting to run a task that has been stopped. See overlord & task logs for more details.";
