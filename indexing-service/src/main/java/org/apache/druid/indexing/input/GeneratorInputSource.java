@@ -30,6 +30,7 @@ import org.apache.druid.data.input.InputRowSchema;
 import org.apache.druid.data.input.InputSource;
 import org.apache.druid.data.input.InputSourceReader;
 import org.apache.druid.data.input.InputSplit;
+import org.apache.druid.data.input.InputStats;
 import org.apache.druid.data.input.MapBasedInputRow;
 import org.apache.druid.data.input.SplitHintSpec;
 import org.apache.druid.data.input.impl.SplittableInputSource;
@@ -42,6 +43,7 @@ import org.apache.druid.segment.generator.GeneratorColumnSchema;
 
 import javax.annotation.Nullable;
 import java.io.File;
+import java.io.IOException;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
@@ -168,6 +170,12 @@ public class GeneratorInputSource extends AbstractInputSource implements Splitta
             return generator.nextRow();
           }
         });
+      }
+
+      @Override
+      public CloseableIterator<InputRow> read(InputStats inputStats)
+      {
+        return read();
       }
 
       @Override

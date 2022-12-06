@@ -39,5 +39,7 @@ public interface InputSourceReader
 {
   CloseableIterator<InputRow> read() throws IOException;
 
+  CloseableIterator<InputRow> read(InputStats inputStats) throws IOException;
+
   CloseableIterator<InputRowListPlusRawValues> sample() throws IOException;
 }

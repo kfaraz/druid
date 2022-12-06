@@ -287,7 +287,7 @@ public class TaskLifecycleTest extends InitializedNullHandlingTest
   private static class MockExceptionInputSource extends AbstractInputSource
   {
     @Override
-    protected InputSourceReader fixedFormatReader(InputRowSchema inputRowSchema, @Nullable File temporaryDirectory, InputStats inputStats)
+    protected InputSourceReader fixedFormatReader(InputRowSchema inputRowSchema, @Nullable File temporaryDirectory)
     {
       return new InputSourceReader()
       {
@@ -316,6 +316,12 @@ public class TaskLifecycleTest extends InitializedNullHandlingTest
         }
 
         @Override
+        public CloseableIterator<InputRow> read(InputStats inputStats)
+        {
+          return read();
+        }
+
+        @Override
         public CloseableIterator<InputRowListPlusRawValues> sample()
         {
           throw new UnsupportedOperationException();
@@ -341,8 +347,7 @@ public class TaskLifecycleTest extends InitializedNullHandlingTest
     @Override
     protected InputSourceReader fixedFormatReader(
         InputRowSchema inputRowSchema,
-        @Nullable File temporaryDirectory,
-        InputStats inputStats
+        @Nullable File temporaryDirectory
     )
     {
       return new InputSourceReader()
@@ -352,6 +357,12 @@ public class TaskLifecycleTest extends InitializedNullHandlingTest
         {
           final Iterator<InputRow> inputRowIterator = IDX_TASK_INPUT_ROWS.iterator();
           return CloseableIterators.withEmptyBaggage(inputRowIterator);
+        }
+
+        @Override
+        public CloseableIterator<InputRow> read(InputStats inputStats)
+        {
+          return read();
         }
 
         @Override
