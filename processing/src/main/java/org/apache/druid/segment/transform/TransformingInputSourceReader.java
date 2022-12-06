@@ -41,7 +41,7 @@ public class TransformingInputSourceReader implements InputSourceReader
   @Override
   public CloseableIterator<InputRow> read(InputStats inputStats) throws IOException
   {
-    return  delegate.read(inputStats).map(transformer::transform);
+    return delegate.read(inputStats).map(transformer::transform);
   }
 
   @Override
