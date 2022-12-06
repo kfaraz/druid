@@ -772,7 +772,6 @@ public class IndexTask extends AbstractBatchIndexTask implements ChatHandler
         rowFilter,
         determinePartitionsMeters,
         determinePartitionsParseExceptionHandler
-
     )) {
       while (inputRowIterator.hasNext()) {
         final InputRow inputRow = inputRowIterator.next();

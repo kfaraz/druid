@@ -21,7 +21,6 @@ package org.apache.druid.indexing.kafka;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.druid.data.input.InputStats;
 import org.apache.druid.data.input.impl.InputRowParser;
 import org.apache.druid.data.input.kafka.KafkaRecordEntity;
 import org.apache.druid.indexing.common.LockGranularity;
