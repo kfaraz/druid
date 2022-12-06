@@ -67,16 +67,14 @@ public class IncrementalPublishingKafkaIndexTaskRunner extends SeekableStreamInd
       KafkaIndexTask task,
       @Nullable InputRowParser<ByteBuffer> parser,
       AuthorizerMapper authorizerMapper,
-      LockGranularity lockGranularityToUse,
-      InputStats inputStats
+      LockGranularity lockGranularityToUse
   )
   {
     super(
         task,
         parser,
         authorizerMapper,
-        lockGranularityToUse,
-        inputStats
+        lockGranularityToUse
     );
     this.task = task;
   }

@@ -186,14 +186,4 @@ public class PartialRangeSegmentGenerateTask extends PartialSegmentGenerateTask<
     return new GeneratedPartitionsMetadataReport(getId(), partitionStats, taskReport);
   }
 
-  @Override
-  public Map<String, String[]> getMetricsDimensions()
-  {
-    return ImmutableMap.of(
-        DruidMetrics.TASK_ID, new String[] {getId()},
-        DruidMetrics.TASK_TYPE, new String[] {getType()},
-        DruidMetrics.DATASOURCE, new String[] {getDataSource()},
-        DruidMetrics.SUPERVISOR_ID, new String[] {getSupervisorTaskId()}
-    );
-  }
 }

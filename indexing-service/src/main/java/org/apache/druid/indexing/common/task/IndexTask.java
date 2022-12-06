@@ -771,8 +771,8 @@ public class IndexTask extends AbstractBatchIndexTask implements ChatHandler
         inputSource.needsFormat() ? getInputFormat(ingestionSchema) : null,
         rowFilter,
         determinePartitionsMeters,
-        determinePartitionsParseExceptionHandler,
-        getInputStats()
+        determinePartitionsParseExceptionHandler
+
     )) {
       while (inputRowIterator.hasNext()) {
         final InputRow inputRow = inputRowIterator.next();
@@ -931,8 +931,7 @@ public class IndexTask extends AbstractBatchIndexTask implements ChatHandler
           new DefaultIndexTaskInputRowIteratorBuilder(),
           buildSegmentsMeters,
           buildSegmentsParseExceptionHandler,
-          pushTimeout,
-          getInputStats()
+          pushTimeout
       );
 
       // If we use timeChunk lock, then we don't have to specify what segments will be overwritten because

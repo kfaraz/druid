@@ -203,14 +203,4 @@ public class PartialHashSegmentGenerateTask extends PartialSegmentGenerateTask<G
     return partitionAnalysis;
   }
 
-  @Override
-  public Map<String, String[]> getMetricsDimensions()
-  {
-    return ImmutableMap.of(
-        DruidMetrics.TASK_ID, new String[] {getId()},
-        DruidMetrics.TASK_TYPE, new String[] {getType()},
-        DruidMetrics.DATASOURCE, new String[] {getDataSource()},
-        DruidMetrics.SUPERVISOR_ID, new String[] {getSupervisorTaskId()}
-    );
-  }
 }

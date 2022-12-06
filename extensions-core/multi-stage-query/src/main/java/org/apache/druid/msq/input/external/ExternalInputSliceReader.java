@@ -135,6 +135,7 @@ public class ExternalInputSliceReader implements InputSliceReader
     if (!temporaryDirectory.exists() && !temporaryDirectory.mkdir()) {
       throw new ISE("Cannot create temporary directory at [%s]", temporaryDirectory);
     }
+    // TODO: is this right?
     final InputStats inputStats = new InputStats();
     return Iterators.transform(
         inputSources.iterator(),
@@ -144,11 +145,11 @@ public class ExternalInputSliceReader implements InputSliceReader
 
           if (incrementCounters) {
             reader = new CountableInputSourceReader(
-                inputSource.reader(schema, inputFormat, temporaryDirectory, inputStats),
+                inputSource.reader(schema, inputFormat, temporaryDirectory),
                 channelCounters
             );
           } else {
-            reader = inputSource.reader(schema, inputFormat, temporaryDirectory, inputStats);
+            reader = inputSource.reader(schema, inputFormat, temporaryDirectory);
           }
 
           final SegmentId segmentId = SegmentId.dummy("dummy");
@@ -161,7 +162,7 @@ public class ExternalInputSliceReader implements InputSliceReader
                     public CloseableIterator<InputRow> make()
                     {
                       try {
-                        CloseableIterator<InputRow> baseIterator = reader.read();
+                        CloseableIterator<InputRow> baseIterator = reader.read(inputStats);
                         return new CloseableIterator<InputRow>()
                         {
                           private InputRow next = null;

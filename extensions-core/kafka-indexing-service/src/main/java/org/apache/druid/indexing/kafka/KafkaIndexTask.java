@@ -84,8 +84,7 @@ public class KafkaIndexTask extends SeekableStreamIndexTask<Integer, Long, Kafka
         this,
         dataSchema.getParser(),
         authorizerMapper,
-        lockGranularityToUse,
-        getInputStats()
+        lockGranularityToUse
     );
   }
 
