@@ -455,7 +455,7 @@ public class SinglePhaseParallelIndexingTest extends AbstractParallelIndexSuperv
         ),
         new RowIngestionMetersTotals(
             10,
-            1,
+            0, 1,
             1,
             1)
     );
@@ -494,7 +494,7 @@ public class SinglePhaseParallelIndexingTest extends AbstractParallelIndexSuperv
 
     RowIngestionMetersTotals expectedTotals = new RowIngestionMetersTotals(
         10,
-        1,
+        0, 1,
         1,
         1
     );
@@ -518,7 +518,7 @@ public class SinglePhaseParallelIndexingTest extends AbstractParallelIndexSuperv
       expectedReports = buildExpectedTaskReportSequential(
           task.getId(),
           expectedUnparseableEvents,
-          new RowIngestionMetersTotals(0, 0, 0, 0),
+          new RowIngestionMetersTotals(0, 0, 0, 0, 0),
           expectedTotals
       );
     } else {

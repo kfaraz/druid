@@ -19,6 +19,9 @@
 
 package org.apache.druid.segment.incremental;
 
+import org.apache.druid.data.input.InputStats;
+
+import javax.annotation.Nullable;
 import java.util.Map;
 
 public class MutableRowIngestionMeters implements RowIngestionMeters
@@ -28,13 +31,7 @@ public class MutableRowIngestionMeters implements RowIngestionMeters
   private long unparseable;
   private long thrownAway;
 
-  public MutableRowIngestionMeters()
-  {
-    this.processed = 0;
-    this.processedWithError = 0;
-    this.unparseable = 0;
-    this.thrownAway = 0;
-  }
+  private final InputStats inputStats = new InputStats();
 
   @Override
   public long getProcessed()
@@ -84,10 +81,23 @@ public class MutableRowIngestionMeters implements RowIngestionMeters
     thrownAway++;
   }
 
+  @Nullable
+  @Override
+  public InputStats getInputStats()
+  {
+    return inputStats;
+  }
+
   @Override
   public RowIngestionMetersTotals getTotals()
   {
-    return new RowIngestionMetersTotals(processed, processedWithError, thrownAway, unparseable);
+    return new RowIngestionMetersTotals(
+        processed,
+        inputStats.getProcessedBytes().get(),
+        processedWithError,
+        thrownAway,
+        unparseable
+    );
   }
 
   @Override
@@ -102,5 +112,6 @@ public class MutableRowIngestionMeters implements RowIngestionMeters
     this.processedWithError += rowIngestionMetersTotals.getProcessedWithError();
     this.unparseable += rowIngestionMetersTotals.getUnparseable();
     this.thrownAway += rowIngestionMetersTotals.getThrownAway();
+    this.inputStats.incrementProcessedBytes(rowIngestionMetersTotals.getProcessedBytes());
   }
 }

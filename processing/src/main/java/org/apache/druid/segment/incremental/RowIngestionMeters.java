@@ -19,8 +19,10 @@
 
 package org.apache.druid.segment.incremental;
 
+import org.apache.druid.data.input.InputStats;
 import org.apache.druid.guice.annotations.ExtensionPoint;
 
+import javax.annotation.Nullable;
 import java.util.Map;
 
 /**
@@ -36,6 +38,7 @@ public interface RowIngestionMeters
   String DETERMINE_PARTITIONS = "determinePartitions";
 
   String PROCESSED = "processed";
+  String PROCESSED_BYTES = "processedBytes";
   String PROCESSED_WITH_ERROR = "processedWithError";
   String UNPARSEABLE = "unparseable";
   String THROWN_AWAY = "thrownAway";
@@ -43,14 +46,10 @@ public interface RowIngestionMeters
   long getProcessed();
   void incrementProcessed();
 
-  default long getProcessedBytes()
+  @Nullable
+  default InputStats getInputStats()
   {
-    return 0;
-  }
-
-  default void incrementProcessedBytes(long numBytes)
-  {
-
+    return null;
   }
 
   long getProcessedWithError();

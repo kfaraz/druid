@@ -40,7 +40,6 @@ import org.apache.druid.data.input.Committer;
 import org.apache.druid.data.input.InputFormat;
 import org.apache.druid.data.input.InputRow;
 import org.apache.druid.data.input.InputRowSchema;
-import org.apache.druid.data.input.InputStats;
 import org.apache.druid.data.input.impl.ByteEntity;
 import org.apache.druid.data.input.impl.InputRowParser;
 import org.apache.druid.discovery.DiscoveryDruidNode;
@@ -626,7 +625,7 @@ public abstract class SeekableStreamIndexTaskRunner<PartitionIdType, SequenceOff
             final long processedBytes = record.getData().parallelStream()
                                               .mapToLong(value -> value.getBuffer().capacity())
                                               .reduce(0, Long::sum);
-            rowIngestionMeters.incrementProcessedBytes(processedBytes);
+            rowIngestionMeters.getInputStats().incrementProcessedBytes(processedBytes);
             final boolean shouldProcess = verifyRecordInRange(record.getPartitionId(), record.getSequenceNumber());
 
             log.trace(

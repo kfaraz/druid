@@ -100,7 +100,7 @@ public class DropwizardRowIngestionMeters implements RowIngestionMeters
   {
     return new RowIngestionMetersTotals(
         processed.getCount(),
-        processedWithError.getCount(),
+        0, processedWithError.getCount(),
         thrownAway.getCount(),
         unparseable.getCount()
     );
