@@ -150,7 +150,7 @@ public class GeneratorInputSource extends AbstractInputSource implements Splitta
     return new InputSourceReader()
     {
       @Override
-      public CloseableIterator<InputRow> read()
+      public CloseableIterator<InputRow> read(InputStats inputStats)
       {
         return CloseableIterators.withEmptyBaggage(new Iterator<InputRow>()
         {
@@ -170,12 +170,6 @@ public class GeneratorInputSource extends AbstractInputSource implements Splitta
             return generator.nextRow();
           }
         });
-      }
-
-      @Override
-      public CloseableIterator<InputRow> read(InputStats inputStats)
-      {
-        return read();
       }
 
       @Override

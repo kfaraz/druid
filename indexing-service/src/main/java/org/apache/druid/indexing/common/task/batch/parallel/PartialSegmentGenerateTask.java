@@ -216,8 +216,7 @@ abstract class PartialSegmentGenerateTask<T extends GeneratedPartitionsReport> e
           inputRowIteratorBuilder,
           buildSegmentsMeters,
           parseExceptionHandler,
-          pushTimeout,
-          getInputStats()
+          pushTimeout
       );
       return pushed.getSegments();
     }

@@ -43,15 +43,6 @@ public class CountableInputSourceReader implements InputSourceReader
   }
 
   @Override
-  public CloseableIterator<InputRow> read() throws IOException
-  {
-    return inputSourceReader.read().map(inputRow -> {
-      channelCounters.incrementRowCount();
-      return inputRow;
-    });
-  }
-
-  @Override
   public CloseableIterator<InputRow> read(InputStats inputStats) throws IOException
   {
     return inputSourceReader.read(inputStats).map(inputRow -> {

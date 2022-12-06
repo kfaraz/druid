@@ -43,6 +43,16 @@ public interface RowIngestionMeters
   long getProcessed();
   void incrementProcessed();
 
+  default long getProcessedBytes()
+  {
+    return 0;
+  }
+
+  default void incrementProcessedBytes(long numBytes)
+  {
+
+  }
+
   long getProcessedWithError();
   void incrementProcessedWithError();
 

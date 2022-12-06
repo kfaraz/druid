@@ -62,7 +62,6 @@ import org.apache.druid.java.util.common.granularity.GranularityType;
 import org.apache.druid.java.util.common.granularity.IntervalsByGranularity;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.java.util.emitter.service.ServiceMetricEvent;
-import org.apache.druid.java.util.metrics.InputStatsMonitor;
 import org.apache.druid.query.DruidMetrics;
 import org.apache.druid.query.SegmentDescriptor;
 import org.apache.druid.segment.handoff.SegmentHandoffNotifier;
@@ -172,7 +171,6 @@ public abstract class AbstractBatchIndexTask extends AbstractTask
         throw new ISE("Cannot start; not ready!");
       }
     }
-    toolbox.addMonitor(new InputStatsMonitor(inputStats, getMetricsDimensions()));
     synchronized (this) {
       if (stopped) {
         return "Attempting to run a task that has been stopped. See overlord & task logs for more details.";
@@ -213,16 +211,14 @@ public abstract class AbstractBatchIndexTask extends AbstractTask
       @Nullable InputFormat inputFormat,
       Predicate<InputRow> rowFilter,
       RowIngestionMeters ingestionMeters,
-      ParseExceptionHandler parseExceptionHandler,
-      InputStats inputStats
+      ParseExceptionHandler parseExceptionHandler
   ) throws IOException
   {
     final InputSourceReader inputSourceReader = dataSchema.getTransformSpec().decorate(
         inputSource.reader(
             InputRowSchemas.fromDataSchema(dataSchema),
             inputFormat,
-            tmpDir,
-            inputStats
+            tmpDir
         )
     );
     return new FilteringCloseableInputRowIterator(

@@ -76,15 +76,9 @@ public class NilInputSource implements InputSource
     return new InputSourceReader()
     {
       @Override
-      public CloseableIterator<InputRow> read()
-      {
-        return CloseableIterators.wrap(Collections.emptyIterator(), () -> {});
-      }
-
-      @Override
       public CloseableIterator<InputRow> read(InputStats inputStats)
       {
-        return read();
+        return CloseableIterators.wrap(Collections.emptyIterator(), () -> {});
       }
 
       @Override

@@ -292,7 +292,7 @@ public class TaskLifecycleTest extends InitializedNullHandlingTest
       return new InputSourceReader()
       {
         @Override
-        public CloseableIterator<InputRow> read()
+        public CloseableIterator<InputRow> read(InputStats inputStats)
         {
           return new CloseableIterator<InputRow>()
           {
@@ -313,12 +313,6 @@ public class TaskLifecycleTest extends InitializedNullHandlingTest
               throw new RuntimeException("HA HA HA");
             }
           };
-        }
-
-        @Override
-        public CloseableIterator<InputRow> read(InputStats inputStats)
-        {
-          return read();
         }
 
         @Override
@@ -353,16 +347,10 @@ public class TaskLifecycleTest extends InitializedNullHandlingTest
       return new InputSourceReader()
       {
         @Override
-        public CloseableIterator<InputRow> read()
+        public CloseableIterator<InputRow> read(InputStats inputStats)
         {
           final Iterator<InputRow> inputRowIterator = IDX_TASK_INPUT_ROWS.iterator();
           return CloseableIterators.withEmptyBaggage(inputRowIterator);
-        }
-
-        @Override
-        public CloseableIterator<InputRow> read(InputStats inputStats)
-        {
-          return read();
         }
 
         @Override

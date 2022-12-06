@@ -49,7 +49,7 @@ public class FirehoseToInputSourceReaderAdaptor implements InputSourceReader
   }
 
   @Override
-  public CloseableIterator<InputRow> read() throws IOException
+  public CloseableIterator<InputRow> read(InputStats inputStats) throws IOException
   {
     return new CloseableIterator<InputRow>()
     {
@@ -83,12 +83,6 @@ public class FirehoseToInputSourceReaderAdaptor implements InputSourceReader
         firehose.close();
       }
     };
-  }
-
-  @Override
-  public CloseableIterator<InputRow> read(InputStats inputStats) throws IOException
-  {
-    return read();
   }
 
   @Override

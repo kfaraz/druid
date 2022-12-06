@@ -48,14 +48,6 @@ public class TimedShutoffInputSourceReader implements InputSourceReader
   }
 
   @Override
-  public CloseableIterator<InputRow> read() throws IOException
-  {
-    final ScheduledExecutorService shutdownExec = Execs.scheduledSingleThreaded("timed-shutoff-reader-%d");
-    final CloseableIterator<InputRow> delegateIterator = delegate.read();
-    return decorateShutdownTimeout(shutdownExec, delegateIterator);
-  }
-
-  @Override
   public CloseableIterator<InputRow> read(InputStats inputStats) throws IOException
   {
     final ScheduledExecutorService shutdownExec = Execs.scheduledSingleThreaded("timed-shutoff-reader-%d");

@@ -71,12 +71,6 @@ public class InputEntityIteratingReader implements InputSourceReader
   }
 
   @Override
-  public CloseableIterator<InputRow> read() throws IOException
-  {
-    return read(null);
-  }
-
-  @Override
   public CloseableIterator<InputRow> read(InputStats inputStats)
   {
     return createIterator(entity -> {

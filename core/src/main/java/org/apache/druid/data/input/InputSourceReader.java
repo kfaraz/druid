@@ -37,7 +37,10 @@ import java.io.IOException;
 @UnstableApi
 public interface InputSourceReader
 {
-  CloseableIterator<InputRow> read() throws IOException;
+  default CloseableIterator<InputRow> read() throws IOException
+  {
+    return read(null);
+  }
 
   CloseableIterator<InputRow> read(InputStats inputStats) throws IOException;
 

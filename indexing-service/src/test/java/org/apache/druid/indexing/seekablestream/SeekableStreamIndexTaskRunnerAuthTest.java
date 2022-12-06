@@ -261,7 +261,7 @@ public class SeekableStreamIndexTaskRunnerAuthTest
         AuthorizerMapper authorizerMapper
     )
     {
-      super(task, null, authorizerMapper, LockGranularity.SEGMENT, new InputStats());
+      super(task, null, authorizerMapper, LockGranularity.SEGMENT);
     }
 
     @Override

@@ -166,8 +166,7 @@ public class MultiPhaseParallelIndexingWithNullColumnTest extends AbstractMultiP
   }
 
   @Test
-  public void testIngestNullColumn_useFieldDiscovery_includeAllDimensions_shouldStoreAllColumns()
-      throws JsonProcessingException
+  public void testIngestNullColumn_useFieldDiscovery_includeAllDimensions_shouldStoreAllColumns() throws JsonProcessingException
   {
     final List<DimensionSchema> dimensionSchemas = DimensionsSpec.getDefaultSchemas(
         Arrays.asList("ts", "unknownDim", "dim1")
@@ -224,8 +223,7 @@ public class MultiPhaseParallelIndexingWithNullColumnTest extends AbstractMultiP
       );
       Assert.assertEquals(
           expectedImplicitDimensions,
-          new HashSet<>(segment.getDimensions()
-                               .subList(expectedExplicitDimensions.size(), segment.getDimensions().size()))
+          new HashSet<>(segment.getDimensions().subList(expectedExplicitDimensions.size(), segment.getDimensions().size()))
       );
     }
   }
@@ -292,8 +290,7 @@ public class MultiPhaseParallelIndexingWithNullColumnTest extends AbstractMultiP
       );
       Assert.assertEquals(
           expectedImplicitDimensions,
-          new HashSet<>(segment.getDimensions()
-                               .subList(expectedExplicitDimensions.size(), segment.getDimensions().size()))
+          new HashSet<>(segment.getDimensions().subList(expectedExplicitDimensions.size(), segment.getDimensions().size()))
       );
     }
 
@@ -434,8 +431,7 @@ public class MultiPhaseParallelIndexingWithNullColumnTest extends AbstractMultiP
       return new InputEntityIteratingReader(
           inputRowSchema,
           inputFormat,
-          data.stream()
-              .map(str -> new ByteEntity(StringUtils.toUtf8(str))).iterator(),
+          data.stream().map(str -> new ByteEntity(StringUtils.toUtf8(str))).iterator(),
           temporaryDirectory
       );
     }
