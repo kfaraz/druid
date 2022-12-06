@@ -163,7 +163,6 @@ public class MultiPhaseParallelIndexingRowStatsTest extends AbstractMultiPhasePa
         INTERVAL_TO_INDEX,
         inputDir,
         "test_*",
-        //new DimensionRangePartitionsSpec(targetRowsPerSegment, null, DIMS, false),
         new SingleDimensionPartitionsSpec(targetRowsPerSegment, null, DIM1, false),
         10,
         false,

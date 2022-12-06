@@ -21,17 +21,9 @@ package org.apache.druid.data.input;
 
 import java.util.concurrent.atomic.AtomicLong;
 
-public class InputStats
+public interface InputStats
 {
-  private final AtomicLong processedBytes = new AtomicLong(0);
+  void incrementProcessedBytes(long incrementByValue);
 
-  public void incrementProcessedBytes(long incrementByValue)
-  {
-    processedBytes.getAndAdd(incrementByValue);
-  }
-
-  public AtomicLong getProcessedBytes()
-  {
-    return processedBytes;
-  }
+  long getProcessedBytes();
 }

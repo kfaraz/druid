@@ -23,15 +23,15 @@ import org.apache.druid.data.input.InputStats;
 
 import javax.annotation.Nullable;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 
-public class MutableRowIngestionMeters implements RowIngestionMeters
+public class MutableRowIngestionMeters implements RowIngestionMeters, InputStats
 {
   private long processed;
   private long processedWithError;
   private long unparseable;
   private long thrownAway;
-
-  private final InputStats inputStats = new InputStats();
+  private final AtomicLong processedBytes = new AtomicLong(0);
 
   @Override
   public long getProcessed()
@@ -43,6 +43,18 @@ public class MutableRowIngestionMeters implements RowIngestionMeters
   public void incrementProcessed()
   {
     processed++;
+  }
+
+  @Override
+  public void incrementProcessedBytes(long incrementByValue)
+  {
+    processedBytes.addAndGet(incrementByValue);
+  }
+
+  @Override
+  public long getProcessedBytes()
+  {
+    return processedBytes.get();
   }
 
   @Override
@@ -85,7 +97,7 @@ public class MutableRowIngestionMeters implements RowIngestionMeters
   @Override
   public InputStats getInputStats()
   {
-    return inputStats;
+    return this;
   }
 
   @Override
@@ -93,7 +105,7 @@ public class MutableRowIngestionMeters implements RowIngestionMeters
   {
     return new RowIngestionMetersTotals(
         processed,
-        inputStats.getProcessedBytes().get(),
+        processedBytes.get(),
         processedWithError,
         thrownAway,
         unparseable
@@ -112,6 +124,6 @@ public class MutableRowIngestionMeters implements RowIngestionMeters
     this.processedWithError += rowIngestionMetersTotals.getProcessedWithError();
     this.unparseable += rowIngestionMetersTotals.getUnparseable();
     this.thrownAway += rowIngestionMetersTotals.getThrownAway();
-    this.inputStats.incrementProcessedBytes(rowIngestionMetersTotals.getProcessedBytes());
+    this.processedBytes.addAndGet(rowIngestionMetersTotals.getProcessedBytes());
   }
 }

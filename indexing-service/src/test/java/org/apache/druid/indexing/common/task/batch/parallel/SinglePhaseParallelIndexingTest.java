@@ -492,12 +492,7 @@ public class SinglePhaseParallelIndexingTest extends AbstractParallelIndexSuperv
     final ParallelIndexSupervisorTask executedTask = (ParallelIndexSupervisorTask) taskContainer.getTask();
     Map<String, Object> actualReports = executedTask.doGetLiveReports("full");
 
-    RowIngestionMetersTotals expectedTotals = new RowIngestionMetersTotals(
-        10,
-        0, 1,
-        1,
-        1
-    );
+    RowIngestionMetersTotals expectedTotals = new RowIngestionMetersTotals(10, 0, 1, 1, 1);
     List<ParseExceptionReport> expectedUnparseableEvents = ImmutableList.of(
         new ParseExceptionReport(
             "{ts=2017unparseable}",

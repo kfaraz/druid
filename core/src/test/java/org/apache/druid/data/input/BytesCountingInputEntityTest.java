@@ -47,7 +47,8 @@ public class BytesCountingInputEntityTest
   @Before
   public void setUp()
   {
-    inputStats = new InputStats();
+    // TODO: fix this
+    inputStats = null;
     bytes = new byte[numBytes];
   }
 
@@ -69,10 +70,10 @@ public class BytesCountingInputEntityTest
 
     final byte[] intermediateBuffer = new byte[numBytes / 2];
     countableInputEntity.open().read(intermediateBuffer);
-    Assert.assertEquals(numBytes / 2, inputStats.getProcessedBytes().intValue());
+    Assert.assertEquals(numBytes / 2, inputStats.getProcessedBytes());
 
     countableInputEntity.fetch(folder.newFolder(), intermediateBuffer);
-    Assert.assertEquals((numBytes / 2) + numBytes, inputStats.getProcessedBytes().intValue());
+    Assert.assertEquals((numBytes / 2) + numBytes, inputStats.getProcessedBytes());
   }
 
   @Test
@@ -82,12 +83,12 @@ public class BytesCountingInputEntityTest
     final ByteEntity byteEntity = new ByteEntity(bytes);
     countableInputEntity = new BytesCountingInputEntity(byteEntity, inputStats);
     countableInputEntity.open().read(intermediateBuffer);
-    Assert.assertEquals(numBytes, inputStats.getProcessedBytes().intValue());
+    Assert.assertEquals(numBytes, inputStats.getProcessedBytes());
 
     final byte[] smallIntermediateBuffer = new byte[25];
     final ByteEntity byteEntity1 = new ByteEntity(bytes);
     countableInputEntity = new BytesCountingInputEntity(byteEntity1, inputStats);
     countableInputEntity.fetch(folder.newFolder(), smallIntermediateBuffer);
-    Assert.assertEquals(numBytes + numBytes, inputStats.getProcessedBytes().intValue());
+    Assert.assertEquals(numBytes + numBytes, inputStats.getProcessedBytes());
   }
 }
