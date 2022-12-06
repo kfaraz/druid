@@ -34,7 +34,6 @@ import org.apache.druid.data.input.InputRowListPlusRawValues;
 import org.apache.druid.data.input.InputRowSchema;
 import org.apache.druid.data.input.InputSourceReader;
 import org.apache.druid.data.input.InputSplit;
-import org.apache.druid.data.input.InputStats;
 import org.apache.druid.data.input.Row;
 import org.apache.druid.data.input.impl.DimensionsSpec;
 import org.apache.druid.data.input.impl.TimestampSpec;
@@ -156,7 +155,7 @@ public class SqlInputSourceTest
     testUtils.createAndUpdateTable(TABLE_NAME_1, 10);
     final File tempDir = createFirehoseTmpDir("testSingleSplit");
     SqlInputSource sqlInputSource = new SqlInputSource(SQLLIST1, true, testUtils.getDerbyFirehoseConnector(), mapper);
-    InputSourceReader sqlReader = sqlInputSource.fixedFormatReader(INPUT_ROW_SCHEMA, tempDir, new InputStats());
+    InputSourceReader sqlReader = sqlInputSource.fixedFormatReader(INPUT_ROW_SCHEMA, tempDir);
     CloseableIterator<InputRow> resultIterator = sqlReader.read();
     final List<Row> rows = new ArrayList<>();
     while (resultIterator.hasNext()) {
@@ -176,7 +175,7 @@ public class SqlInputSourceTest
     testUtils.createAndUpdateTable(TABLE_NAME_2, 10);
     final File tempDir = createFirehoseTmpDir("testMultipleSplit");
     SqlInputSource sqlInputSource = new SqlInputSource(SQLLIST2, true, testUtils.getDerbyFirehoseConnector(), mapper);
-    InputSourceReader sqlReader = sqlInputSource.fixedFormatReader(INPUT_ROW_SCHEMA, tempDir, new InputStats());
+    InputSourceReader sqlReader = sqlInputSource.fixedFormatReader(INPUT_ROW_SCHEMA, tempDir);
     CloseableIterator<InputRow> resultIterator = sqlReader.read();
     final List<Row> rows = new ArrayList<>();
     while (resultIterator.hasNext()) {
@@ -208,7 +207,7 @@ public class SqlInputSourceTest
     try {
       final File tempDir = createFirehoseTmpDir("testSingleSplit");
       SqlInputSource sqlInputSource = new SqlInputSource(SQLLIST1, true, testUtils.getDerbyFirehoseConnector(), mapper);
-      InputSourceReader sqlReader = sqlInputSource.fixedFormatReader(INPUT_ROW_SCHEMA, tempDir, new InputStats());
+      InputSourceReader sqlReader = sqlInputSource.fixedFormatReader(INPUT_ROW_SCHEMA, tempDir);
       CloseableIterator<InputRowListPlusRawValues> resultIterator = sqlReader.sample();
       final List<InputRowListPlusRawValues> rows = new ArrayList<>();
       while (resultIterator.hasNext()) {

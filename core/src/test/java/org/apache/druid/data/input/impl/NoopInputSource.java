@@ -23,7 +23,6 @@ import org.apache.druid.data.input.InputFormat;
 import org.apache.druid.data.input.InputRowSchema;
 import org.apache.druid.data.input.InputSource;
 import org.apache.druid.data.input.InputSourceReader;
-import org.apache.druid.data.input.InputStats;
 
 import javax.annotation.Nullable;
 import java.io.File;
@@ -52,8 +51,7 @@ public class NoopInputSource implements InputSource
   public InputSourceReader reader(
       InputRowSchema inputRowSchema,
       @Nullable InputFormat inputFormat,
-      @Nullable File temporaryDirectory,
-      InputStats inputStats
+      @Nullable File temporaryDirectory
   )
   {
     throw new UnsupportedOperationException();

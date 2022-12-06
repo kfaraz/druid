@@ -26,7 +26,6 @@ import nl.jqno.equalsverifier.EqualsVerifier;
 import org.apache.druid.data.input.InputRow;
 import org.apache.druid.data.input.InputSourceReader;
 import org.apache.druid.data.input.InputSplit;
-import org.apache.druid.data.input.InputStats;
 import org.apache.druid.jackson.DefaultObjectMapper;
 import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.common.parsers.CloseableIterator;
@@ -127,7 +126,7 @@ public class GeneratorInputSourceTest
         timestampIncrement
     );
 
-    InputSourceReader reader = inputSource.fixedFormatReader(null, null, new InputStats());
+    InputSourceReader reader = inputSource.fixedFormatReader(null, null);
     CloseableIterator<InputRow> iterator = reader.read();
 
     InputRow first = iterator.next();

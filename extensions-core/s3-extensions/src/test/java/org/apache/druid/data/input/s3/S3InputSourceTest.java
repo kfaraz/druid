@@ -53,7 +53,6 @@ import org.apache.druid.data.input.InputRow;
 import org.apache.druid.data.input.InputRowSchema;
 import org.apache.druid.data.input.InputSourceReader;
 import org.apache.druid.data.input.InputSplit;
-import org.apache.druid.data.input.InputStats;
 import org.apache.druid.data.input.MaxSizeSplitHintSpec;
 import org.apache.druid.data.input.impl.CloudObjectLocation;
 import org.apache.druid.data.input.impl.CsvInputFormat;
@@ -940,8 +939,7 @@ public class S3InputSourceTest extends InitializedNullHandlingTest
     InputSourceReader reader = inputSource.reader(
         someSchema,
         new CsvInputFormat(ImmutableList.of("time", "dim1", "dim2"), "|", false, null, 0),
-        temporaryFolder.newFolder(),
-        new InputStats()
+        temporaryFolder.newFolder()
     );
 
     CloseableIterator<InputRow> iterator = reader.read();
@@ -988,8 +986,7 @@ public class S3InputSourceTest extends InitializedNullHandlingTest
     InputSourceReader reader = inputSource.reader(
         someSchema,
         new CsvInputFormat(ImmutableList.of("time", "dim1", "dim2"), "|", false, null, 0),
-        temporaryFolder.newFolder(),
-        new InputStats()
+        temporaryFolder.newFolder()
     );
 
     final IllegalStateException e = Assert.assertThrows(IllegalStateException.class, reader::read);
@@ -1036,8 +1033,7 @@ public class S3InputSourceTest extends InitializedNullHandlingTest
     InputSourceReader reader = inputSource.reader(
         someSchema,
         new CsvInputFormat(ImmutableList.of("time", "dim1", "dim2"), "|", false, null, 0),
-        temporaryFolder.newFolder(),
-        new InputStats()
+        temporaryFolder.newFolder()
     );
 
     CloseableIterator<InputRow> iterator = reader.read();

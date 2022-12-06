@@ -27,7 +27,6 @@ import org.apache.druid.data.input.InputRow;
 import org.apache.druid.data.input.InputRowSchema;
 import org.apache.druid.data.input.InputSource;
 import org.apache.druid.data.input.InputSourceReader;
-import org.apache.druid.data.input.InputStats;
 import org.apache.druid.data.input.impl.ByteEntity;
 import org.apache.druid.data.input.impl.CsvInputFormat;
 import org.apache.druid.data.input.impl.DimensionsSpec;
@@ -85,8 +84,7 @@ public class RecordSupplierInputSourceTest extends InitializedNullHandlingTest
             ColumnsFilter.all()
         ),
         inputFormat,
-        temporaryFolder.newFolder(),
-        new InputStats()
+        temporaryFolder.newFolder()
     );
 
     int read = 0;
@@ -118,8 +116,7 @@ public class RecordSupplierInputSourceTest extends InitializedNullHandlingTest
             ColumnsFilter.all()
         ),
         inputFormat,
-        temporaryFolder.newFolder(),
-        new InputStats()
+        temporaryFolder.newFolder()
     );
 
     int read = 0;

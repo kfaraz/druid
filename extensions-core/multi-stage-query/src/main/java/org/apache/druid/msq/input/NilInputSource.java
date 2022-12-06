@@ -27,7 +27,6 @@ import org.apache.druid.data.input.InputRowListPlusRawValues;
 import org.apache.druid.data.input.InputRowSchema;
 import org.apache.druid.data.input.InputSource;
 import org.apache.druid.data.input.InputSourceReader;
-import org.apache.druid.data.input.InputStats;
 import org.apache.druid.java.util.common.CloseableIterators;
 import org.apache.druid.java.util.common.parsers.CloseableIterator;
 
@@ -70,8 +69,7 @@ public class NilInputSource implements InputSource
   public InputSourceReader reader(
       final InputRowSchema inputRowSchema,
       @Nullable final InputFormat inputFormat,
-      final File temporaryDirectory,
-      final InputStats stats
+      final File temporaryDirectory
   )
   {
     return new InputSourceReader()
@@ -79,15 +77,13 @@ public class NilInputSource implements InputSource
       @Override
       public CloseableIterator<InputRow> read()
       {
-        return CloseableIterators.wrap(Collections.emptyIterator(), () -> {
-        });
+        return CloseableIterators.wrap(Collections.emptyIterator(), () -> {});
       }
 
       @Override
       public CloseableIterator<InputRowListPlusRawValues> sample()
       {
-        return CloseableIterators.wrap(Collections.emptyIterator(), () -> {
-        });
+        return CloseableIterators.wrap(Collections.emptyIterator(), () -> {});
       }
     };
   }

@@ -73,8 +73,7 @@ public class FirehoseFactoryToInputSourceAdaptorTest extends InitializedNullHand
             ColumnsFilter.all()
         ),
         null,
-        null,
-        new InputStats()
+        null
     );
     final List<InputRow> result = new ArrayList<>();
     try (CloseableIterator<InputRow> iterator = reader.read()) {
