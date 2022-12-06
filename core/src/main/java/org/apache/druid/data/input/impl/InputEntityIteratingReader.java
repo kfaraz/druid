@@ -19,7 +19,7 @@
 
 package org.apache.druid.data.input.impl;
 
-import org.apache.druid.data.input.CountableInputEntity;
+import org.apache.druid.data.input.BytesCountingInputEntity;
 import org.apache.druid.data.input.InputEntity;
 import org.apache.druid.data.input.InputEntityReader;
 import org.apache.druid.data.input.InputFormat;
@@ -76,7 +76,7 @@ public class InputEntityIteratingReader implements InputSourceReader
     return createIterator(entity -> {
       // InputEntityReader is stateful and so a new one should be created per entity.
       try {
-        final InputEntity entityToRead = inputStats == null ? entity : new CountableInputEntity(entity, inputStats);
+        final InputEntity entityToRead = inputStats == null ? entity : new BytesCountingInputEntity(entity, inputStats);
         final InputEntityReader reader = inputFormat.createReader(inputRowSchema, entityToRead, temporaryDirectory);
         return reader.read();
       }

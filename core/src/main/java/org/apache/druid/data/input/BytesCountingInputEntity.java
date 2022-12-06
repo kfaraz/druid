@@ -32,12 +32,12 @@ import java.net.URI;
 /**
  * Can be used to count number of bytes read from the base InputEntity
  */
-public class CountableInputEntity implements InputEntity
+public class BytesCountingInputEntity implements InputEntity
 {
   private final InputStats inputStats;
   private final InputEntity baseInputEntity;
 
-  public CountableInputEntity(InputEntity baseInputEntity, InputStats inputStats)
+  public BytesCountingInputEntity(InputEntity baseInputEntity, InputStats inputStats)
   {
     this.baseInputEntity = baseInputEntity;
     this.inputStats = inputStats;
@@ -68,12 +68,6 @@ public class CountableInputEntity implements InputEntity
   public Predicate<Throwable> getRetryCondition()
   {
     return baseInputEntity.getRetryCondition();
-  }
-
-  @Override
-  public InputEntity getBaseInputEntity()
-  {
-    return baseInputEntity;
   }
 
   static class BytesCountingInputStream extends FilterInputStream

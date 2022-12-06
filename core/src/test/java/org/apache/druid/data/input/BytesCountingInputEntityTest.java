@@ -34,12 +34,12 @@ import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
-public class CountableInputEntityTest
+public class BytesCountingInputEntityTest
 {
   @Rule
   public TemporaryFolder folder = new TemporaryFolder();
 
-  private CountableInputEntity countableInputEntity;
+  private BytesCountingInputEntity countableInputEntity;
   private InputStats inputStats;
   private byte[] bytes;
   private final int numBytes = 100;
@@ -65,7 +65,7 @@ public class CountableInputEntityTest
     outputStreamWriter.flush();
     outputStreamWriter.close();
     final FileEntity fileEntity = new FileEntity(sourceFile);
-    countableInputEntity = new CountableInputEntity(fileEntity, inputStats);
+    countableInputEntity = new BytesCountingInputEntity(fileEntity, inputStats);
 
     final byte[] intermediateBuffer = new byte[numBytes / 2];
     countableInputEntity.open().read(intermediateBuffer);
@@ -80,13 +80,13 @@ public class CountableInputEntityTest
   {
     final byte[] intermediateBuffer = new byte[numBytes];
     final ByteEntity byteEntity = new ByteEntity(bytes);
-    countableInputEntity = new CountableInputEntity(byteEntity, inputStats);
+    countableInputEntity = new BytesCountingInputEntity(byteEntity, inputStats);
     countableInputEntity.open().read(intermediateBuffer);
     Assert.assertEquals(numBytes, inputStats.getProcessedBytes().intValue());
 
     final byte[] smallIntermediateBuffer = new byte[25];
     final ByteEntity byteEntity1 = new ByteEntity(bytes);
-    countableInputEntity = new CountableInputEntity(byteEntity1, inputStats);
+    countableInputEntity = new BytesCountingInputEntity(byteEntity1, inputStats);
     countableInputEntity.fetch(folder.newFolder(), smallIntermediateBuffer);
     Assert.assertEquals(numBytes + numBytes, inputStats.getProcessedBytes().intValue());
   }

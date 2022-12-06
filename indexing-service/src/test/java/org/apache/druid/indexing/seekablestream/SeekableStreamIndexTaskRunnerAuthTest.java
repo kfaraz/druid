@@ -21,7 +21,6 @@ package org.apache.druid.indexing.seekablestream;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.druid.data.input.InputStats;
 import org.apache.druid.data.input.impl.ByteEntity;
 import org.apache.druid.data.input.impl.CsvInputFormat;
 import org.apache.druid.data.input.impl.DimensionsSpec;

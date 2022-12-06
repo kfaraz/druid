@@ -20,7 +20,6 @@
 package org.apache.druid.indexing.input;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Preconditions;
 import com.google.common.base.Supplier;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Sets;
@@ -89,8 +88,7 @@ public class DruidSegmentReader extends IntermediateRowParsingReader<Map<String,
       final File temporaryDirectory
   )
   {
-    Preconditions.checkArgument(source.getBaseInputEntity() instanceof DruidSegmentInputEntity);
-    this.source = (DruidSegmentInputEntity) source.getBaseInputEntity();
+    this.source = (DruidSegmentInputEntity) source;
     this.indexIO = indexIO;
     this.columnsFilter = columnsFilter;
     this.inputRowSchema = new InputRowSchema(
