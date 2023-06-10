@@ -45,8 +45,7 @@ public class DefaultPasswordProviderTest
   @Test
   public void testDeserializationFromJsonString() throws Exception
   {
-    PasswordProvider pp = JSON_MAPPER.readValue("\"" + PWD + "\"",
-        PasswordProvider.class);
+    PasswordProvider pp = JSON_MAPPER.readValue("\"" + PWD + "\"", PasswordProvider.class);
     Assert.assertEquals(PWD, pp.getPassword());
   }
 
@@ -55,7 +54,8 @@ public class DefaultPasswordProviderTest
   {
     PasswordProvider pp = JSON_MAPPER.readValue(
         "{\"type\": \"default\", \"password\": \"" + PWD + "\"}",
-        PasswordProvider.class);
+        PasswordProvider.class
+    );
     Assert.assertEquals(PWD, pp.getPassword());
   }
 

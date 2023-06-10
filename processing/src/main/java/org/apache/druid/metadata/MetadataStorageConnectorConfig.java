@@ -19,38 +19,71 @@
 
 package org.apache.druid.metadata;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import org.apache.druid.common.config.Configs;
 import org.apache.druid.java.util.common.StringUtils;
 
+import javax.annotation.Nullable;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 
 /**
+ *
  */
 public class MetadataStorageConnectorConfig
 {
   public static final String PROPERTY_BASE = "druid.metadata.storage.connector";
 
-  @JsonProperty
-  private boolean createTables = true;
+  private final String derbyHost;
+  private final int derbyPort;
+  private final String connectURI;
 
-  @JsonProperty
-  private String host = "localhost";
+  private final String user;
+  private final PasswordProvider passwordProvider;
 
-  @JsonProperty
-  private int port = 1527;
+  private final boolean createTables;
+  private final Properties dbcpProperties;
 
-  @JsonProperty
-  private String connectURI;
+  /**
+   * Creates a {@code MetadataStorageConnectorConfig}.
+   *
+   * @param connectURI     Required when not using a Derby metadata store
+   * @param derbyHost      Required only when using a Derby metadata store, default is "localhost"
+   * @param derbyPort      Required only when using a Derby metadata store, default is 1527
+   * @param dbcpProperties Connection properties
+   * @param createTables   Whether metadata tables should be freshly created, defaults is true
+   */
+  @JsonCreator
+  public MetadataStorageConnectorConfig(
+      @JsonProperty("connectURI") @Nullable String connectURI,
+      @JsonProperty("host") @Nullable String derbyHost,
+      @JsonProperty("port") @Nullable Integer derbyPort,
+      @JsonProperty("user") @Nullable String user,
+      @JsonProperty("password") @Nullable PasswordProvider passwordProvider,
+      @JsonProperty("dbcp") Properties dbcpProperties,
+      @JsonProperty("createTables") Boolean createTables
+  )
+  {
+    // Default host and port to Derby running locally
+    this.derbyHost = Configs.valueOrDefault(derbyHost, "localhost");
+    this.derbyPort = Configs.valueOrDefault(derbyPort, 1527);
+    this.connectURI = Configs.valueOrDefault(
+        connectURI,
+        StringUtils.format("jdbc:derby://%s:%s/druid;create=true", this.derbyHost, this.derbyPort)
+    );
 
-  @JsonProperty
-  private String user = null;
+    this.user = user;
+    this.passwordProvider = passwordProvider;
+    this.dbcpProperties = dbcpProperties;
+    this.createTables = Configs.valueOrDefault(createTables, true);
+  }
 
-  @JsonProperty("password")
-  private PasswordProvider passwordProvider;
-
-  @JsonProperty("dbcp")
-  private Properties dbcpProperties;
+  public static MetadataStorageConnectorConfig create(String connectURI)
+  {
+    return create(connectURI, null, null, null);
+  }
 
   public static MetadataStorageConnectorConfig create(
       String connectUri,
@@ -59,63 +92,51 @@ public class MetadataStorageConnectorConfig
       Map<String, String> properties
   )
   {
-    MetadataStorageConnectorConfig config = new MetadataStorageConnectorConfig();
-    if (connectUri != null) {
-      config.connectURI = connectUri;
-    }
-    if (user != null) {
-      config.user = user;
-    }
-    if (password != null) {
-      config.passwordProvider = () -> password;
-    }
+    Properties dbcpProperties = new Properties();
     if (properties != null) {
-      config.dbcpProperties = new Properties();
-      config.dbcpProperties.putAll(properties);
+      dbcpProperties.putAll(properties);
     }
-    return config;
+    return new MetadataStorageConnectorConfig(
+        connectUri,
+        null,
+        null,
+        user,
+        DefaultPasswordProvider.fromString(password),
+        dbcpProperties,
+        null
+    );
   }
 
-  @JsonProperty
   public boolean isCreateTables()
   {
     return createTables;
   }
 
-  @JsonProperty
-  public String getHost()
+  public String getDerbyHost()
   {
-    return host;
+    return derbyHost;
   }
 
-  @JsonProperty
-  public int getPort()
+  public int getDerbyPort()
   {
-    return port;
+    return derbyPort;
   }
 
-  @JsonProperty
   public String getConnectURI()
   {
-    if (connectURI == null) {
-      return StringUtils.format("jdbc:derby://%s:%s/druid;create=true", host, port);
-    }
     return connectURI;
   }
 
-  @JsonProperty
   public String getUser()
   {
     return user;
   }
 
-  @JsonProperty
   public String getPassword()
   {
     return passwordProvider == null ? null : passwordProvider.getPassword();
   }
 
-  @JsonProperty("dbcp")
   public Properties getDbcpProperties()
   {
     return dbcpProperties;
@@ -126,7 +147,7 @@ public class MetadataStorageConnectorConfig
   {
     return "DbConnectorConfig{" +
            "createTables=" + createTables +
-           ", connectURI='" + getConnectURI() + '\'' +
+           ", connectURI='" + connectURI + '\'' +
            ", user='" + user + '\'' +
            ", passwordProvider=" + passwordProvider +
            ", dbcpProperties=" + dbcpProperties +
@@ -139,47 +160,22 @@ public class MetadataStorageConnectorConfig
     if (this == o) {
       return true;
     }
-    if (!(o instanceof MetadataStorageConnectorConfig)) {
+    if (o == null || getClass() != o.getClass()) {
       return false;
     }
-
     MetadataStorageConnectorConfig that = (MetadataStorageConnectorConfig) o;
-
-    if (isCreateTables() != that.isCreateTables()) {
-      return false;
-    }
-    if (getPort() != that.getPort()) {
-      return false;
-    }
-    if (getHost() != null ? !getHost().equals(that.getHost()) : that.getHost() != null) {
-      return false;
-    }
-    if (getConnectURI() != null ? !getConnectURI().equals(that.getConnectURI()) : that.getConnectURI() != null) {
-      return false;
-    }
-    if (getUser() != null ? !getUser().equals(that.getUser()) : that.getUser() != null) {
-      return false;
-    }
-    if (getDbcpProperties() == null
-        ? that.getDbcpProperties() != null
-        : !getDbcpProperties().equals(that.getDbcpProperties())) {
-      return false;
-    }
-
-    return passwordProvider != null ? passwordProvider.equals(that.passwordProvider) : that.passwordProvider == null;
-
+    return createTables == that.createTables
+           && derbyPort == that.derbyPort
+           && Objects.equals(derbyHost, that.derbyHost)
+           && Objects.equals(connectURI, that.connectURI)
+           && Objects.equals(user, that.user)
+           && Objects.equals(passwordProvider, that.passwordProvider)
+           && Objects.equals(dbcpProperties, that.dbcpProperties);
   }
 
   @Override
   public int hashCode()
   {
-    int result = (isCreateTables() ? 1 : 0);
-    result = 31 * result + (getHost() != null ? getHost().hashCode() : 0);
-    result = 31 * result + getPort();
-    result = 31 * result + (getConnectURI() != null ? getConnectURI().hashCode() : 0);
-    result = 31 * result + (getUser() != null ? getUser().hashCode() : 0);
-    result = 31 * result + (passwordProvider != null ? passwordProvider.hashCode() : 0);
-    result = 31 * result + (dbcpProperties != null ? dbcpProperties.hashCode() : 0);
-    return result;
+    return Objects.hash(createTables, derbyPort, derbyHost, connectURI, user, passwordProvider, dbcpProperties);
   }
 }

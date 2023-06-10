@@ -81,26 +81,7 @@ public class CreateTables extends GuiceRunnable
           JsonConfigProvider.bindInstance(
               binder,
               Key.get(MetadataStorageConnectorConfig.class),
-              new MetadataStorageConnectorConfig()
-              {
-                @Override
-                public String getConnectURI()
-                {
-                  return connectURI;
-                }
-
-                @Override
-                public String getUser()
-                {
-                  return user;
-                }
-
-                @Override
-                public String getPassword()
-                {
-                  return password;
-                }
-              }
+              MetadataStorageConnectorConfig.create(connectURI, user, password, null)
           );
           JsonConfigProvider.bindInstance(
               binder,

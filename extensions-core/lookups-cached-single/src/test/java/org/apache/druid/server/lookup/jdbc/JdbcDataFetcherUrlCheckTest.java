@@ -46,14 +46,7 @@ public class JdbcDataFetcherUrlCheckTest
     public void testCreateInstanceWhenUrlHasOnlyAllowedProperties()
     {
       new JdbcDataFetcher(
-          new MetadataStorageConnectorConfig()
-          {
-            @Override
-            public String getConnectURI()
-            {
-              return "jdbc:mysql://localhost:3306/db?valid_key1=val1&valid_key2=val2";
-            }
-          },
+          createConnectorConfig("jdbc:mysql://localhost:3306/db?valid_key1=val1&valid_key2=val2"),
           TABLE_NAME,
           KEY_COLUMN,
           VALUE_COLUMN,
@@ -81,14 +74,7 @@ public class JdbcDataFetcherUrlCheckTest
       expectedException.expect(IllegalArgumentException.class);
       expectedException.expectMessage("The property [invalid_key1] is not in the allowed list [valid_key1, valid_key2]");
       new JdbcDataFetcher(
-          new MetadataStorageConnectorConfig()
-          {
-            @Override
-            public String getConnectURI()
-            {
-              return "jdbc:mysql://localhost:3306/db?invalid_key1=val1&valid_key2=val2";
-            }
-          },
+          createConnectorConfig("jdbc:mysql://localhost:3306/db?invalid_key1=val1&valid_key2=val2"),
           TABLE_NAME,
           KEY_COLUMN,
           VALUE_COLUMN,
@@ -114,14 +100,7 @@ public class JdbcDataFetcherUrlCheckTest
     public void testWhenUrlHasDisallowedPropertiesWhenNotEnforcingAllowedProperties()
     {
       new JdbcDataFetcher(
-          new MetadataStorageConnectorConfig()
-          {
-            @Override
-            public String getConnectURI()
-            {
-              return "jdbc:mysql://localhost:3306/db?invalid_key1=val1&valid_key2=val2";
-            }
-          },
+          createConnectorConfig("jdbc:mysql://localhost:3306/db?invalid_key1=val1&valid_key2=val2"),
           TABLE_NAME,
           KEY_COLUMN,
           VALUE_COLUMN,
@@ -149,14 +128,7 @@ public class JdbcDataFetcherUrlCheckTest
       expectedException.expect(IllegalArgumentException.class);
       expectedException.expectMessage("Invalid URL format for MySQL: [jdbc:mysql:/invalid-url::3006]");
       new JdbcDataFetcher(
-          new MetadataStorageConnectorConfig()
-          {
-            @Override
-            public String getConnectURI()
-            {
-              return "jdbc:mysql:/invalid-url::3006";
-            }
-          },
+          createConnectorConfig("jdbc:mysql:/invalid-url::3006"),
           TABLE_NAME,
           KEY_COLUMN,
           VALUE_COLUMN,
@@ -188,14 +160,7 @@ public class JdbcDataFetcherUrlCheckTest
     public void testCreateInstanceWhenUrlHasOnlyAllowedProperties()
     {
       new JdbcDataFetcher(
-          new MetadataStorageConnectorConfig()
-          {
-            @Override
-            public String getConnectURI()
-            {
-              return "jdbc:postgresql://localhost:5432/db?valid_key1=val1&valid_key2=val2";
-            }
-          },
+          createConnectorConfig("jdbc:postgresql://localhost:5432/db?valid_key1=val1&valid_key2=val2"),
           TABLE_NAME,
           KEY_COLUMN,
           VALUE_COLUMN,
@@ -223,14 +188,7 @@ public class JdbcDataFetcherUrlCheckTest
       expectedException.expect(IllegalArgumentException.class);
       expectedException.expectMessage("The property [invalid_key1] is not in the allowed list [valid_key1, valid_key2]");
       new JdbcDataFetcher(
-          new MetadataStorageConnectorConfig()
-          {
-            @Override
-            public String getConnectURI()
-            {
-              return "jdbc:postgresql://localhost:5432/db?invalid_key1=val1&valid_key2=val2";
-            }
-          },
+          createConnectorConfig("jdbc:postgresql://localhost:5432/db?invalid_key1=val1&valid_key2=val2"),
           TABLE_NAME,
           KEY_COLUMN,
           VALUE_COLUMN,
@@ -256,14 +214,7 @@ public class JdbcDataFetcherUrlCheckTest
     public void testWhenUrlHasDisallowedPropertiesWhenNotEnforcingAllowedProperties()
     {
       new JdbcDataFetcher(
-          new MetadataStorageConnectorConfig()
-          {
-            @Override
-            public String getConnectURI()
-            {
-              return "jdbc:postgresql://localhost:5432/db?invalid_key1=val1&valid_key2=val2";
-            }
-          },
+          createConnectorConfig("jdbc:postgresql://localhost:5432/db?invalid_key1=val1&valid_key2=val2"),
           TABLE_NAME,
           KEY_COLUMN,
           VALUE_COLUMN,
@@ -291,14 +242,7 @@ public class JdbcDataFetcherUrlCheckTest
       expectedException.expect(IllegalArgumentException.class);
       expectedException.expectMessage("Invalid URL format for PostgreSQL: [jdbc:postgresql://invalid-url::3006]");
       new JdbcDataFetcher(
-          new MetadataStorageConnectorConfig()
-          {
-            @Override
-            public String getConnectURI()
-            {
-              return "jdbc:postgresql://invalid-url::3006";
-            }
-          },
+          createConnectorConfig("jdbc:postgresql://invalid-url::3006"),
           TABLE_NAME,
           KEY_COLUMN,
           VALUE_COLUMN,
@@ -332,14 +276,7 @@ public class JdbcDataFetcherUrlCheckTest
       expectedException.expect(IllegalArgumentException.class);
       expectedException.expectMessage("Unknown JDBC connection scheme: mydb");
       new JdbcDataFetcher(
-          new MetadataStorageConnectorConfig()
-          {
-            @Override
-            public String getConnectURI()
-            {
-              return "jdbc:mydb://localhost:5432/db?valid_key1=val1&valid_key2=val2";
-            }
-          },
+          createConnectorConfig("jdbc:mydb://localhost:5432/db?valid_key1=val1&valid_key2=val2"),
           TABLE_NAME,
           KEY_COLUMN,
           VALUE_COLUMN,
@@ -371,14 +308,7 @@ public class JdbcDataFetcherUrlCheckTest
     public void testSkipUrlParsingWhenUnknownFormatIsAllowed()
     {
       new JdbcDataFetcher(
-          new MetadataStorageConnectorConfig()
-          {
-            @Override
-            public String getConnectURI()
-            {
-              return "jdbc:mydb://localhost:5432/db?valid_key1=val1&valid_key2=val2";
-            }
-          },
+          createConnectorConfig("jdbc:mydb://localhost:5432/db?valid_key1=val1&valid_key2=val2"),
           TABLE_NAME,
           KEY_COLUMN,
           VALUE_COLUMN,
@@ -405,5 +335,10 @@ public class JdbcDataFetcherUrlCheckTest
           }
       );
     }
+  }
+
+  private static MetadataStorageConnectorConfig createConnectorConfig(String connectUri)
+  {
+    return MetadataStorageConnectorConfig.create(connectUri);
   }
 }

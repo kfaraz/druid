@@ -35,22 +35,16 @@ public class BasicDataSourceExtTest
   @Test
   public void testCreateConnectionFactory() throws Exception
   {
-    MetadataStorageConnectorConfig connectorConfig = new MetadataStorageConnectorConfig()
-    {
-      private final List<String> passwords = Lists.newArrayList("pwd1", "pwd2");
-
-      @Override
-      public String getUser()
-      {
-        return "testuser";
-      }
-
-      @Override
-      public String getPassword()
-      {
-        return passwords.remove(0);
-      }
-    };
+    final List<String> passwords = Lists.newArrayList("pwd1", "pwd2");
+    MetadataStorageConnectorConfig connectorConfig = new MetadataStorageConnectorConfig(
+        null,
+        null,
+        null,
+        "testuser",
+        () -> passwords.remove(0),
+        null,
+        null
+    );
 
     BasicDataSourceExt basicDataSourceExt = new BasicDataSourceExt(connectorConfig);
 

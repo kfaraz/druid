@@ -60,26 +60,7 @@ public class MetadataStorageUpdaterJobSpec implements Supplier<MetadataStorageCo
   @Override
   public MetadataStorageConnectorConfig get()
   {
-    return new MetadataStorageConnectorConfig()
-    {
-      @Override
-      public String getConnectURI()
-      {
-        return connectURI;
-      }
-
-      @Override
-      public String getUser()
-      {
-        return user;
-      }
-
-      @Override
-      public String getPassword()
-      {
-        return passwordProvider == null ? null : passwordProvider.getPassword();
-      }
-    };
+    return new MetadataStorageConnectorConfig(connectURI, null, null, user, passwordProvider, null, null);
   }
 
   //Note: Currently it only supports configured segmentTable, other tables should be added if needed

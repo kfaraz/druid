@@ -56,7 +56,7 @@ public class SqlTestUtils
   {
     this.derbyConnector = derbyConnector;
     this.derbyFirehoseConnector = new SqlTestUtils.TestDerbyFirehoseConnector(
-        new MetadataStorageConnectorConfig(),
+        MetadataStorageConnectorConfig.create(null),
         derbyConnector.getDBI()
     );
   }

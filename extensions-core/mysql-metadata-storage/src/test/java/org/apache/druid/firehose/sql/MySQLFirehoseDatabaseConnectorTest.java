@@ -64,19 +64,13 @@ public class MySQLFirehoseDatabaseConnectorTest
   {
     ObjectMapper mapper = new DefaultObjectMapper();
     mapper.registerModules(new MySQLMetadataStorageModule().getJacksonModules());
-    mapper.setInjectableValues(new InjectableValues.Std().addValue(JdbcAccessSecurityConfig.class, INJECTED_CONF)
-                                                         .addValue(
-                                                             MySQLConnectorDriverConfig.class,
-                                                             mySQLConnectorDriverConfig
-                                                         ));
-    MetadataStorageConnectorConfig connectorConfig = new MetadataStorageConnectorConfig()
-    {
-      @Override
-      public String getConnectURI()
-      {
-        return "jdbc:mysql://localhost:3306/test";
-      }
-    };
+    mapper.setInjectableValues(
+        new InjectableValues.Std()
+            .addValue(JdbcAccessSecurityConfig.class, INJECTED_CONF)
+            .addValue(MySQLConnectorDriverConfig.class, mySQLConnectorDriverConfig)
+    );
+    final MetadataStorageConnectorConfig connectorConfig
+        = createMetadataStorageConfig("jdbc:mysql://localhost:3306/test");
     MySQLFirehoseDatabaseConnector connector = new MySQLFirehoseDatabaseConnector(
         connectorConfig,
         null,
@@ -113,19 +107,10 @@ public class MySQLFirehoseDatabaseConnectorTest
   @Test
   public void testSuccessWhenNoPropertyInUriAndNoAllowlist()
   {
-    MetadataStorageConnectorConfig connectorConfig = new MetadataStorageConnectorConfig()
-    {
-      @Override
-      public String getConnectURI()
-      {
-        return "jdbc:mysql://localhost:3306/test";
-      }
-    };
-
     JdbcAccessSecurityConfig securityConfig = newSecurityConfigEnforcingAllowList(ImmutableSet.of());
 
     new MySQLFirehoseDatabaseConnector(
-        connectorConfig,
+        MetadataStorageConnectorConfig.create("jdbc:mysql://localhost:3306/test"),
         null,
         securityConfig,
         mySQLConnectorDriverConfig
@@ -135,19 +120,10 @@ public class MySQLFirehoseDatabaseConnectorTest
   @Test
   public void testSuccessWhenAllowlistAndNoProperty()
   {
-    MetadataStorageConnectorConfig connectorConfig = new MetadataStorageConnectorConfig()
-    {
-      @Override
-      public String getConnectURI()
-      {
-        return "jdbc:mysql://localhost:3306/test";
-      }
-    };
-
     JdbcAccessSecurityConfig securityConfig = newSecurityConfigEnforcingAllowList(ImmutableSet.of("user"));
 
     new MySQLFirehoseDatabaseConnector(
-        connectorConfig,
+        createMetadataStorageConfig("jdbc:mysql://localhost:3306/test"),
         null,
         securityConfig,
         mySQLConnectorDriverConfig
@@ -157,22 +133,13 @@ public class MySQLFirehoseDatabaseConnectorTest
   @Test
   public void testFailWhenNoAllowlistAndHaveProperty()
   {
-    MetadataStorageConnectorConfig connectorConfig = new MetadataStorageConnectorConfig()
-    {
-      @Override
-      public String getConnectURI()
-      {
-        return "jdbc:mysql://localhost:3306/test?user=maytas&password=secret&keyonly";
-      }
-    };
-
     JdbcAccessSecurityConfig securityConfig = newSecurityConfigEnforcingAllowList(ImmutableSet.of(""));
 
     expectedException.expectMessage("The property [password] is not in the allowed list");
     expectedException.expect(IllegalArgumentException.class);
 
     new MySQLFirehoseDatabaseConnector(
-        connectorConfig,
+        createMetadataStorageConfig("jdbc:mysql://localhost:3306/test?user=admin&password=secret&keyonly"),
         null,
         securityConfig,
         mySQLConnectorDriverConfig
@@ -182,21 +149,12 @@ public class MySQLFirehoseDatabaseConnectorTest
   @Test
   public void testSuccessOnlyValidProperty()
   {
-    MetadataStorageConnectorConfig connectorConfig = new MetadataStorageConnectorConfig()
-    {
-      @Override
-      public String getConnectURI()
-      {
-        return "jdbc:mysql://localhost:3306/test?user=maytas&password=secret&keyonly";
-      }
-    };
-
     JdbcAccessSecurityConfig securityConfig = newSecurityConfigEnforcingAllowList(
         ImmutableSet.of("user", "password", "keyonly", "etc")
     );
 
     new MySQLFirehoseDatabaseConnector(
-        connectorConfig,
+        createMetadataStorageConfig("jdbc:mysql://localhost:3306/test?user=admin&password=secret&keyonly"),
         null,
         securityConfig,
         mySQLConnectorDriverConfig
@@ -206,21 +164,12 @@ public class MySQLFirehoseDatabaseConnectorTest
   @Test
   public void testSuccessOnlyValidPropertyMariaDb()
   {
-    MetadataStorageConnectorConfig connectorConfig = new MetadataStorageConnectorConfig()
-    {
-      @Override
-      public String getConnectURI()
-      {
-        return "jdbc:mariadb://localhost:3306/test?user=maytas&password=secret&keyonly";
-      }
-    };
-
     JdbcAccessSecurityConfig securityConfig = newSecurityConfigEnforcingAllowList(
         ImmutableSet.of("user", "password", "keyonly", "etc")
     );
 
     new MySQLFirehoseDatabaseConnector(
-        connectorConfig,
+        createMetadataStorageConfig("jdbc:mariadb://localhost:3306/test?user=admin&password=secret&keyonly"),
         null,
         securityConfig,
         mySQLConnectorDriverConfig
@@ -231,22 +180,13 @@ public class MySQLFirehoseDatabaseConnectorTest
   @Test
   public void testFailOnlyInvalidProperty()
   {
-    MetadataStorageConnectorConfig connectorConfig = new MetadataStorageConnectorConfig()
-    {
-      @Override
-      public String getConnectURI()
-      {
-        return "jdbc:mysql://localhost:3306/test?user=maytas&password=secret&keyonly";
-      }
-    };
-
     JdbcAccessSecurityConfig securityConfig = newSecurityConfigEnforcingAllowList(ImmutableSet.of("none", "nonenone"));
 
     expectedException.expectMessage("The property [password] is not in the allowed list");
     expectedException.expect(IllegalArgumentException.class);
 
     new MySQLFirehoseDatabaseConnector(
-        connectorConfig,
+        createMetadataStorageConfig("jdbc:mysql://localhost:3306/test?user=admin&password=secret&keyonly"),
         null,
         securityConfig,
         mySQLConnectorDriverConfig
@@ -256,22 +196,13 @@ public class MySQLFirehoseDatabaseConnectorTest
   @Test
   public void testFailValidAndInvalidProperty()
   {
-    MetadataStorageConnectorConfig connectorConfig = new MetadataStorageConnectorConfig()
-    {
-      @Override
-      public String getConnectURI()
-      {
-        return "jdbc:mysql://localhost:3306/test?user=maytas&password=secret&keyonly";
-      }
-    };
-
     JdbcAccessSecurityConfig securityConfig = newSecurityConfigEnforcingAllowList(ImmutableSet.of("user", "nonenone"));
 
     expectedException.expectMessage("The property [password] is not in the allowed list");
     expectedException.expect(IllegalArgumentException.class);
 
     new MySQLFirehoseDatabaseConnector(
-        connectorConfig,
+        createMetadataStorageConfig("jdbc:mysql://localhost:3306/test?user=admin&password=secret&keyonly"),
         null,
         securityConfig,
         mySQLConnectorDriverConfig
@@ -281,22 +212,13 @@ public class MySQLFirehoseDatabaseConnectorTest
   @Test
   public void testFailValidAndInvalidPropertyMariadb()
   {
-    MetadataStorageConnectorConfig connectorConfig = new MetadataStorageConnectorConfig()
-    {
-      @Override
-      public String getConnectURI()
-      {
-        return "jdbc:mariadb://localhost:3306/test?user=maytas&password=secret&keyonly";
-      }
-    };
-
     JdbcAccessSecurityConfig securityConfig = newSecurityConfigEnforcingAllowList(ImmutableSet.of("user", "nonenone"));
 
     expectedException.expectMessage("The property [password] is not in the allowed list");
     expectedException.expect(IllegalArgumentException.class);
 
     new MySQLFirehoseDatabaseConnector(
-        connectorConfig,
+        createMetadataStorageConfig("jdbc:mariadb://localhost:3306/test?user=admin&password=secret&keyonly"),
         null,
         securityConfig,
         mySQLConnectorDriverConfig
@@ -306,15 +228,6 @@ public class MySQLFirehoseDatabaseConnectorTest
   @Test
   public void testIgnoreInvalidPropertyWhenNotEnforcingAllowList()
   {
-    MetadataStorageConnectorConfig connectorConfig = new MetadataStorageConnectorConfig()
-    {
-      @Override
-      public String getConnectURI()
-      {
-        return "jdbc:mysql://localhost:3306/test?user=maytas&password=secret&keyonly";
-      }
-    };
-
     JdbcAccessSecurityConfig securityConfig = new JdbcAccessSecurityConfig()
     {
       @Override
@@ -331,7 +244,7 @@ public class MySQLFirehoseDatabaseConnectorTest
     };
 
     new MySQLFirehoseDatabaseConnector(
-        connectorConfig,
+        createMetadataStorageConfig("jdbc:mysql://localhost:3306/test?user=admin&password=secret&keyonly"),
         null,
         securityConfig,
         mySQLConnectorDriverConfig
@@ -342,23 +255,19 @@ public class MySQLFirehoseDatabaseConnectorTest
   public void testFindPropertyKeysFromInvalidConnectUrl()
   {
     final String url = "jdbc:mysql:/invalid-url::3006";
-    MetadataStorageConnectorConfig connectorConfig = new MetadataStorageConnectorConfig()
-    {
-      @Override
-      public String getConnectURI()
-      {
-        return url;
-      }
-    };
-
     expectedException.expect(RuntimeException.class);
     expectedException.expectMessage(StringUtils.format("Invalid URL format for MySQL: [%s]", url));
     new MySQLFirehoseDatabaseConnector(
-        connectorConfig,
+        createMetadataStorageConfig(url),
         null,
         new JdbcAccessSecurityConfig(),
         mySQLConnectorDriverConfig
     );
+  }
+
+  private MetadataStorageConnectorConfig createMetadataStorageConfig(String connectUri)
+  {
+    return MetadataStorageConnectorConfig.create(connectUri);
   }
 
   private static JdbcAccessSecurityConfig newSecurityConfigEnforcingAllowList(Set<String> allowedProperties)

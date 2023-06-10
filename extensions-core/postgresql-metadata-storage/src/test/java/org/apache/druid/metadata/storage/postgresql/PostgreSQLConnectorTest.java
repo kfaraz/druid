@@ -34,7 +34,7 @@ public class PostgreSQLConnectorTest
   public void testIsTransientException()
   {
     PostgreSQLConnector connector = new PostgreSQLConnector(
-        Suppliers.ofInstance(new MetadataStorageConnectorConfig()),
+        Suppliers.ofInstance(MetadataStorageConnectorConfig.create(null)),
         Suppliers.ofInstance(
             new MetadataStorageTablesConfig(
                 null,
@@ -56,7 +56,7 @@ public class PostgreSQLConnectorTest
 
     Assert.assertTrue(connector.isTransientException(new SQLException("bummer, connection problem", "08DIE")));
     Assert.assertTrue(connector.isTransientException(new SQLException("bummer, too many things going on", "53RES")));
-    Assert.assertFalse(connector.isTransientException(new SQLException("oh god, no!", "58000")));
+    Assert.assertFalse(connector.isTransientException(new SQLException("test", "58000")));
     Assert.assertFalse(connector.isTransientException(new SQLException("help!")));
     Assert.assertFalse(connector.isTransientException(new SQLException()));
     Assert.assertFalse(connector.isTransientException(new Exception("I'm not happy")));
@@ -67,7 +67,7 @@ public class PostgreSQLConnectorTest
   public void testLimitClause()
   {
     PostgreSQLConnector connector = new PostgreSQLConnector(
-        Suppliers.ofInstance(new MetadataStorageConnectorConfig()),
+        Suppliers.ofInstance(MetadataStorageConnectorConfig.create(null)),
         Suppliers.ofInstance(
             new MetadataStorageTablesConfig(null, null, null, null, null, null, null, null, null, null, null)
         ),

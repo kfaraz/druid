@@ -37,7 +37,7 @@ public class DerbyMetadataStorage extends MetadataStorage
   public DerbyMetadataStorage(MetadataStorageConnectorConfig config)
   {
     try {
-      this.server = new NetworkServerControl(InetAddress.getByName(config.getHost()), config.getPort());
+      this.server = new NetworkServerControl(InetAddress.getByName(config.getDerbyHost()), config.getDerbyPort());
     }
     catch (Exception e) {
       throw new RuntimeException(e);

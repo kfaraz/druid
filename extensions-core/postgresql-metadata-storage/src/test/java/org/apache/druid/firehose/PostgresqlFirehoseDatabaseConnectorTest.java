@@ -52,16 +52,8 @@ public class PostgresqlFirehoseDatabaseConnectorTest
   @Test
   public void testSerde() throws JsonProcessingException
   {
-    MetadataStorageConnectorConfig connectorConfig = new MetadataStorageConnectorConfig()
-    {
-      @Override
-      public String getConnectURI()
-      {
-        return "jdbc:postgresql://localhost:3306/test";
-      }
-    };
     PostgresqlFirehoseDatabaseConnector connector = new PostgresqlFirehoseDatabaseConnector(
-        connectorConfig,
+        MetadataStorageConnectorConfig.create("jdbc:postgresql://localhost:3306/test"),
         INJECTED_CONF
     );
     PostgresqlFirehoseDatabaseConnector andBack = MAPPER.readValue(
@@ -84,19 +76,10 @@ public class PostgresqlFirehoseDatabaseConnectorTest
   @Test
   public void testSuccessWhenNoPropertyInUriAndNoAllowlist()
   {
-    MetadataStorageConnectorConfig connectorConfig = new MetadataStorageConnectorConfig()
-    {
-      @Override
-      public String getConnectURI()
-      {
-        return "jdbc:postgresql://localhost:3306/test";
-      }
-    };
-
     JdbcAccessSecurityConfig securityConfig = newSecurityConfigEnforcingAllowList(ImmutableSet.of());
 
     new PostgresqlFirehoseDatabaseConnector(
-        connectorConfig,
+        MetadataStorageConnectorConfig.create("jdbc:postgresql://localhost:3306/test"),
         securityConfig
     );
   }
@@ -104,125 +87,76 @@ public class PostgresqlFirehoseDatabaseConnectorTest
   @Test
   public void testSuccessWhenAllowlistAndNoProperty()
   {
-    MetadataStorageConnectorConfig connectorConfig = new MetadataStorageConnectorConfig()
-    {
-      @Override
-      public String getConnectURI()
-      {
-        return "jdbc:postgresql://localhost:3306/test";
-      }
-    };
-
+    MetadataStorageConnectorConfig connectorConfig =
+        MetadataStorageConnectorConfig.create("jdbc:postgresql://localhost:3306/test");
     JdbcAccessSecurityConfig securityConfig = newSecurityConfigEnforcingAllowList(ImmutableSet.of("user"));
 
-    new PostgresqlFirehoseDatabaseConnector(
-        connectorConfig,
-        securityConfig
-    );
+    new PostgresqlFirehoseDatabaseConnector(connectorConfig, securityConfig);
   }
 
   @Test
   public void testFailWhenNoAllowlistAndHaveProperty()
   {
-    MetadataStorageConnectorConfig connectorConfig = new MetadataStorageConnectorConfig()
-    {
-      @Override
-      public String getConnectURI()
-      {
-        return "jdbc:postgresql://localhost:3306/test?user=maytas&password=secret&keyonly";
-      }
-    };
-
+    MetadataStorageConnectorConfig connectorConfig = MetadataStorageConnectorConfig.create(
+        "jdbc:postgresql://localhost:3306/test?user=admin&password=secret&keyonly"
+    );
     JdbcAccessSecurityConfig securityConfig = newSecurityConfigEnforcingAllowList(ImmutableSet.of(""));
 
     expectedException.expectMessage("is not in the allowed list");
     expectedException.expect(IllegalArgumentException.class);
 
-    new PostgresqlFirehoseDatabaseConnector(
-        connectorConfig,
-        securityConfig
-    );
+    new PostgresqlFirehoseDatabaseConnector(connectorConfig, securityConfig);
   }
 
   @Test
   public void testSuccessOnlyValidProperty()
   {
-    MetadataStorageConnectorConfig connectorConfig = new MetadataStorageConnectorConfig()
-    {
-      @Override
-      public String getConnectURI()
-      {
-        return "jdbc:postgresql://localhost:3306/test?user=maytas&password=secret&keyonly";
-      }
-    };
-
     JdbcAccessSecurityConfig securityConfig = newSecurityConfigEnforcingAllowList(
         ImmutableSet.of("user", "password", "keyonly", "etc")
     );
-
-    new PostgresqlFirehoseDatabaseConnector(
-        connectorConfig,
-        securityConfig
+    MetadataStorageConnectorConfig connectorConfig = MetadataStorageConnectorConfig.create(
+        "jdbc:postgresql://localhost:3306/test?user=admin&password=secret&keyonly"
     );
+
+    new PostgresqlFirehoseDatabaseConnector(connectorConfig, securityConfig);
   }
 
   @Test
   public void testFailOnlyInvalidProperty()
   {
-    MetadataStorageConnectorConfig connectorConfig = new MetadataStorageConnectorConfig()
-    {
-      @Override
-      public String getConnectURI()
-      {
-        return "jdbc:postgresql://localhost:3306/test?user=maytas&password=secret&keyonly";
-      }
-    };
+    MetadataStorageConnectorConfig connectorConfig = MetadataStorageConnectorConfig.create(
+        "jdbc:postgresql://localhost:3306/test?user=admin&password=secret&keyonly"
+    );
 
     JdbcAccessSecurityConfig securityConfig = newSecurityConfigEnforcingAllowList(ImmutableSet.of("none", "nonenone"));
 
     expectedException.expectMessage("is not in the allowed list");
     expectedException.expect(IllegalArgumentException.class);
 
-    new PostgresqlFirehoseDatabaseConnector(
-        connectorConfig,
-        securityConfig
-    );
+    new PostgresqlFirehoseDatabaseConnector(connectorConfig, securityConfig);
   }
 
   @Test
   public void testFailValidAndInvalidProperty()
   {
-    MetadataStorageConnectorConfig connectorConfig = new MetadataStorageConnectorConfig()
-    {
-      @Override
-      public String getConnectURI()
-      {
-        return "jdbc:postgresql://localhost:3306/test?user=maytas&password=secret&keyonly";
-      }
-    };
+    MetadataStorageConnectorConfig connectorConfig = MetadataStorageConnectorConfig.create(
+        "jdbc:postgresql://localhost:3306/test?user=admin&password=secret&keyonly"
+    );
 
     JdbcAccessSecurityConfig securityConfig = newSecurityConfigEnforcingAllowList(ImmutableSet.of("user", "nonenone"));
 
     expectedException.expectMessage("is not in the allowed list");
     expectedException.expect(IllegalArgumentException.class);
 
-    new PostgresqlFirehoseDatabaseConnector(
-        connectorConfig,
-        securityConfig
-    );
+    new PostgresqlFirehoseDatabaseConnector(connectorConfig, securityConfig);
   }
 
   @Test
   public void testIgnoreInvalidPropertyWhenNotEnforcingAllowList()
   {
-    MetadataStorageConnectorConfig connectorConfig = new MetadataStorageConnectorConfig()
-    {
-      @Override
-      public String getConnectURI()
-      {
-        return "jdbc:postgresql://localhost:3306/test?user=maytas&password=secret&keyonly";
-      }
-    };
+    MetadataStorageConnectorConfig connectorConfig = MetadataStorageConnectorConfig.create(
+        "jdbc:postgresql://localhost:3306/test?user=admin&password=secret&keyonly"
+    );
 
     JdbcAccessSecurityConfig securityConfig = new JdbcAccessSecurityConfig()
     {
@@ -239,10 +173,7 @@ public class PostgresqlFirehoseDatabaseConnectorTest
       }
     };
 
-    new PostgresqlFirehoseDatabaseConnector(
-        connectorConfig,
-        securityConfig
-    );
+    new PostgresqlFirehoseDatabaseConnector(connectorConfig, securityConfig);
   }
 
   private static JdbcAccessSecurityConfig newSecurityConfigEnforcingAllowList(Set<String> allowedProperties)

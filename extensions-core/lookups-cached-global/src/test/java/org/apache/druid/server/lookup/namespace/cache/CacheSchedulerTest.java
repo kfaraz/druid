@@ -443,14 +443,7 @@ public class CacheSchedulerTest
   public void testSimpleSubmissionFailureWithWait() throws InterruptedException
   {
     JdbcExtractionNamespace namespace = new JdbcExtractionNamespace(
-        new MetadataStorageConnectorConfig()
-        {
-          @Override
-          public String getConnectURI()
-          {
-            return "jdbc:mysql://dummy:3306/db";
-          }
-        },
+        MetadataStorageConnectorConfig.create("jdbc:mysql://dummy:3306/db"),
         "foo",
         "k",
         "val",

@@ -35,7 +35,7 @@ public class SQLServerConnectorTest
   public void testIsTransientException()
   {
     SQLServerConnector connector = new SQLServerConnector(
-        Suppliers.ofInstance(new MetadataStorageConnectorConfig()),
+        Suppliers.ofInstance(MetadataStorageConnectorConfig.create(null)),
         Suppliers.ofInstance(
             new MetadataStorageTablesConfig(
                 null,
@@ -68,7 +68,7 @@ public class SQLServerConnectorTest
   public void testLimitClause()
   {
     SQLServerConnector connector = new SQLServerConnector(
-        Suppliers.ofInstance(new MetadataStorageConnectorConfig()),
+        Suppliers.ofInstance(MetadataStorageConnectorConfig.create(null)),
         Suppliers.ofInstance(
             new MetadataStorageTablesConfig(null, null, null, null, null, null, null, null, null, null, null)
         )

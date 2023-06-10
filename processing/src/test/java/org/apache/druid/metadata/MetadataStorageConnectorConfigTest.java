@@ -31,57 +31,32 @@ import java.util.Properties;
 public class MetadataStorageConnectorConfigTest
 {
 
-  private MetadataStorageConnectorConfig createMetadataStorageConfig(
-      boolean createTables,
-      String host,
-      int port,
-      String connectURI,
-      String user,
-      String pwdString
-  )
-      throws IOException
+  private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
+
+  @Test
+  public void testSerde() throws IOException
   {
-    return JSON_MAPPER.readValue(
-        "{" +
-        "\"createTables\": \"" + createTables + "\"," +
-        "\"host\": \"" + host + "\"," +
-        "\"port\": \"" + port + "\"," +
-        "\"connectURI\": \"" + connectURI + "\"," +
-        "\"user\": \"" + user + "\"," +
-        "\"password\": " + pwdString + "," +
-        "\"dbcp\": {\n" +
-        "  \"maxConnLifetimeMillis\" : 1200000,\n" +
-        "  \"defaultQueryTimeout\" : \"30000\"\n" +
-        "}" +
-        "}",
-        MetadataStorageConnectorConfig.class
-    );
+    MetadataStorageConnectorConfig config =
+        MetadataStorageConnectorConfig.create("localhost:1000", "user", "pwd", null);
+
+    String json = JSON_MAPPER.writeValueAsString(config);
+    System.out.println("Json: " + json);
+
+    MetadataStorageConnectorConfig deserConfig = JSON_MAPPER.readValue(json, MetadataStorageConnectorConfig.class);
+    Assert.assertEquals(config, deserConfig);
   }
 
   @Test
   public void testEquals() throws IOException
   {
-    MetadataStorageConnectorConfig metadataStorageConnectorConfig = createMetadataStorageConfig(
-        true,
-        "testHost",
-        4000,
-        "url",
-        "user",
-        "\"nothing\""
-    );
-    MetadataStorageConnectorConfig metadataStorageConnectorConfig2 = createMetadataStorageConfig(
-        true,
-        "testHost",
-        4000,
-        "url",
-        "user",
-        "\"nothing\""
-    );
+    final Map<String, String> dbcpProps = ImmutableMap.of("key", "value");
+    MetadataStorageConnectorConfig metadataStorageConnectorConfig
+        = MetadataStorageConnectorConfig.create("url", "user", "password", dbcpProps);
+    MetadataStorageConnectorConfig metadataStorageConnectorConfig2
+        = MetadataStorageConnectorConfig.create("url", "user", "password", dbcpProps);
     Assert.assertEquals(metadataStorageConnectorConfig, metadataStorageConnectorConfig2);
     Assert.assertEquals(metadataStorageConnectorConfig.hashCode(), metadataStorageConnectorConfig2.hashCode());
   }
-
-  private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
   @Test
   public void testMetadataStorageConnectionConfigSimplePassword() throws Exception
@@ -98,7 +73,7 @@ public class MetadataStorageConnectorConfigTest
   }
 
   @Test
-  public void testMetadataStorageConnectionConfigWithDefaultProviderPassword() throws Exception
+  public void testSerdeWithDefaultProviderPassword() throws Exception
   {
     testMetadataStorageConnectionConfig(
         true,
@@ -133,8 +108,8 @@ public class MetadataStorageConnectorConfigTest
         MetadataStorageConnectorConfig.class
     );
 
-    Assert.assertEquals(host, config.getHost());
-    Assert.assertEquals(port, config.getPort());
+    Assert.assertEquals(host, config.getDerbyHost());
+    Assert.assertEquals(port, config.getDerbyPort());
     Assert.assertEquals(connectURI, config.getConnectURI());
     Assert.assertEquals(user, config.getUser());
     Assert.assertEquals(pwd, config.getPassword());
@@ -180,8 +155,8 @@ public class MetadataStorageConnectorConfigTest
             MetadataStorageConnectorConfig.class
     );
 
-    Assert.assertEquals(host, config.getHost());
-    Assert.assertEquals(port, config.getPort());
+    Assert.assertEquals(host, config.getDerbyHost());
+    Assert.assertEquals(port, config.getDerbyPort());
     Assert.assertEquals(connectURI, config.getConnectURI());
     Assert.assertEquals(user, config.getUser());
     Assert.assertEquals(pwd, config.getPassword());

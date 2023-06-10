@@ -79,7 +79,7 @@ public class TaskActionTestKit extends ExternalResource
   {
     taskStorage = new HeapMemoryTaskStorage(new TaskStorageConfig(new Period("PT24H")));
     testDerbyConnector = new TestDerbyConnector(
-        Suppliers.ofInstance(new MetadataStorageConnectorConfig()),
+        Suppliers.ofInstance(MetadataStorageConnectorConfig.create(null)),
         Suppliers.ofInstance(metadataStorageTablesConfig)
     );
     final ObjectMapper objectMapper = new TestUtils().getTestObjectMapper();

@@ -39,6 +39,11 @@ public class JdbcExtractionNamespaceUrlCheckTest
   private static final String VAL_NAME = "valName";
   private static final String TS_COLUMN = "tsColumn";
 
+  private static MetadataStorageConnectorConfig createConnectorConfig(String connectUri)
+  {
+    return MetadataStorageConnectorConfig.create(connectUri);
+  }
+
   public static class MySqlTest
   {
     @Rule
@@ -48,14 +53,7 @@ public class JdbcExtractionNamespaceUrlCheckTest
     public void testCreateInstanceWhenUrlHasOnlyAllowedProperties()
     {
       new JdbcExtractionNamespace(
-          new MetadataStorageConnectorConfig()
-          {
-            @Override
-            public String getConnectURI()
-            {
-              return "jdbc:mysql://localhost:3306/db?valid_key1=val1&valid_key2=val2";
-            }
-          },
+          createConnectorConfig("jdbc:mysql://localhost:3306/db?valid_key1=val1&valid_key2=val2"),
           TABLE_NAME,
           KEY_NAME,
           VAL_NAME,
@@ -86,14 +84,7 @@ public class JdbcExtractionNamespaceUrlCheckTest
       expectedException.expect(IllegalArgumentException.class);
       expectedException.expectMessage("The property [invalid_key1] is not in the allowed list [valid_key1, valid_key2]");
       new JdbcExtractionNamespace(
-          new MetadataStorageConnectorConfig()
-          {
-            @Override
-            public String getConnectURI()
-            {
-              return "jdbc:mysql://localhost:3306/db?invalid_key1=val1&valid_key2=val2";
-            }
-          },
+          createConnectorConfig("jdbc:mysql://localhost:3306/db?invalid_key1=val1&valid_key2=val2"),
           TABLE_NAME,
           KEY_NAME,
           VAL_NAME,
@@ -122,14 +113,7 @@ public class JdbcExtractionNamespaceUrlCheckTest
     public void testWhenUrlHasNonAllowedPropertiesWhenNotEnforcingAllowedProperties()
     {
       new JdbcExtractionNamespace(
-          new MetadataStorageConnectorConfig()
-          {
-            @Override
-            public String getConnectURI()
-            {
-              return "jdbc:mysql://localhost:3306/db?invalid_key1=val1&valid_key2=val2";
-            }
-          },
+          createConnectorConfig("jdbc:mysql://localhost:3306/db?invalid_key1=val1&valid_key2=val2"),
           TABLE_NAME,
           KEY_NAME,
           VAL_NAME,
@@ -160,14 +144,7 @@ public class JdbcExtractionNamespaceUrlCheckTest
       expectedException.expect(IllegalArgumentException.class);
       expectedException.expectMessage("Invalid URL format for MySQL: [jdbc:mysql:/invalid-url::3006]");
       new JdbcExtractionNamespace(
-          new MetadataStorageConnectorConfig()
-          {
-            @Override
-            public String getConnectURI()
-            {
-              return "jdbc:mysql:/invalid-url::3006";
-            }
-          },
+          createConnectorConfig("jdbc:mysql:/invalid-url::3006"),
           TABLE_NAME,
           KEY_NAME,
           VAL_NAME,
@@ -202,14 +179,7 @@ public class JdbcExtractionNamespaceUrlCheckTest
     public void testCreateInstanceWhenUrlHasOnlyAllowedProperties()
     {
       new JdbcExtractionNamespace(
-          new MetadataStorageConnectorConfig()
-          {
-            @Override
-            public String getConnectURI()
-            {
-              return "jdbc:postgresql://localhost:5432/db?valid_key1=val1&valid_key2=val2";
-            }
-          },
+          createConnectorConfig("jdbc:postgresql://localhost:5432/db?valid_key1=val1&valid_key2=val2"),
           TABLE_NAME,
           KEY_NAME,
           VAL_NAME,
@@ -240,14 +210,7 @@ public class JdbcExtractionNamespaceUrlCheckTest
       expectedException.expect(IllegalArgumentException.class);
       expectedException.expectMessage("The property [invalid_key1] is not in the allowed list [valid_key1, valid_key2]");
       new JdbcExtractionNamespace(
-          new MetadataStorageConnectorConfig()
-          {
-            @Override
-            public String getConnectURI()
-            {
-              return "jdbc:postgresql://localhost:5432/db?invalid_key1=val1&valid_key2=val2";
-            }
-          },
+          createConnectorConfig("jdbc:postgresql://localhost:5432/db?invalid_key1=val1&valid_key2=val2"),
           TABLE_NAME,
           KEY_NAME,
           VAL_NAME,
@@ -276,14 +239,7 @@ public class JdbcExtractionNamespaceUrlCheckTest
     public void testWhenUrlHasNonAllowedPropertiesWhenNotEnforcingAllowedProperties()
     {
       new JdbcExtractionNamespace(
-          new MetadataStorageConnectorConfig()
-          {
-            @Override
-            public String getConnectURI()
-            {
-              return "jdbc:postgresql://localhost:5432/db?invalid_key1=val1&valid_key2=val2";
-            }
-          },
+          createConnectorConfig("jdbc:postgresql://localhost:5432/db?invalid_key1=val1&valid_key2=val2"),
           TABLE_NAME,
           KEY_NAME,
           VAL_NAME,
@@ -314,14 +270,7 @@ public class JdbcExtractionNamespaceUrlCheckTest
       expectedException.expect(IllegalArgumentException.class);
       expectedException.expectMessage("Invalid URL format for PostgreSQL: [jdbc:postgresql://invalid-url::3006]");
       new JdbcExtractionNamespace(
-          new MetadataStorageConnectorConfig()
-          {
-            @Override
-            public String getConnectURI()
-            {
-              return "jdbc:postgresql://invalid-url::3006";
-            }
-          },
+          createConnectorConfig("jdbc:postgresql://invalid-url::3006"),
           TABLE_NAME,
           KEY_NAME,
           VAL_NAME,
@@ -358,14 +307,7 @@ public class JdbcExtractionNamespaceUrlCheckTest
       expectedException.expect(IllegalArgumentException.class);
       expectedException.expectMessage("Unknown JDBC connection scheme: mydb");
       new JdbcExtractionNamespace(
-          new MetadataStorageConnectorConfig()
-          {
-            @Override
-            public String getConnectURI()
-            {
-              return "jdbc:mydb://localhost:5432/db?valid_key1=val1&valid_key2=val2";
-            }
-          },
+          createConnectorConfig("jdbc:mydb://localhost:5432/db?valid_key1=val1&valid_key2=val2"),
           TABLE_NAME,
           KEY_NAME,
           VAL_NAME,
@@ -400,14 +342,7 @@ public class JdbcExtractionNamespaceUrlCheckTest
     public void testSkipUrlParsingWhenUnknownFormatIsAllowed()
     {
       new JdbcExtractionNamespace(
-          new MetadataStorageConnectorConfig()
-          {
-            @Override
-            public String getConnectURI()
-            {
-              return "jdbc:mydb://localhost:5432/db?valid_key1=val1&valid_key2=val2";
-            }
-          },
+          createConnectorConfig("jdbc:mydb://localhost:5432/db?valid_key1=val1&valid_key2=val2"),
           TABLE_NAME,
           KEY_NAME,
           VAL_NAME,

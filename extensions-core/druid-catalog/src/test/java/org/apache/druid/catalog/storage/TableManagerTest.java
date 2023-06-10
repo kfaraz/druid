@@ -67,9 +67,9 @@ public class TableManagerTest
     MetadataStorageManager metastoreMgr = new MetadataStorageManager(
         JSON_MAPPER,
         derbyConnectorRule.getConnector(),
-        () -> derbyConnectorRule.getMetadataConnectorConfig(),
+        derbyConnectorRule::getMetadataConnectorConfig,
         derbyConnectorRule.metadataTablesConfigSupplier()
-        );
+    );
     manager = new SQLCatalogManager(metastoreMgr);
     manager.start();
   }

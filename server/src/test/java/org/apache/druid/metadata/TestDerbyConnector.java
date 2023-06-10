@@ -79,7 +79,7 @@ public class TestDerbyConnector extends DerbyConnector
   {
     private TestDerbyConnector connector;
     private final Supplier<MetadataStorageTablesConfig> dbTables;
-    private final MetadataStorageConnectorConfig connectorConfig;
+    private MetadataStorageConnectorConfig connectorConfig;
 
     public DerbyConnectorRule()
     {
@@ -98,14 +98,6 @@ public class TestDerbyConnector extends DerbyConnector
     )
     {
       this.dbTables = dbTables;
-      this.connectorConfig = new MetadataStorageConnectorConfig()
-      {
-        @Override
-        public String getConnectURI()
-        {
-          return connector.getJdbcUri();
-        }
-      };
     }
 
     @Override
@@ -113,6 +105,7 @@ public class TestDerbyConnector extends DerbyConnector
     {
       connector = new TestDerbyConnector(Suppliers.ofInstance(connectorConfig), dbTables);
       connector.getDBI().open().close(); // create db
+      connectorConfig = MetadataStorageConnectorConfig.create(connector.getJdbcUri());
     }
 
     @Override

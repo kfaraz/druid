@@ -115,8 +115,8 @@ public class SqlInputSourceTest
   public void testSerde() throws IOException
   {
     mapper.registerSubtypes(TestSerdeFirehoseConnector.class);
-    final SqlInputSourceTest.TestSerdeFirehoseConnector testSerdeFirehoseConnector = new SqlInputSourceTest.TestSerdeFirehoseConnector(
-        new MetadataStorageConnectorConfig());
+    final SqlInputSourceTest.TestSerdeFirehoseConnector testSerdeFirehoseConnector
+        = new SqlInputSourceTest.TestSerdeFirehoseConnector(MetadataStorageConnectorConfig.create(null));
     final SqlInputSource sqlInputSource =
         new SqlInputSource(SqlTestUtils.selectFrom(TABLE_1), true, testSerdeFirehoseConnector, mapper);
     final String valueString = mapper.writeValueAsString(sqlInputSource);
@@ -128,8 +128,8 @@ public class SqlInputSourceTest
   public void testGetTypes()
   {
     mapper.registerSubtypes(TestSerdeFirehoseConnector.class);
-    final SqlInputSourceTest.TestSerdeFirehoseConnector testSerdeFirehoseConnector = new SqlInputSourceTest.TestSerdeFirehoseConnector(
-        new MetadataStorageConnectorConfig());
+    final SqlInputSourceTest.TestSerdeFirehoseConnector testSerdeFirehoseConnector
+        = new SqlInputSourceTest.TestSerdeFirehoseConnector(MetadataStorageConnectorConfig.create(null));
     final SqlInputSource sqlInputSource =
         new SqlInputSource(SqlTestUtils.selectFrom(TABLE_1), true, testSerdeFirehoseConnector, mapper);
     Assert.assertEquals(Collections.singleton(SqlInputSource.TYPE_KEY), sqlInputSource.getTypes());

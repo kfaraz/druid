@@ -160,7 +160,7 @@ public class JdbcDataFetcherTest extends InitializedNullHandlingTest
     {
       final JdbcAccessSecurityConfig securityConfig = new JdbcAccessSecurityConfig();
       JdbcDataFetcher jdbcDataFetcher = new JdbcDataFetcher(
-          new MetadataStorageConnectorConfig(),
+          MetadataStorageConnectorConfig.create(null),
           "table",
           "keyColumn",
           "ValueColumn",
