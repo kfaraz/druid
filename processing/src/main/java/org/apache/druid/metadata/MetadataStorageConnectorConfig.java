@@ -53,7 +53,7 @@ public class MetadataStorageConnectorConfig
    * @param derbyHost      Required only when using a Derby metadata store, default is "localhost"
    * @param derbyPort      Required only when using a Derby metadata store, default is 1527
    * @param dbcpProperties Connection properties
-   * @param createTables   Whether metadata tables should be freshly created, defaults is true
+   * @param createTables   Whether metadata tables should be freshly created, default is true
    */
   @JsonCreator
   public MetadataStorageConnectorConfig(
@@ -101,42 +101,49 @@ public class MetadataStorageConnectorConfig
         null,
         null,
         user,
-        DefaultPasswordProvider.fromString(password),
+        password == null ? null : DefaultPasswordProvider.fromString(password),
         dbcpProperties,
         null
     );
   }
 
+  @JsonProperty
   public boolean isCreateTables()
   {
     return createTables;
   }
 
+  @JsonProperty("host")
   public String getDerbyHost()
   {
     return derbyHost;
   }
 
+  @JsonProperty("port")
   public int getDerbyPort()
   {
     return derbyPort;
   }
 
+  @JsonProperty
   public String getConnectURI()
   {
     return connectURI;
   }
 
+  @JsonProperty
   public String getUser()
   {
     return user;
   }
 
+  @JsonProperty
   public String getPassword()
   {
     return passwordProvider == null ? null : passwordProvider.getPassword();
   }
 
+  @JsonProperty("dbcp")
   public Properties getDbcpProperties()
   {
     return dbcpProperties;

@@ -156,7 +156,7 @@ public class JdbcDataFetcherTest extends InitializedNullHandlingTest
     }
 
     @Test
-    public void testSerDesr() throws IOException
+    public void testSerDe() throws IOException
     {
       final JdbcAccessSecurityConfig securityConfig = new JdbcAccessSecurityConfig();
       JdbcDataFetcher jdbcDataFetcher = new JdbcDataFetcher(

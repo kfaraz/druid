@@ -123,21 +123,13 @@ public class LoadingLookupFactory implements LookupExtractorFactory
     if (this == o) {
       return true;
     }
-    if (!(o instanceof LoadingLookupFactory)) {
+    if (o == null || getClass() != o.getClass()) {
       return false;
     }
-
     LoadingLookupFactory that = (LoadingLookupFactory) o;
-
-    if (dataFetcher != null ? !dataFetcher.equals(that.dataFetcher) : that.dataFetcher != null) {
-      return false;
-    }
-    if (loadingCache != null ? !loadingCache.equals(that.loadingCache) : that.loadingCache != null) {
-      return false;
-    }
-    return reverseLoadingCache != null
-           ? reverseLoadingCache.equals(that.reverseLoadingCache)
-           : that.reverseLoadingCache == null;
+    return Objects.equals(dataFetcher, that.dataFetcher)
+           && Objects.equals(loadingCache, that.loadingCache)
+           && Objects.equals(reverseLoadingCache, that.reverseLoadingCache);
   }
 
   @Override
