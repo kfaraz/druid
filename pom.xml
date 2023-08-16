@@ -1051,7 +1051,7 @@
             <dependency>
                 <groupId>com.github.docker-java</groupId>
                 <artifactId>docker-java-bom</artifactId>
-                <version>3.2.13</version>
+                <version>3.3.2</version>
                 <scope>import</scope>
                 <type>pom</type>
             </dependency>
