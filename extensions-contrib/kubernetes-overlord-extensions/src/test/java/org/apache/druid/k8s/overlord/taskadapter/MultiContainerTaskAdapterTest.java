@@ -34,6 +34,7 @@ import org.apache.druid.indexing.common.config.TaskConfig;
 import org.apache.druid.indexing.common.config.TaskConfigBuilder;
 import org.apache.druid.indexing.common.task.IndexTask;
 import org.apache.druid.indexing.common.task.NoopTask;
+import org.apache.druid.indexing.common.task.Tasks;
 import org.apache.druid.indexing.common.task.batch.parallel.ParallelIndexTuningConfig;
 import org.apache.druid.k8s.overlord.KubernetesTaskRunnerConfig;
 import org.apache.druid.k8s.overlord.common.K8sTestUtils;
@@ -100,7 +101,7 @@ class MultiContainerTaskAdapterTest
         druidNode,
         jsonMapper
     );
-    NoopTask task = NoopTask.create();
+    NoopTask task = createTask();
     Job actual = adapter.createJobFromPodSpec(
         pod.getSpec(),
         task,
@@ -148,7 +149,7 @@ class MultiContainerTaskAdapterTest
         druidNode,
         jsonMapper
     );
-    NoopTask task = NoopTask.create();
+    NoopTask task = createTask();
     PodSpec spec = pod.getSpec();
     K8sTaskAdapter.massageSpec(spec, "primary");
     Job actual = adapter.createJobFromPodSpec(
@@ -197,7 +198,7 @@ class MultiContainerTaskAdapterTest
                                                                        startupLoggingConfig,
                                                                        druidNode,
                                                                        jsonMapper);
-    NoopTask task = NoopTask.create();
+    NoopTask task = createTask();
     PodSpec spec = pod.getSpec();
     K8sTaskAdapter.massageSpec(spec, config.getPrimaryContainerName());
     Job actual = adapter.createJobFromPodSpec(
@@ -228,6 +229,11 @@ class MultiContainerTaskAdapterTest
             .getEnv()
             .removeIf(x -> x.getName().equals("TASK_JSON"));
     Assertions.assertEquals(expected, actual);
+  }
+
+  private NoopTask createTask()
+  {
+    return new NoopTask("id", null, null, 0, 0, null, Collections.singletonMap(Tasks.PRIORITY_KEY, 1));
   }
 
 }
