@@ -254,6 +254,6 @@ public class EqualDistributionWorkerSelectStrategyTest
 
   private static NoopTask createDummyTask(final String dataSource)
   {
-    NoopTask.builder().dataSource(dataSource).build();
+    return NoopTask.builder().dataSource(dataSource).build();
   }
 }
