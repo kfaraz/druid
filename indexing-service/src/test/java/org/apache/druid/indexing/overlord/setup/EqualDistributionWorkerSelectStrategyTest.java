@@ -89,7 +89,7 @@ public class EqualDistributionWorkerSelectStrategyTest
                 DateTimes.nowUtc()
             )
         ),
-        new NoopTask(null, null, null, 1, 0, null, null, null)
+        new NoopTask(null, null, null, 1, 0, null, null)
         {
           @Override
           public String getDataSource()
@@ -124,7 +124,7 @@ public class EqualDistributionWorkerSelectStrategyTest
                 DateTimes.nowUtc()
             )
         ),
-        new NoopTask(null, null, null, 1, 0, null, null, null)
+        new NoopTask(null, null, null, 1, 0, null, null)
         {
           @Override
           public String getDataSource()
@@ -160,7 +160,7 @@ public class EqualDistributionWorkerSelectStrategyTest
                 DateTimes.nowUtc()
             )
         ),
-        new NoopTask(null, null, null, 1, 0, null, null, null)
+        new NoopTask(null, null, null, 1, 0, null, null)
         {
           @Override
           public String getDataSource()
@@ -196,7 +196,7 @@ public class EqualDistributionWorkerSelectStrategyTest
                 DateTimes.nowUtc()
             )
         ),
-        new NoopTask(null, null, null, 1, 0, null, null, null)
+        new NoopTask(null, null, null, 1, 0, null, null)
         {
           @Override
           public String getDataSource()
@@ -282,7 +282,7 @@ public class EqualDistributionWorkerSelectStrategyTest
 
   private static NoopTask createDummyTask(final String dataSource)
   {
-    return new NoopTask(null, null, null, 1, 0, null, null, null)
+    return new NoopTask(null, null, null, 1, 0, null, null)
     {
       @Override
       public String getDataSource()

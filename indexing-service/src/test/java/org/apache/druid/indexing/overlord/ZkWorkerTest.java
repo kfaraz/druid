@@ -131,7 +131,7 @@ public class ZkWorkerTest
   {
     final String expectedTaskId = "task01234";
 
-    Task task0 = NoopTask.create(expectedTaskId, 0);
+    Task task0 = NoopTask.withId(expectedTaskId);
     TaskAnnouncement taskAnnouncement = TaskAnnouncement.create(
             task0,
             TaskStatus.running(task0.getId()),

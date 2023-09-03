@@ -222,7 +222,7 @@ public class TaskQueueScaleTest
 
     public TestTask(int number, long runtime)
     {
-      super(null, null, DATASOURCE, 0, 0, null, null, Collections.emptyMap());
+      super(null, null, DATASOURCE, 0, 0, null, Collections.emptyMap());
       this.number = number;
       this.runtime = runtime;
     }

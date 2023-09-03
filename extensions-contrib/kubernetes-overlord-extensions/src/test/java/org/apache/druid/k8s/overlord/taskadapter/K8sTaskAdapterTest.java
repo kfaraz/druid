@@ -354,7 +354,7 @@ class K8sTaskAdapterTest
                                        node,
                                        jsonMapper
         );
-    NoopTask task = NoopTask.create("id", 1);
+    NoopTask task = NoopTask.withId("id");
     Job actual = adapter.createJobFromPodSpec(
         pod.getSpec(),
         task,

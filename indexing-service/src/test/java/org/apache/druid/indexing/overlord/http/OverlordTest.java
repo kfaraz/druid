@@ -178,9 +178,9 @@ public class OverlordTest
 
     // Add two tasks with conflicting locks
     // The bad task (The one with a lexicographically larger name) must be failed
-    Task badTask = new NoopTask(badTaskId, badTaskId, "datasource", 10_000, 0, null, null, null);
+    Task badTask = new NoopTask(badTaskId, badTaskId, "datasource", 10_000, 0, null, null);
     TaskLock badLock = new TimeChunkLock(null, badTaskId, "datasource", Intervals.ETERNITY, "version1", 50);
-    Task goodTask = new NoopTask(goodTaskId, goodTaskId, "datasource", 0, 0, null, null, null);
+    Task goodTask = new NoopTask(goodTaskId, goodTaskId, "datasource", 0, 0, null, null);
     TaskLock goodLock = new TimeChunkLock(null, goodTaskId, "datasource", Intervals.ETERNITY, "version0", 50);
     taskStorage.insert(goodTask, TaskStatus.running(goodTaskId));
     taskStorage.insert(badTask, TaskStatus.running(badTaskId));
@@ -272,7 +272,7 @@ public class OverlordTest
     waitForTaskStatus(goodTaskId, TaskState.SUCCESS);
 
     final String taskId_0 = "0";
-    NoopTask task_0 = NoopTask.create(taskId_0, 0);
+    NoopTask task_0 = NoopTask.withId(taskId_0);
     response = overlordResource.taskPost(task_0, req);
     Assert.assertEquals(200, response.getStatus());
     Assert.assertEquals(ImmutableMap.of("task", taskId_0), response.getEntity());
@@ -305,7 +305,7 @@ public class OverlordTest
     // Manually insert task in taskStorage
     // Verifies sync from storage
     final String taskId_1 = "1";
-    NoopTask task_1 = NoopTask.create(taskId_1, 0);
+    NoopTask task_1 = NoopTask.withId(taskId_1);
     taskStorage.insert(task_1, TaskStatus.running(taskId_1));
     // Wait for task runner to run task_1
     runTaskCountDownLatches.get(taskId_1).await();

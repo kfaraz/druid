@@ -897,7 +897,7 @@ public class OverlordResourceTest
     );
 
     // Verify that taskPost fails for user who has only datasource read access
-    Task task = NoopTask.create(Datasources.WIKIPEDIA);
+    Task task = NoopTask.builder().dataSource(Datasources.WIKIPEDIA).build();
     expectedException.expect(ForbiddenException.class);
     expectedException.expect(ForbiddenException.class);
     overlordResource.taskPost(task, req);
@@ -941,7 +941,7 @@ public class OverlordResourceTest
     // set authorization token properly, but isn't called in this test.
     // This should be fixed in https://github.com/apache/druid/issues/6685.
     // expectAuthorizationTokenCheck();
-    final NoopTask task = NoopTask.create("mydatasource");
+    final NoopTask task = NoopTask.builder().dataSource("mydatasource").build();
     EasyMock.expect(taskStorageQueryAdapter.getTask("mytask"))
             .andReturn(Optional.of(task));
 
@@ -980,7 +980,7 @@ public class OverlordResourceTest
     // set authorization token properly, but isn't called in this test.
     // This should be fixed in https://github.com/apache/druid/issues/6685.
     // expectAuthorizationTokenCheck();
-    final Task task = NoopTask.create("mytask", 0);
+    final Task task = NoopTask.withId("mytask");
     final TaskStatus status = TaskStatus.running("mytask");
 
     EasyMock.expect(taskStorageQueryAdapter.getTaskInfo("mytask"))
@@ -1155,14 +1155,14 @@ public class OverlordResourceTest
             DateTime.now(ISOChronology.getInstanceUTC()),
             TaskStatus.success("id_1"),
             "datasource",
-            NoopTask.create("id_1", 1)
+            NoopTask.withId("id_1")
         ),
         new TaskInfo<>(
             "id_2",
             DateTime.now(ISOChronology.getInstanceUTC()),
             TaskStatus.success("id_2"),
             "datasource",
-            NoopTask.create("id_2", 1)
+            NoopTask.withId("id_2")
         )
     ));
     mockQueue.shutdown("id_1", "Shutdown request from user");

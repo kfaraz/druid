@@ -73,7 +73,7 @@ public class KubernetesPeonLifecycleTest extends EasyMockSupport
   public void setup()
   {
     mapper = new TestUtils().getTestObjectMapper();
-    task = NoopTask.create(ID, 0);
+    task = NoopTask.withId(ID);
     k8sTaskId = new K8sTaskId(task);
     EasyMock.expect(logWatch.getOutput()).andReturn(IOUtils.toInputStream("", StandardCharsets.UTF_8)).anyTimes();
   }
