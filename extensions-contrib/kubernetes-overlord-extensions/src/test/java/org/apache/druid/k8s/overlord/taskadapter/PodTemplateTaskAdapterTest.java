@@ -28,7 +28,6 @@ import org.apache.druid.indexing.common.config.TaskConfig;
 import org.apache.druid.indexing.common.config.TaskConfigBuilder;
 import org.apache.druid.indexing.common.task.NoopTask;
 import org.apache.druid.indexing.common.task.Task;
-import org.apache.druid.indexing.common.task.Tasks;
 import org.apache.druid.java.util.common.IAE;
 import org.apache.druid.java.util.common.IOE;
 import org.apache.druid.java.util.common.ISE;
@@ -288,7 +287,7 @@ public class PodTemplateTaskAdapterTest
 
     Job job = K8sTestUtils.fileToResource("baseJob.yaml", Job.class);
     Task actual = adapter.toTask(job);
-    Task expected = new NoopTask("id", "id", null, 0, 0, null, Collections.singletonMap(Tasks.PRIORITY_KEY, 1));
+    Task expected = K8sTaskAdapterTest.createTask("id", 1);
 
     Assertions.assertEquals(expected, actual);
   }

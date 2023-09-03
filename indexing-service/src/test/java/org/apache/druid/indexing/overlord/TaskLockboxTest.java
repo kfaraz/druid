@@ -1086,8 +1086,8 @@ public class TaskLockboxTest
   @Test
   public void testGetTimeChunkAndSegmentLockForSameGroup()
   {
-    final Task task1 = new NoopTask(null, "group1", null, 0, 0, null, null);
-    final Task task2 = new NoopTask(null, "group1", null, 0, 0, null, null);
+    final Task task1 = new NoopTask(null, "groupId", null, 0, 0, null, null);
+    final Task task2 = new NoopTask(null, "groupId", null, 0, 0, null, null);
 
     lockbox.add(task1);
     lockbox.add(task2);
