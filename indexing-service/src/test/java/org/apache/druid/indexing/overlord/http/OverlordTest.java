@@ -271,8 +271,8 @@ public class OverlordTest
     taskCompletionCountDownLatches.get(goodTaskId).countDown();
     waitForTaskStatus(goodTaskId, TaskState.SUCCESS);
 
-    final String taskId_0 = "0";
-    NoopTask task_0 = NoopTask.withId(taskId_0);
+    NoopTask task_0 = NoopTask.create();
+    final String taskId_0 = task_0.getId();
     response = overlordResource.taskPost(task_0, req);
     Assert.assertEquals(200, response.getStatus());
     Assert.assertEquals(ImmutableMap.of("task", taskId_0), response.getEntity());
@@ -304,8 +304,8 @@ public class OverlordTest
 
     // Manually insert task in taskStorage
     // Verifies sync from storage
-    final String taskId_1 = "1";
-    NoopTask task_1 = NoopTask.withId(taskId_1);
+    NoopTask task_1 = NoopTask.create();
+    final String taskId_1 = task_1.getId();
     taskStorage.insert(task_1, TaskStatus.running(taskId_1));
     // Wait for task runner to run task_1
     runTaskCountDownLatches.get(taskId_1).await();

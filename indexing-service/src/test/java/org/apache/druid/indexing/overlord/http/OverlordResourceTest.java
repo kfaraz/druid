@@ -980,10 +980,11 @@ public class OverlordResourceTest
     // set authorization token properly, but isn't called in this test.
     // This should be fixed in https://github.com/apache/druid/issues/6685.
     // expectAuthorizationTokenCheck();
-    final Task task = NoopTask.withId("mytask");
-    final TaskStatus status = TaskStatus.running("mytask");
+    final Task task = NoopTask.create();
+    final String taskId = task.getId();
+    final TaskStatus status = TaskStatus.running(taskId);
 
-    EasyMock.expect(taskStorageQueryAdapter.getTaskInfo("mytask"))
+    EasyMock.expect(taskStorageQueryAdapter.getTaskInfo(taskId))
             .andReturn(new TaskInfo(
                 task.getId(),
                 DateTimes.of("2018-01-01"),
@@ -1008,7 +1009,7 @@ public class OverlordResourceTest
         authConfig
     );
 
-    final Response response1 = overlordResource.getTaskStatus("mytask");
+    final Response response1 = overlordResource.getTaskStatus(taskId);
     final TaskStatusResponse taskStatusResponse1 = TestHelper.makeJsonMapper().readValue(
         TestHelper.makeJsonMapper().writeValueAsString(response1.getEntity()),
         TaskStatusResponse.class
@@ -1017,10 +1018,10 @@ public class OverlordResourceTest
     Assert.assertEquals(tsp.getStatusCode(), tsp.getStatus());
     Assert.assertEquals(
         new TaskStatusResponse(
-            "mytask",
+            taskId,
             new TaskStatusPlus(
-                "mytask",
-                "mytask",
+                task.getId(),
+                task.getGroupId(),
                 "noop",
                 DateTimes.of("2018-01-01"),
                 DateTimes.EPOCH,
@@ -1155,14 +1156,14 @@ public class OverlordResourceTest
             DateTime.now(ISOChronology.getInstanceUTC()),
             TaskStatus.success("id_1"),
             "datasource",
-            NoopTask.withId("id_1")
+            NoopTask.create()
         ),
         new TaskInfo<>(
             "id_2",
             DateTime.now(ISOChronology.getInstanceUTC()),
             TaskStatus.success("id_2"),
             "datasource",
-            NoopTask.withId("id_2")
+            NoopTask.create()
         )
     ));
     mockQueue.shutdown("id_1", "Shutdown request from user");

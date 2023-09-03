@@ -113,7 +113,7 @@ public class EqualDistributionWithAffinityWorkerSelectStrategyTest
                         DateTimes.nowUtc()
                     )
             ),
-            new NoopTask(null, null, null, 1, 0, null, null)
+            NoopTask.create()
     );
     Assert.assertEquals("lhost", worker.getWorker().getHost());
   }
@@ -136,7 +136,7 @@ public class EqualDistributionWithAffinityWorkerSelectStrategyTest
                         DateTimes.nowUtc()
                     )
             ),
-            new NoopTask(null, null, null, 1, 0, null, null)
+            NoopTask.create()
     );
     Assert.assertNull(worker);
   }

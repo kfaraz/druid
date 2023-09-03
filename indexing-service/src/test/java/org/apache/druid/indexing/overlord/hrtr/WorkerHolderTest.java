@@ -49,10 +49,10 @@ public class WorkerHolderTest
   {
     List<TaskAnnouncement> updates = new ArrayList<>();
 
-    Task task0 = NoopTask.withId("task0");
-    Task task1 = NoopTask.withId("task1");
-    Task task2 = NoopTask.withId("task2");
-    Task task3 = NoopTask.withId("task3");
+    Task task0 = NoopTask.create();
+    Task task1 = NoopTask.create();
+    Task task2 = NoopTask.create();
+    Task task3 = NoopTask.create();
 
     WorkerHolder workerHolder = new WorkerHolder(
         TestHelper.makeJsonMapper(),

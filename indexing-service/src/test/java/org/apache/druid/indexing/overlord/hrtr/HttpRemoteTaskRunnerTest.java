@@ -137,7 +137,7 @@ public class HttpRemoteTaskRunnerTest
     int numTasks = 8;
     List<Future<TaskStatus>> futures = new ArrayList<>();
     for (int i = 0; i < numTasks; i++) {
-      futures.add(taskRunner.run(NoopTask.builder().id("task-id-" + i).build()));
+      futures.add(taskRunner.run(NoopTask.create()));
     }
 
     for (Future<TaskStatus> future : futures) {
@@ -284,9 +284,9 @@ public class HttpRemoteTaskRunnerTest
             .andReturn(druidNodeDiscovery);
     EasyMock.replay(druidNodeDiscoveryProvider);
 
-    Task task1 = NoopTask.builder().id("task-id-1").build();
-    Task task2 = NoopTask.builder().id("task-id-2").build();
-    Task task3 = NoopTask.builder().id("task-id-3").build();
+    Task task1 = NoopTask.create();
+    Task task2 = NoopTask.create();
+    Task task3 = NoopTask.create();
 
     HttpRemoteTaskRunner taskRunner = new HttpRemoteTaskRunner(
         TestHelper.makeJsonMapper(),
@@ -379,11 +379,11 @@ public class HttpRemoteTaskRunnerTest
 
     ConcurrentMap<String, CustomFunction> workerHolders = new ConcurrentHashMap<>();
 
-    Task task1 = NoopTask.builder().id("task-id-1").build();
-    Task task2 = NoopTask.builder().id("task-id-2").build();
-    Task task3 = NoopTask.builder().id("task-id-3").build();
-    Task task4 = NoopTask.builder().id("task-id-4").build();
-    Task task5 = NoopTask.builder().id("task-id-5").build();
+    Task task1 = NoopTask.create();
+    Task task2 = NoopTask.create();
+    Task task3 = NoopTask.create();
+    Task task4 = NoopTask.create();
+    Task task5 = NoopTask.create();
 
     TaskStorage taskStorageMock = EasyMock.createStrictMock(TaskStorage.class);
     EasyMock.expect(taskStorageMock.getStatus(task1.getId())).andReturn(Optional.absent());
@@ -585,8 +585,8 @@ public class HttpRemoteTaskRunnerTest
 
     taskRunner.start();
 
-    Task task1 = NoopTask.builder().id("task-id-1").build();
-    Task task2 = NoopTask.builder().id("task-id-2").build();
+    Task task1 = NoopTask.create();
+    Task task2 = NoopTask.create();
 
     DiscoveryDruidNode druidNode = new DiscoveryDruidNode(
         new DruidNode("service", "host", false, 1234, null, true, false),
@@ -761,8 +761,8 @@ public class HttpRemoteTaskRunnerTest
 
     taskRunner.start();
 
-    Task task1 = NoopTask.builder().id("task-id-1").build();
-    Task task2 = NoopTask.builder().id("task-id-2").build();
+    Task task1 = NoopTask.create();
+    Task task2 = NoopTask.create();
 
     DiscoveryDruidNode druidNode = new DiscoveryDruidNode(
         new DruidNode("service", "host", false, 1234, null, true, false),
@@ -904,8 +904,8 @@ public class HttpRemoteTaskRunnerTest
             .andReturn(druidNodeDiscovery);
     EasyMock.replay(druidNodeDiscoveryProvider);
 
-    Task task1 = NoopTask.builder().id("task-id-1").build();
-    Task task2 = NoopTask.builder().id("task-id-2").build();
+    Task task1 = NoopTask.create();
+    Task task2 = NoopTask.create();
     String additionalWorkerCategory = "category2";
 
     ConcurrentMap<String, CustomFunction> workerHolders = new ConcurrentHashMap<>();
@@ -1501,7 +1501,7 @@ public class HttpRemoteTaskRunnerTest
 
     druidNodeDiscovery.getListeners().get(0).nodesAdded(ImmutableList.of(druidNode1));
 
-    Future<TaskStatus> future = taskRunner.run(NoopTask.builder().id("task-id").build());
+    Future<TaskStatus> future = taskRunner.run(NoopTask.create());
     Assert.assertTrue(future.get().isFailure());
     Assert.assertNotNull(future.get().getErrorMsg());
     Assert.assertTrue(
@@ -1613,7 +1613,7 @@ public class HttpRemoteTaskRunnerTest
 
     druidNodeDiscovery.getListeners().get(0).nodesAdded(ImmutableList.of(druidNode1));
 
-    Future<TaskStatus> future = taskRunner.run(NoopTask.builder().id("task-id").build());
+    Future<TaskStatus> future = taskRunner.run(NoopTask.create());
     Assert.assertTrue(future.get().isFailure());
     Assert.assertNotNull(future.get().getErrorMsg());
     Assert.assertTrue(
