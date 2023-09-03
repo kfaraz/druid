@@ -44,7 +44,7 @@ public class KubernetesWorkItemTest extends EasyMockSupport
   @Before
   public void setup()
   {
-    task = NoopTask.withId("id");
+    task = NoopTask.create();
     workItem = new KubernetesWorkItem(task, null);
   }
 

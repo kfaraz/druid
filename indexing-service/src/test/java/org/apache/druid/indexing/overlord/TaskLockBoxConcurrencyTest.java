@@ -102,8 +102,8 @@ public class TaskLockBoxConcurrencyTest
       throws ExecutionException, InterruptedException, EntryExistsException
   {
     final Interval interval = Intervals.of("2017-01-01/2017-01-02");
-    final Task lowPriorityTask = NoopTask.builder().priority(10).build();
-    final Task highPriorityTask = NoopTask.builder().priority(100).build();
+    final Task lowPriorityTask = NoopTask.withPriority(10);
+    final Task highPriorityTask = NoopTask.withPriority(100);
     lockbox.add(lowPriorityTask);
     lockbox.add(highPriorityTask);
     taskStorage.insert(lowPriorityTask, TaskStatus.running(lowPriorityTask.getId()));

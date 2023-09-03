@@ -154,21 +154,7 @@ public class SingleTaskBackgroundRunnerTest
   @Test
   public void testRun() throws ExecutionException, InterruptedException
   {
-    NoopTask task = new NoopTask(null, null, null, 500L, 0, null, null)
-    {
-      @Nullable
-      @Override
-      public String setup(TaskToolbox toolbox)
-      {
-        return null;
-      }
-
-      @Override
-      public void cleanUp(TaskToolbox toolbox, TaskStatus taskStatus)
-      {
-        // do nothing
-      }
-    };
+    NoopTask task = new NoopTask(null, null, null, 500L, 0, null, null);
     Assert.assertEquals(
         TaskState.SUCCESS,
         runner.run(task).get().getStatusCode()

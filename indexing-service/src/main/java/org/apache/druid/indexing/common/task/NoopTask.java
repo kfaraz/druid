@@ -67,7 +67,7 @@ public class NoopTask extends AbstractTask
       @JsonProperty("id") String id,
       @JsonProperty("groupId") String groupId,
       @JsonProperty("dataSource") String dataSource,
-      @JsonProperty("runTime") long runTime,
+      @JsonProperty("runTime") long runTimeMillis,
       @JsonProperty("isReadyTime") long isReadyTime,
       @JsonProperty("isReadyResult") String isReadyResult,
       @JsonProperty("context") Map<String, Object> context
@@ -81,7 +81,7 @@ public class NoopTask extends AbstractTask
         context
     );
 
-    this.runTime = (runTime == 0) ? DEFAULT_RUN_TIME : runTime;
+    this.runTime = (runTimeMillis == 0) ? DEFAULT_RUN_TIME : runTimeMillis;
     this.isReadyTime = (isReadyTime == 0) ? DEFAULT_IS_READY_TIME : isReadyTime;
     this.isReadyResult = (isReadyResult == null)
                          ? DEFAULT_IS_READY_RESULT
@@ -155,56 +155,18 @@ public class NoopTask extends AbstractTask
 
   public static NoopTask create()
   {
-    return builder().build();
+    return forDatasource(null);
   }
 
-  public static NoopTask withId(String id)
+  public static NoopTask forDatasource(String datasource)
   {
-    return builder().id(id).build();
+    return new NoopTask(null, null, datasource, 0, 0, null, null);
   }
 
-  public static Builder builder()
+  public static NoopTask withPriority(int priority)
   {
-    return new Builder();
-  }
-
-  public static class Builder
-  {
-    private String id;
-    private String groupId;
-    private String dataSource;
-
-    private int priority = Tasks.DEFAULT_BATCH_INDEX_TASK_PRIORITY;
-
-    public Builder id(String id)
-    {
-      this.id = id;
-      return this;
-    }
-
-    public Builder dataSource(String dataSource)
-    {
-      this.dataSource = dataSource;
-      return this;
-    }
-
-    public Builder groupId(String groupId)
-    {
-      this.groupId = groupId;
-      return this;
-    }
-
-    public Builder priority(int priority)
-    {
-      this.priority = priority;
-      return this;
-    }
-
-    public NoopTask build()
-    {
-      final Map<String, Object> context = new HashMap<>();
-      context.put(Tasks.PRIORITY_KEY, priority);
-      return new NoopTask(id, groupId, dataSource, 0, 0, null, context);
-    }
+    final Map<String, Object> context = new HashMap<>();
+    context.put(Tasks.PRIORITY_KEY, priority);
+    return new NoopTask(null, null, null, 0, 0, null, context);
   }
 }

@@ -100,7 +100,7 @@ class MultiContainerTaskAdapterTest
         druidNode,
         jsonMapper
     );
-    NoopTask task = NoopTask.withId("id");
+    NoopTask task = NoopTask.create();
     Job actual = adapter.createJobFromPodSpec(
         pod.getSpec(),
         task,
@@ -148,7 +148,7 @@ class MultiContainerTaskAdapterTest
         druidNode,
         jsonMapper
     );
-    NoopTask task = NoopTask.withId("id");
+    NoopTask task = NoopTask.create();
     PodSpec spec = pod.getSpec();
     K8sTaskAdapter.massageSpec(spec, "primary");
     Job actual = adapter.createJobFromPodSpec(
@@ -197,7 +197,7 @@ class MultiContainerTaskAdapterTest
                                                                        startupLoggingConfig,
                                                                        druidNode,
                                                                        jsonMapper);
-    NoopTask task = NoopTask.withId("id");
+    NoopTask task = NoopTask.create();
     PodSpec spec = pod.getSpec();
     K8sTaskAdapter.massageSpec(spec, config.getPrimaryContainerName());
     Job actual = adapter.createJobFromPodSpec(

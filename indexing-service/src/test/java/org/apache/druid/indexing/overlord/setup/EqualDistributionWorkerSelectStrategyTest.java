@@ -89,7 +89,7 @@ public class EqualDistributionWorkerSelectStrategyTest
                 DateTimes.nowUtc()
             )
         ),
-        NoopTask.builder().dataSource("foo").build()
+        NoopTask.forDatasource("foo")
     );
     Assert.assertEquals("lhost", worker.getWorker().getHost());
   }
@@ -117,7 +117,7 @@ public class EqualDistributionWorkerSelectStrategyTest
                 DateTimes.nowUtc()
             )
         ),
-        NoopTask.builder().dataSource("foo").build()
+        NoopTask.forDatasource("foo")
     );
     Assert.assertEquals("localhost", worker.getWorker().getHost());
   }
@@ -146,7 +146,7 @@ public class EqualDistributionWorkerSelectStrategyTest
                 DateTimes.nowUtc()
             )
         ),
-        NoopTask.builder().dataSource("foo").build()
+        NoopTask.forDatasource("foo")
     );
     Assert.assertEquals("enableHost", worker.getWorker().getHost());
   }
@@ -175,7 +175,7 @@ public class EqualDistributionWorkerSelectStrategyTest
                 DateTimes.nowUtc()
             )
         ),
-        NoopTask.builder().dataSource("foo").build()
+        NoopTask.forDatasource("foo")
     );
     Assert.assertEquals("enableHost", worker.getWorker().getHost());
   }
@@ -254,6 +254,6 @@ public class EqualDistributionWorkerSelectStrategyTest
 
   private static NoopTask createDummyTask(final String dataSource)
   {
-    return NoopTask.builder().dataSource(dataSource).build();
+    return NoopTask.forDatasource(dataSource);
   }
 }

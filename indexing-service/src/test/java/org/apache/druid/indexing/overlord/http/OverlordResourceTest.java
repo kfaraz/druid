@@ -897,7 +897,7 @@ public class OverlordResourceTest
     );
 
     // Verify that taskPost fails for user who has only datasource read access
-    Task task = NoopTask.builder().dataSource(Datasources.WIKIPEDIA).build();
+    Task task = NoopTask.forDatasource(Datasources.WIKIPEDIA);
     expectedException.expect(ForbiddenException.class);
     expectedException.expect(ForbiddenException.class);
     overlordResource.taskPost(task, req);
@@ -941,7 +941,7 @@ public class OverlordResourceTest
     // set authorization token properly, but isn't called in this test.
     // This should be fixed in https://github.com/apache/druid/issues/6685.
     // expectAuthorizationTokenCheck();
-    final NoopTask task = NoopTask.builder().dataSource("mydatasource").build();
+    final NoopTask task = NoopTask.create();
     EasyMock.expect(taskStorageQueryAdapter.getTask("mytask"))
             .andReturn(Optional.of(task));
 

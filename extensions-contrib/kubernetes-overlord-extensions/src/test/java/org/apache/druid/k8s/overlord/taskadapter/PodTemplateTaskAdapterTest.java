@@ -28,6 +28,7 @@ import org.apache.druid.indexing.common.config.TaskConfig;
 import org.apache.druid.indexing.common.config.TaskConfigBuilder;
 import org.apache.druid.indexing.common.task.NoopTask;
 import org.apache.druid.indexing.common.task.Task;
+import org.apache.druid.indexing.common.task.Tasks;
 import org.apache.druid.java.util.common.IAE;
 import org.apache.druid.java.util.common.IOE;
 import org.apache.druid.java.util.common.ISE;
@@ -130,7 +131,7 @@ public class PodTemplateTaskAdapterTest
         props
     );
 
-    Task task = NoopTask.builder().id("id").dataSource("datasource").build();
+    Task task = new NoopTask("id", "id", "datasource", 0, 0, null, null);
     Job actual = adapter.fromTask(task);
     Job expected = K8sTestUtils.fileToResource("expectedNoopJob.yaml", Job.class);
 
@@ -162,7 +163,7 @@ public class PodTemplateTaskAdapterTest
         props
     );
 
-    Task task = NoopTask.builder().id("id").dataSource("datasource").build();
+    Task task = new NoopTask("id", "id", "datasource", 0, 0, null, null);
     Job actual = adapter.fromTask(task);
     Job expected = K8sTestUtils.fileToResource("expectedNoopJobTlsEnabled.yaml", Job.class);
 
@@ -207,7 +208,7 @@ public class PodTemplateTaskAdapterTest
         props
     );
 
-    Task task = NoopTask.builder().id("id").dataSource("datasource").build();
+    Task task = new NoopTask("id", "id", "datasource", 0, 0, null, null);
     Job actual = adapter.fromTask(task);
     Job expected = K8sTestUtils.fileToResource("expectedNoopJob.yaml", Job.class);
 
@@ -287,7 +288,7 @@ public class PodTemplateTaskAdapterTest
 
     Job job = K8sTestUtils.fileToResource("baseJob.yaml", Job.class);
     Task actual = adapter.toTask(job);
-    Task expected = NoopTask.builder().id("id").priority(1).build();
+    Task expected = new NoopTask("id", "id", null, 0, 0, null, Collections.singletonMap(Tasks.PRIORITY_KEY, 1));
 
     Assertions.assertEquals(expected, actual);
   }
