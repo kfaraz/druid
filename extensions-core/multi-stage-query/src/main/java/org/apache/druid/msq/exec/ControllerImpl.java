@@ -1372,7 +1372,7 @@ public class ControllerImpl implements Controller
         );
         performSegmentPublish(
             context.taskActionClient(),
-            SegmentTransactionalInsertAction.overwriteAction(null, segmentsWithTombstones)
+            SegmentTransactionalInsertAction.overwriteSegments(null, segmentsWithTombstones)
         );
       }
     } else if (!segments.isEmpty()) {
@@ -1389,7 +1389,7 @@ public class ControllerImpl implements Controller
       // Append mode.
       performSegmentPublish(
           context.taskActionClient(),
-          SegmentTransactionalInsertAction.appendAction(segments, null, null)
+          SegmentTransactionalInsertAction.appendSegments(segments)
       );
     }
   }

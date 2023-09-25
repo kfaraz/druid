@@ -32,6 +32,7 @@ import org.apache.druid.indexing.common.task.TaskLockHelper;
 import org.apache.druid.indexing.overlord.CriticalAction;
 import org.apache.druid.indexing.overlord.DataSourceMetadata;
 import org.apache.druid.indexing.overlord.SegmentPublishResult;
+import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.common.ISE;
 import org.apache.druid.java.util.emitter.service.SegmentMetadataEvent;
 import org.apache.druid.java.util.emitter.service.ServiceMetricEvent;
@@ -74,7 +75,7 @@ public class SegmentTransactionalInsertAction implements TaskAction<SegmentPubli
   @Nullable
   private final String dataSource;
 
-  public static SegmentTransactionalInsertAction overwriteAction(
+  public static SegmentTransactionalInsertAction overwriteSegments(
       @Nullable Set<DataSegment> segmentsToBeOverwritten,
       Set<DataSegment> segmentsToPublish
   )
@@ -82,10 +83,15 @@ public class SegmentTransactionalInsertAction implements TaskAction<SegmentPubli
     return new SegmentTransactionalInsertAction(segmentsToBeOverwritten, segmentsToPublish, null, null, null);
   }
 
-  public static SegmentTransactionalInsertAction appendAction(
+  public static SegmentTransactionalInsertAction appendSegments(Set<DataSegment> segments)
+  {
+    return new SegmentTransactionalInsertAction(null, segments, null, null, null);
+  }
+
+  public static SegmentTransactionalInsertAction appendSegmentsAndUpdateMetadata(
       Set<DataSegment> segments,
-      @Nullable DataSourceMetadata startMetadata,
-      @Nullable DataSourceMetadata endMetadata
+      DataSourceMetadata startMetadata,
+      DataSourceMetadata endMetadata
   )
   {
     return new SegmentTransactionalInsertAction(null, segments, startMetadata, endMetadata, null);
@@ -222,45 +228,8 @@ public class SegmentTransactionalInsertAction implements TaskAction<SegmentPubli
       throw new RuntimeException(e);
     }
 
-    // Emit metrics
-    final ServiceMetricEvent.Builder metricBuilder = new ServiceMetricEvent.Builder();
-    IndexTaskUtils.setTaskDimensions(metricBuilder, task);
-
-    if (retVal.isSuccess()) {
-      toolbox.getEmitter().emit(metricBuilder.setMetric("segment/txn/success", 1));
-    } else {
-      toolbox.getEmitter().emit(metricBuilder.setMetric("segment/txn/failure", 1));
-    }
-
-    // getSegments() should return an empty set if announceHistoricalSegments() failed
-    for (DataSegment segment : retVal.getSegments()) {
-      metricBuilder.setDimension(DruidMetrics.INTERVAL, segment.getInterval().toString());
-      metricBuilder.setDimension(
-          DruidMetrics.PARTITIONING_TYPE,
-          segment.getShardSpec() == null ? null : segment.getShardSpec().getType()
-      );
-      toolbox.getEmitter().emit(metricBuilder.setMetric("segment/added/bytes", segment.getSize()));
-      // Emit the segment related metadata using the configured emitters.
-      // There is a possibility that some segments' metadata event might get missed if the
-      // server crashes after commiting segment but before emitting the event.
-      this.emitSegmentMetadata(segment, toolbox);
-    }
-
+    IndexTaskUtils.emitSegmentPublishMetrics(retVal, task, toolbox);
     return retVal;
-  }
-
-  private void emitSegmentMetadata(DataSegment segment, TaskActionToolbox toolbox)
-  {
-    SegmentMetadataEvent event = new SegmentMetadataEvent(
-        segment.getDataSource(),
-        DateTime.now(DateTimeZone.UTC),
-        segment.getInterval().getStart(),
-        segment.getInterval().getEnd(),
-        segment.getVersion(),
-        segment.getLastCompactionState() != null
-    );
-
-    toolbox.getEmitter().emit(event);
   }
 
   private void checkWithSegmentLock()

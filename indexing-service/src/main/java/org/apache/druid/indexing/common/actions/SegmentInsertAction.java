@@ -68,7 +68,7 @@ public class SegmentInsertAction implements TaskAction<Set<DataSegment>>
   @Override
   public Set<DataSegment> perform(Task task, TaskActionToolbox toolbox)
   {
-    return SegmentTransactionalInsertAction.appendAction(segments, null, null).perform(task, toolbox).getSegments();
+    return SegmentTransactionalInsertAction.appendSegments(segments).perform(task, toolbox).getSegments();
   }
 
   @Override

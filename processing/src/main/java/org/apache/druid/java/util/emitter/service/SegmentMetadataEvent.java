@@ -20,8 +20,10 @@
 package org.apache.druid.java.util.emitter.service;
 
 import com.fasterxml.jackson.annotation.JsonValue;
+import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.emitter.core.Event;
 import org.apache.druid.java.util.emitter.core.EventMap;
+import org.apache.druid.timeline.DataSegment;
 import org.joda.time.DateTime;
 
 /**
@@ -61,6 +63,18 @@ public class SegmentMetadataEvent implements Event
    * Is the segment, a compacted segment or not
    */
   private final boolean isCompacted;
+
+  public static SegmentMetadataEvent create(DataSegment segment, DateTime eventTime)
+  {
+    return new SegmentMetadataEvent(
+        segment.getDataSource(),
+        eventTime,
+        segment.getInterval().getStart(),
+        segment.getInterval().getEnd(),
+        segment.getVersion(),
+        segment.getLastCompactionState() != null
+    );
+  }
 
   public SegmentMetadataEvent(
       String dataSource,

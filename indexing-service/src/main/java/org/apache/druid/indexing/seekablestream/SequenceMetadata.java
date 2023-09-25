@@ -395,7 +395,7 @@ public class SequenceMetadata<PartitionIdType, SequenceOffsetType>
           );
         }
       } else if (useTransaction) {
-        action = SegmentTransactionalInsertAction.appendAction(
+        action = SegmentTransactionalInsertAction.appendSegmentsAndUpdateMetadata(
             segmentsToPush,
             runner.createDataSourceMetadata(
                 new SeekableStreamStartSequenceNumbers<>(
@@ -407,7 +407,7 @@ public class SequenceMetadata<PartitionIdType, SequenceOffsetType>
             runner.createDataSourceMetadata(finalPartitions)
         );
       } else {
-        action = SegmentTransactionalInsertAction.appendAction(segmentsToPush, null, null);
+        action = SegmentTransactionalInsertAction.appendSegments(segmentsToPush);
       }
 
       return toolbox.getTaskActionClient().submit(action);

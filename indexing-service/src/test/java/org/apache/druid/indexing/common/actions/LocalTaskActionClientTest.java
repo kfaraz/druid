@@ -33,7 +33,7 @@ public class LocalTaskActionClientTest
   @Test
   public void testGetActionType()
   {
-    final TaskAction<?> action = SegmentTransactionalInsertAction.appendAction(Collections.emptySet(), null, null);
+    final TaskAction<?> action = SegmentTransactionalInsertAction.appendSegments(Collections.emptySet());
     Assert.assertEquals("segmentTransactionalInsert", LocalTaskActionClient.getActionType(objectMapper, action));
   }
 }

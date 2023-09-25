@@ -359,11 +359,8 @@ public class AppenderatorDriverRealtimeIndexTask extends AbstractTask implements
               SegmentUtils.commaSeparatedIdentifiers(mustBeNullOrEmptyOverwriteSegments)
           );
         }
-        final SegmentTransactionalInsertAction action = SegmentTransactionalInsertAction.appendAction(
-            segments,
-            null,
-            null
-        );
+        final SegmentTransactionalInsertAction action
+            = SegmentTransactionalInsertAction.appendSegments(segments);
         return toolbox.getTaskActionClient().submit(action);
       };
 

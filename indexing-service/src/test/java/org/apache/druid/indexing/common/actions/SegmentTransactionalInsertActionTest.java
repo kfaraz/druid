@@ -103,7 +103,7 @@ public class SegmentTransactionalInsertActionTest
     actionTestKit.getTaskLockbox().add(task);
     acquireTimeChunkLock(TaskLockType.EXCLUSIVE, task, INTERVAL, 5000);
 
-    SegmentPublishResult result1 = SegmentTransactionalInsertAction.appendAction(
+    SegmentPublishResult result1 = SegmentTransactionalInsertAction.appendSegmentsAndUpdateMetadata(
         ImmutableSet.of(SEGMENT1),
         new ObjectMetadata(null),
         new ObjectMetadata(ImmutableList.of(1))
@@ -113,7 +113,7 @@ public class SegmentTransactionalInsertActionTest
     );
     Assert.assertEquals(SegmentPublishResult.ok(ImmutableSet.of(SEGMENT1)), result1);
 
-    SegmentPublishResult result2 = SegmentTransactionalInsertAction.appendAction(
+    SegmentPublishResult result2 = SegmentTransactionalInsertAction.appendSegmentsAndUpdateMetadata(
         ImmutableSet.of(SEGMENT2),
         new ObjectMetadata(ImmutableList.of(1)),
         new ObjectMetadata(ImmutableList.of(2))
@@ -141,7 +141,7 @@ public class SegmentTransactionalInsertActionTest
     actionTestKit.getTaskLockbox().add(task);
     acquireTimeChunkLock(TaskLockType.EXCLUSIVE, task, INTERVAL, 5000);
 
-    SegmentPublishResult result = SegmentTransactionalInsertAction.appendAction(
+    SegmentPublishResult result = SegmentTransactionalInsertAction.appendSegmentsAndUpdateMetadata(
         ImmutableSet.of(SEGMENT1),
         new ObjectMetadata(ImmutableList.of(1)),
         new ObjectMetadata(ImmutableList.of(2))
@@ -164,7 +164,7 @@ public class SegmentTransactionalInsertActionTest
   public void testFailBadVersion() throws Exception
   {
     final Task task = NoopTask.create();
-    final SegmentTransactionalInsertAction action = SegmentTransactionalInsertAction.overwriteAction(
+    final SegmentTransactionalInsertAction action = SegmentTransactionalInsertAction.overwriteSegments(
         null,
         ImmutableSet.of(SEGMENT3)
     );

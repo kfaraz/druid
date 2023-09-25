@@ -24,7 +24,6 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Supplier;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import org.apache.druid.data.input.Committer;
 import org.apache.druid.data.input.Firehose;
@@ -75,6 +74,7 @@ import org.joda.time.Interval;
 
 import javax.annotation.Nonnull;
 import java.io.IOException;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.Timer;
@@ -239,7 +239,7 @@ public class RealtimeIndexTask extends AbstractTask
     // It would be nice to get the PlumberSchool in the constructor.  Although that will need jackson injectables for
     // stuff like the ServerView, which seems kind of odd?  Perhaps revisit this when Guice has been introduced.
 
-    final SegmentPublisher segmentPublisher = new TaskActionSegmentPublisher(toolbox);
+    final SegmentPublisher segmentPublisher = segment -> toolbox.publishSegments(Collections.singleton(segment));
 
     // NOTE: We talk to the coordinator in various places in the plumber and we could be more robust to issues
     // with the coordinator.  Right now, we'll block/throw in whatever thread triggered the coordinator behavior,
@@ -596,22 +596,6 @@ public class RealtimeIndexTask extends AbstractTask
                && isFirehoseDrainableByClosing(((TimedShutoffFirehoseFactory) firehoseFactory).getDelegateFactory()))
            || (firehoseFactory instanceof ClippedFirehoseFactory
                && isFirehoseDrainableByClosing(((ClippedFirehoseFactory) firehoseFactory).getDelegate()));
-  }
-
-  public static class TaskActionSegmentPublisher implements SegmentPublisher
-  {
-    final TaskToolbox taskToolbox;
-
-    public TaskActionSegmentPublisher(TaskToolbox taskToolbox)
-    {
-      this.taskToolbox = taskToolbox;
-    }
-
-    @Override
-    public void publishSegment(DataSegment segment) throws IOException
-    {
-      taskToolbox.publishSegments(ImmutableList.of(segment));
-    }
   }
 
   private void setupTimeoutAlert()

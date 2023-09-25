@@ -24,6 +24,7 @@ import org.apache.druid.indexing.common.task.IndexTaskUtils;
 import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.indexing.overlord.TaskStorage;
 import org.apache.druid.java.util.common.ISE;
+import org.apache.druid.java.util.common.Stopwatch;
 import org.apache.druid.java.util.common.jackson.JacksonUtils;
 import org.apache.druid.java.util.emitter.EmittingLogger;
 import org.apache.druid.java.util.emitter.service.ServiceMetricEvent;
@@ -62,9 +63,9 @@ public class LocalTaskActionClient implements TaskActionClient
     if (auditLogConfig.isEnabled() && taskAction.isAudited()) {
       // Add audit log
       try {
-        final long auditLogStartTime = System.currentTimeMillis();
+        final Stopwatch auditLoggingTime = Stopwatch.createStarted();
         storage.addAuditLog(task, taskAction);
-        emitTimerMetric("task/action/log/time", taskAction, System.currentTimeMillis() - auditLogStartTime);
+        emitTimerMetric("task/action/log/time", taskAction, auditLoggingTime.millisElapsed());
       }
       catch (Exception e) {
         final String actionClass = taskAction.getClass().getName();
@@ -76,9 +77,9 @@ public class LocalTaskActionClient implements TaskActionClient
       }
     }
 
-    final long performStartTime = System.currentTimeMillis();
+    final Stopwatch actionPerformTime = Stopwatch.createStarted();
     final RetType result = performAction(taskAction);
-    emitTimerMetric("task/action/run/time", taskAction, System.currentTimeMillis() - performStartTime);
+    emitTimerMetric("task/action/run/time", taskAction, actionPerformTime.millisElapsed());
     return result;
   }
 
