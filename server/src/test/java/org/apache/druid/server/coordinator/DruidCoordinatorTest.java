@@ -62,7 +62,7 @@ import org.apache.druid.server.coordinator.loading.CuratorLoadQueuePeon;
 import org.apache.druid.server.coordinator.loading.LoadQueuePeon;
 import org.apache.druid.server.coordinator.loading.LoadQueueTaskMaster;
 import org.apache.druid.server.coordinator.loading.SegmentLoadQueueManager;
-import org.apache.druid.server.coordinator.rules.ForeverBroadcastDistributionRule;
+import org.apache.druid.server.coordinator.rules.Broadcast;
 import org.apache.druid.server.coordinator.rules.ForeverLoadRule;
 import org.apache.druid.server.coordinator.rules.IntervalLoadRule;
 import org.apache.druid.server.coordinator.rules.Rule;
@@ -530,9 +530,9 @@ public class DruidCoordinatorTest extends CuratorTestBase
 
     setupSegmentsMetadataMock(druidDataSource);
 
-    final Rule broadcastDistributionRule = new ForeverBroadcastDistributionRule();
     EasyMock.expect(metadataRuleManager.getRulesWithDefault(EasyMock.anyString()))
-            .andReturn(ImmutableList.of(broadcastDistributionRule)).atLeastOnce();
+            .andReturn(ImmutableList.of(Broadcast.forever()))
+            .atLeastOnce();
 
     EasyMock.expect(serverInventoryView.getInventory())
             .andReturn(ImmutableList.of(hotServer, coldServer, brokerServer1, brokerServer2, peonServer))

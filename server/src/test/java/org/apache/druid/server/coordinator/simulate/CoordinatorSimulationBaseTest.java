@@ -27,7 +27,6 @@ import org.apache.druid.server.coordinator.CoordinatorDynamicConfig;
 import org.apache.druid.server.coordinator.CreateDataSegments;
 import org.apache.druid.server.coordinator.rules.ForeverBroadcastDistributionRule;
 import org.apache.druid.server.coordinator.rules.ForeverDropRule;
-import org.apache.druid.server.coordinator.rules.ForeverLoadRule;
 import org.apache.druid.server.coordinator.rules.Rule;
 import org.apache.druid.server.coordinator.stats.Dimension;
 import org.apache.druid.timeline.DataSegment;
@@ -36,7 +35,6 @@ import org.junit.Assert;
 import org.junit.Before;
 
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -176,11 +174,6 @@ public abstract class CoordinatorSimulationBaseTest implements
     return filter(Dimension.TIER, tier);
   }
 
-  static Map<String, Object> filterByDatasource(String datasource)
-  {
-    return filter(Dimension.DATASOURCE, datasource);
-  }
-
   /**
    * Creates a map containing dimension key-values to filter out metric events.
    */
@@ -261,51 +254,4 @@ public abstract class CoordinatorSimulationBaseTest implements
                           .eachOfSizeInMb(500);
   }
 
-  /**
-   * Builder for a load rule.
-   */
-  static class Load
-  {
-    private final Map<String, Integer> tieredReplicants = new HashMap<>();
-
-    static Load on(String tier, int numReplicas)
-    {
-      Load load = new Load();
-      load.tieredReplicants.put(tier, numReplicas);
-      return load;
-    }
-
-    Load andOn(String tier, int numReplicas)
-    {
-      tieredReplicants.put(tier, numReplicas);
-      return this;
-    }
-
-    Rule forever()
-    {
-      return new ForeverLoadRule(tieredReplicants, null);
-    }
-  }
-
-  /**
-   * Builder for a broadcast rule.
-   */
-  static class Broadcast
-  {
-    static Rule forever()
-    {
-      return new ForeverBroadcastDistributionRule();
-    }
-  }
-
-  /**
-   * Builder for a drop rule.
-   */
-  static class Drop
-  {
-    static Rule forever()
-    {
-      return new ForeverDropRule();
-    }
-  }
 }

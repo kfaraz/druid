@@ -23,8 +23,6 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.Lists;
 import org.apache.druid.jackson.DefaultObjectMapper;
-import org.apache.druid.java.util.common.Intervals;
-import org.joda.time.Period;
 import org.junit.Assert;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -43,9 +41,9 @@ public class BroadcastDistributionRuleSerdeTest
   public static List<Object[]> constructorFeeder()
   {
     return Lists.newArrayList(
-        new Object[]{new ForeverBroadcastDistributionRule()},
-        new Object[]{new IntervalBroadcastDistributionRule(Intervals.of("0/1000"))},
-        new Object[]{new PeriodBroadcastDistributionRule(new Period(1000), null)}
+        new Object[]{Broadcast.forever()},
+        new Object[]{Broadcast.forInterval("0/1000")},
+        new Object[]{Broadcast.forPeriod(1000)}
     );
   }
 

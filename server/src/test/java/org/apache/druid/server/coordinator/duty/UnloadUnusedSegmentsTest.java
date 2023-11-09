@@ -35,7 +35,7 @@ import org.apache.druid.server.coordinator.DruidCoordinatorRuntimeParams;
 import org.apache.druid.server.coordinator.ServerHolder;
 import org.apache.druid.server.coordinator.loading.SegmentLoadQueueManager;
 import org.apache.druid.server.coordinator.loading.TestLoadQueuePeon;
-import org.apache.druid.server.coordinator.rules.ForeverBroadcastDistributionRule;
+import org.apache.druid.server.coordinator.rules.Broadcast;
 import org.apache.druid.server.coordinator.rules.ForeverLoadRule;
 import org.apache.druid.server.coordinator.stats.CoordinatorRunStats;
 import org.apache.druid.server.coordinator.stats.Stats;
@@ -247,16 +247,10 @@ public class UnloadUnusedSegmentsTest
         .withDruidCluster(
             DruidCluster
                 .builder()
-                .addTier(
-                    DruidServer.DEFAULT_TIER,
-                    new ServerHolder(historicalServer, historicalPeon, false)
-                )
-                .addTier(
-                    "tier2",
-                    new ServerHolder(historicalServerTier2, historicalTier2Peon, false)
-                )
-                .addBrokers(new ServerHolder(brokerServer, brokerPeon, false))
-                .addRealtimes(new ServerHolder(indexerServer, indexerPeon, false))
+                .add(new ServerHolder(historicalServer, historicalPeon, false))
+                .add(new ServerHolder(historicalServerTier2, historicalTier2Peon, false))
+                .add(new ServerHolder(brokerServer, brokerPeon, false))
+                .add(new ServerHolder(indexerServer, indexerPeon, false))
                 .build()
         )
         .withUsedSegments(usedSegments)
@@ -332,10 +326,9 @@ public class UnloadUnusedSegmentsTest
             )
         )).anyTimes();
 
-    EasyMock.expect(metadataRuleManager.getRulesWithDefault("broadcastDatasource")).andReturn(
-        Collections.singletonList(
-            new ForeverBroadcastDistributionRule()
-        )).anyTimes();
+    EasyMock.expect(metadataRuleManager.getRulesWithDefault("broadcastDatasource"))
+            .andReturn(Collections.singletonList(Broadcast.forever()))
+            .anyTimes();
 
     EasyMock.replay(metadataRuleManager);
   }
