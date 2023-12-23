@@ -33,6 +33,7 @@ import org.apache.druid.java.util.emitter.service.AlertEvent;
 import org.apache.druid.java.util.metrics.StubServiceEmitter;
 import org.apache.druid.segment.IndexIO;
 import org.apache.druid.server.coordination.ServerType;
+import org.apache.druid.server.coordinator.BuildServer;
 import org.apache.druid.server.coordinator.CoordinatorDynamicConfig;
 import org.apache.druid.server.coordinator.CreateDataSegments;
 import org.apache.druid.server.coordinator.DruidCluster;
@@ -71,7 +72,6 @@ import java.util.Set;
  */
 public class RunRulesTest
 {
-
   private static final String INTERVAL_START = "2012-01-01";
   private static final String DATASOURCE_WIKI = "wiki";
   private static final RowKey DATASOURCE_STAT_KEY = RowKey.of(Dimension.DATASOURCE, DATASOURCE_WIKI);
@@ -123,15 +123,13 @@ public class RunRulesTest
   @Test
   public void testOneTierTwoReplicantsWithStrictReplicantLimit()
   {
-    setRules(
-        Load.on(Tier.T2, 2).forInterval("2012-01-01/P1D")
-    );
+    setRules(Load.on(Tier.T2, 2).forInterval("2012-01-01/P1D"));
 
     // 1 tier, 2 servers, 1 server has all segments already loaded
     final DruidCluster druidCluster = DruidCluster
         .builder()
-        .add(createHistorical(Tier.T2))
-        .add(createHistorical(Tier.T2, segments))
+        .add(BuildServer.historical().in(Tier.T2).withSegments())
+        .add(CreateHistorical().in(Tier.T2).withSegments(segments))
         .build();
 
     DruidCoordinatorRuntimeParams params = createRuntimeParams(druidCluster, segments)
@@ -684,9 +682,7 @@ public class RunRulesTest
     if (rules.length > 0) {
       databaseRuleManager.overrideRule(DATASOURCE_WIKI, Arrays.asList(rules), null);
     }
-    CoordinatorRunStats stats = runRules.run(params).getCoordinatorStats();
-    System.out.printf("%n%s%n", stats.buildStatsTable());
-    return stats;
+    return runRules.run(params).getCoordinatorStats();
   }
 
   private void setRules(Rule... rules)

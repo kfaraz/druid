@@ -19,7 +19,10 @@
 
 package org.apache.druid.server.coordinator.rules;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.druid.client.DruidServer;
+import org.apache.druid.jackson.DefaultObjectMapper;
 import org.apache.druid.java.util.common.granularity.Granularities;
 import org.apache.druid.server.coordination.ServerType;
 import org.apache.druid.server.coordinator.CoordinatorDynamicConfig;
@@ -41,6 +44,8 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.io.IOException;
+import java.util.Arrays;
 import java.util.List;
 
 public class BroadcastDistributionRuleTest
@@ -51,6 +56,7 @@ public class BroadcastDistributionRuleTest
   private static final String TIER_1 = "tier1";
   private static final String TIER_2 = "tier2";
 
+  private static final ObjectMapper MAPPER = new DefaultObjectMapper();
   private final DataSegment wikiSegment
       = CreateDataSegments.ofDatasource(DS_WIKI).eachOfSizeInMb(100).get(0);
 
@@ -61,6 +67,20 @@ public class BroadcastDistributionRuleTest
   {
     serverId = 0;
     stats = new CoordinatorRunStats();
+  }
+
+  @Test
+  public void testRuleSerde() throws IOException
+  {
+    final List<Rule> rules = Arrays.asList(
+        Broadcast.forever(),
+        Broadcast.forInterval("0/1000"),
+        Broadcast.forPeriod(1000)
+    );
+
+    final String json = MAPPER.writeValueAsString(rules);
+    final List<Rule> fromJson = MAPPER.readValue(json, new TypeReference<List<Rule>>(){});
+    Assert.assertEquals(rules, fromJson);
   }
 
   @Test
