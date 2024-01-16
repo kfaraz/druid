@@ -33,7 +33,7 @@ import org.apache.druid.java.util.emitter.service.AlertEvent;
 import org.apache.druid.java.util.metrics.StubServiceEmitter;
 import org.apache.druid.segment.IndexIO;
 import org.apache.druid.server.coordination.ServerType;
-import org.apache.druid.server.coordinator.BuildServer;
+import org.apache.druid.server.coordinator.Servers;
 import org.apache.druid.server.coordinator.CoordinatorDynamicConfig;
 import org.apache.druid.server.coordinator.CreateDataSegments;
 import org.apache.druid.server.coordinator.DruidCluster;
@@ -128,8 +128,8 @@ public class RunRulesTest
     // 1 tier, 2 servers, 1 server has all segments already loaded
     final DruidCluster druidCluster = DruidCluster
         .builder()
-        .add(BuildServer.historical().in(Tier.T2).withSegments())
-        .add(CreateHistorical().in(Tier.T2).withSegments(segments))
+        .add(Servers.historical().in(Tier.T2).asHolder())
+        .add(Servers.historical().in(Tier.T2).withSegments(segments).asHolder())
         .build();
 
     DruidCoordinatorRuntimeParams params = createRuntimeParams(druidCluster, segments)
@@ -142,7 +142,7 @@ public class RunRulesTest
         )
         .build();
 
-    CoordinatorRunStats stats = runRulesAndGetStats(
+    CoordinatorRunStats stats = runDutyAndGetStats(
         params,
         Load.on(Tier.T2, 2).forInterval("2012-01-01/2012-01-02")
     );
@@ -182,7 +182,7 @@ public class RunRulesTest
         )
         .build();
 
-    CoordinatorRunStats stats = runRulesAndGetStats(params);
+    CoordinatorRunStats stats = runDutyAndGetStats(params);
 
     // maxNonPrimaryReplicantsToLoad takes effect on hot tier, but not normal tier
     Assert.assertEquals(10L, stats.getSegmentStat(Stats.Segments.ASSIGNED, Tier.T1, DATASOURCE_WIKI));
@@ -200,14 +200,14 @@ public class RunRulesTest
 
     DruidCluster druidCluster = DruidCluster
         .builder()
-        .add(createHistorical(Tier.T1))
-        .add(createHistorical(Tier.T2))
-        .add(createHistorical(Tier.T3))
+        .add(Servers.historical().in(Tier.T1))
+        .add(Servers.historical().in(Tier.T2))
+        .add(Servers.historical().in(Tier.T3))
         .build();
 
     DruidCoordinatorRuntimeParams params = createRuntimeParams(druidCluster, segments).build();
 
-    CoordinatorRunStats stats = runRulesAndGetStats(params);
+    CoordinatorRunStats stats = runDutyAndGetStats(params);
 
     Assert.assertEquals(6L, stats.getSegmentStat(Stats.Segments.ASSIGNED, Tier.T1, DATASOURCE_WIKI));
     Assert.assertEquals(6L, stats.getSegmentStat(Stats.Segments.ASSIGNED, Tier.T2, DATASOURCE_WIKI));
@@ -230,7 +230,7 @@ public class RunRulesTest
         .build();
 
     DruidCoordinatorRuntimeParams params = createRuntimeParams(druidCluster, segments).build();
-    CoordinatorRunStats stats = runRulesAndGetStats(params);
+    CoordinatorRunStats stats = runDutyAndGetStats(params);
 
     long numFirstRuleApplied = stats.getSegmentStat(Stats.Segments.ASSIGNED, Tier.T1, DATASOURCE_WIKI);
     long numSecondRuleApplied = stats.getSegmentStat(Stats.Segments.ASSIGNED, Tier.T2, DATASOURCE_WIKI);
@@ -256,7 +256,7 @@ public class RunRulesTest
 
     DruidCoordinatorRuntimeParams params = createRuntimeParams(druidCluster, segments).build();
 
-    CoordinatorRunStats stats = runRulesAndGetStats(params);
+    CoordinatorRunStats stats = runDutyAndGetStats(params);
 
     Assert.assertEquals(0L, stats.getSegmentStat(Stats.Segments.ASSIGNED, Tier.T1, DATASOURCE_WIKI));
     Assert.assertFalse(stats.hasStat(Stats.Segments.DROPPED));
@@ -277,7 +277,7 @@ public class RunRulesTest
 
     DruidCoordinatorRuntimeParams params = createRuntimeParams(druidCluster, segments).build();
 
-    runRulesAndGetStats(params);
+    runDutyAndGetStats(params);
 
     List<AlertEvent> alerts = emitter.getAlerts();
     Assert.assertEquals(1, alerts.size());
@@ -297,7 +297,7 @@ public class RunRulesTest
 
     DruidCoordinatorRuntimeParams params = createRuntimeParams(druidCluster, segments).build();
 
-    runRulesAndGetStats(params);
+    runDutyAndGetStats(params);
 
     final List<AlertEvent> events = emitter.getAlerts();
     Assert.assertEquals(1, events.size());
@@ -320,12 +320,12 @@ public class RunRulesTest
 
     DruidCluster druidCluster = DruidCluster
         .builder()
-        .add(createHistorical(Tier.T2, segments))
+        .add(Servers.historical().in(Tier.T2).withSegments(segments).asHolder())
         .build();
 
     DruidCoordinatorRuntimeParams params = createRuntimeParams(druidCluster, segments).build();
 
-    CoordinatorRunStats stats = runRulesAndGetStats(params);
+    CoordinatorRunStats stats = runDutyAndGetStats(params);
     Assert.assertEquals(12L, stats.get(Stats.Segments.DELETED, DATASOURCE_STAT_KEY));
   }
 
@@ -352,7 +352,7 @@ public class RunRulesTest
         )
         .build();
 
-    CoordinatorRunStats stats = runRulesAndGetStats(params);
+    CoordinatorRunStats stats = runDutyAndGetStats(params);
 
     Assert.assertEquals(1L, stats.getSegmentStat(Stats.Segments.DROPPED, Tier.T2, DATASOURCE_WIKI));
     Assert.assertEquals(12L, stats.get(Stats.Segments.DELETED, DATASOURCE_STAT_KEY));
@@ -374,7 +374,7 @@ public class RunRulesTest
 
     DruidCoordinatorRuntimeParams params = createRuntimeParams(druidCluster, segments).build();
 
-    CoordinatorRunStats stats = runRulesAndGetStats(params);
+    CoordinatorRunStats stats = runDutyAndGetStats(params);
     Assert.assertEquals(1L, stats.getSegmentStat(Stats.Segments.DROPPED, Tier.T2, DATASOURCE_WIKI));
     Assert.assertEquals(12L, stats.get(Stats.Segments.DELETED, DATASOURCE_STAT_KEY));
   }
@@ -395,7 +395,7 @@ public class RunRulesTest
 
     DruidCoordinatorRuntimeParams params = createRuntimeParams(druidCluster, segments).build();
 
-    CoordinatorRunStats stats = runRulesAndGetStats(params);
+    CoordinatorRunStats stats = runDutyAndGetStats(params);
     Assert.assertFalse(stats.hasStat(Stats.Segments.DROPPED));
     Assert.assertEquals(12L, stats.get(Stats.Segments.DELETED, DATASOURCE_STAT_KEY));
   }
@@ -415,7 +415,7 @@ public class RunRulesTest
         .build();
     DruidCoordinatorRuntimeParams params = createRuntimeParams(druidCluster, segments).build();
 
-    CoordinatorRunStats stats = runRulesAndGetStats(params);
+    CoordinatorRunStats stats = runDutyAndGetStats(params);
     Assert.assertEquals(1L, stats.getSegmentStat(Stats.Segments.DROPPED, Tier.T2, DATASOURCE_WIKI));
   }
 
@@ -438,7 +438,7 @@ public class RunRulesTest
 
     DruidCoordinatorRuntimeParams params = createRuntimeParams(druidCluster, segments).build();
 
-    CoordinatorRunStats stats = runRulesAndGetStats(params);
+    CoordinatorRunStats stats = runDutyAndGetStats(params);
     Assert.assertEquals(48L, stats.getSegmentStat(Stats.Segments.ASSIGNED, Tier.T1, DATASOURCE_WIKI));
     Assert.assertFalse(stats.hasStat(Stats.Segments.DROPPED));
 
@@ -448,7 +448,7 @@ public class RunRulesTest
     );
 
     params = createRuntimeParams(druidCluster, overFlowSegment).build();
-    stats = runRulesAndGetStats(params);
+    stats = runDutyAndGetStats(params);
 
     Assert.assertEquals(2L, stats.getSegmentStat(Stats.Segments.ASSIGNED, Tier.T1, DATASOURCE_WIKI));
   }
@@ -475,7 +475,7 @@ public class RunRulesTest
         .withDynamicConfigs(CoordinatorDynamicConfig.builder().withReplicationThrottleLimit(7).build())
         .build();
 
-    CoordinatorRunStats stats = runRulesAndGetStats(params);
+    CoordinatorRunStats stats = runDutyAndGetStats(params);
     Assert.assertEquals(24L, stats.getSegmentStat(Stats.Segments.ASSIGNED, Tier.T1, DATASOURCE_WIKI));
     Assert.assertEquals(24L, stats.getSegmentStat(Stats.Segments.ASSIGNED, Tier.T2, DATASOURCE_WIKI));
     Assert.assertFalse(stats.hasStat(Stats.Segments.DROPPED));
@@ -499,7 +499,7 @@ public class RunRulesTest
 
     DruidCoordinatorRuntimeParams params = createRuntimeParams(druidCluster, usedSegmentsWithExtra).build();
 
-    CoordinatorRunStats stats = runRulesAndGetStats(params);
+    CoordinatorRunStats stats = runDutyAndGetStats(params);
 
     // There is no throttling on drop
     Assert.assertEquals(25L, stats.getSegmentStat(Stats.Segments.DROPPED, Tier.T2, DATASOURCE_WIKI));
@@ -526,7 +526,7 @@ public class RunRulesTest
         .withDynamicConfigs(CoordinatorDynamicConfig.builder().withMaxSegmentsToMove(5).build())
         .build();
 
-    CoordinatorRunStats stats = runRulesAndGetStats(params);
+    CoordinatorRunStats stats = runDutyAndGetStats(params);
     Assert.assertEquals(1, stats.getSegmentStat(Stats.Segments.ASSIGNED, Tier.T1, DATASOURCE_WIKI));
     Assert.assertFalse(stats.hasStat(Stats.Segments.DROPPED));
 
@@ -561,7 +561,7 @@ public class RunRulesTest
             .withDynamicConfigs(CoordinatorDynamicConfig.builder().withMaxSegmentsToMove(5).build())
             .build();
 
-    CoordinatorRunStats stats = runRulesAndGetStats(params);
+    CoordinatorRunStats stats = runDutyAndGetStats(params);
     Assert.assertEquals(0L, stats.getSegmentStat(Stats.Segments.ASSIGNED, Tier.T1, DATASOURCE_WIKI));
     Assert.assertFalse(stats.hasStat(Stats.Segments.DROPPED));
   }
@@ -594,7 +594,7 @@ public class RunRulesTest
             .withDynamicConfigs(CoordinatorDynamicConfig.builder().withMaxSegmentsToMove(5).build())
             .build();
 
-    CoordinatorRunStats stats = runRulesAndGetStats(params);
+    CoordinatorRunStats stats = runDutyAndGetStats(params);
     Assert.assertEquals(1L, stats.getSegmentStat(Stats.Segments.ASSIGNED, Tier.T1, DATASOURCE_WIKI));
     Assert.assertFalse(stats.hasStat(Stats.Segments.DROPPED));
   }
@@ -627,7 +627,7 @@ public class RunRulesTest
             .withDynamicConfigs(CoordinatorDynamicConfig.builder().withMaxSegmentsToMove(5).build())
             .build();
 
-    CoordinatorRunStats stats = runRulesAndGetStats(params);
+    CoordinatorRunStats stats = runDutyAndGetStats(params);
     final RowKey tierRowKey = RowKey.of(Dimension.TIER, Tier.T1);
     Assert.assertEquals(
         dataSegment.getSize(),
@@ -667,7 +667,7 @@ public class RunRulesTest
             .withDynamicConfigs(CoordinatorDynamicConfig.builder().withMaxSegmentsToMove(5).build())
             .build();
 
-    CoordinatorRunStats stats = runRulesAndGetStats(params);
+    CoordinatorRunStats stats = runDutyAndGetStats(params);
     final RowKey tierRowKey = RowKey.of(Dimension.TIER, Tier.T1);
     Assert.assertEquals(
         dataSegment.getSize(),
@@ -677,7 +677,7 @@ public class RunRulesTest
     Assert.assertFalse(stats.hasStat(Stats.Segments.DROPPED));
   }
 
-  private CoordinatorRunStats runRulesAndGetStats(DruidCoordinatorRuntimeParams params, Rule... rules)
+  private CoordinatorRunStats runDutyAndGetStats(DruidCoordinatorRuntimeParams params, Rule... rules)
   {
     if (rules.length > 0) {
       databaseRuleManager.overrideRule(DATASOURCE_WIKI, Arrays.asList(rules), null);

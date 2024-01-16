@@ -12,7 +12,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
-public class BuildServer
+public class Servers
 {
   private static final AtomicLong SERVER_ID = new AtomicLong(0);
 
@@ -30,64 +30,63 @@ public class BuildServer
 
   private boolean decommissioning = false;
 
-  private BuildServer(ServerType type)
+  private Servers(ServerType type)
   {
     this.type = type;
   }
 
-  public static BuildServer ofType(ServerType type)
+  public static Servers historical()
   {
-    return new BuildServer(type);
+    return new Servers(ServerType.HISTORICAL);
   }
 
-  public BuildServer name(String name)
+  public static Servers broker()
   {
-    this.name = name;
-    return this;
+    return new Servers(ServerType.BROKER);
   }
 
-  public BuildServer tier(String tier)
+  public Servers in(String tier)
   {
     this.tier = tier;
     return this;
   }
 
-  public BuildServer hostAndPort(String hostAndPort)
+  public Servers ofName(String name)
+  {
+    this.name = name;
+    return this;
+  }
+
+  public Servers withHostAndPort(String hostAndPort)
   {
     this.hostAndPort = hostAndPort;
     return this;
   }
 
-  public BuildServer decommissioning()
+  public Servers inDecommissioningMode()
   {
     this.decommissioning = true;
     return this;
   }
 
-  public BuildServer withSegment(DataSegment segment)
-  {
-    this.segments.add(segment);
-    return this;
-  }
-
-  public BuildServer withSegments(DataSegment... segments)
+  public Servers withSegments(DataSegment... segments)
   {
     return withSegments(Arrays.asList(segments));
   }
 
-  public BuildServer withSegments(Collection<DataSegment> segments)
+  public Servers withSegments(Collection<DataSegment> segments)
   {
     this.segments.addAll(segments);
     return this;
   }
 
-  public BuildServer sizeInGb(long sizeInGb)
+  public Servers ofSizeInGb(long sizeInGb)
   {
     this.size = sizeInGb << 30;
     return this;
   }
 
-  public DruidServer buildServer()
+  public DruidServer in()
   {
     name = name == null ? type.name() + "_" + SERVER_ID.incrementAndGet() : name;
     hostAndPort = hostAndPort == null ? name : hostAndPort;
@@ -102,7 +101,7 @@ public class BuildServer
 
   public ImmutableDruidServer asImmutable()
   {
-    return buildServer().toImmutableDruidServer();
+    return in().toImmutableDruidServer();
   }
 
   public ServerHolder asHolder()
