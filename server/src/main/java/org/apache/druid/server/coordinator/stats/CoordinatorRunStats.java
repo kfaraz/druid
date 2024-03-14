@@ -19,14 +19,19 @@
 
 package org.apache.druid.server.coordinator.stats;
 
+import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
 import org.apache.druid.java.util.common.StringUtils;
+import org.apache.druid.java.util.emitter.service.ServiceEventBuilder;
+import org.apache.druid.java.util.emitter.service.ServiceMetricEvent;
 
 import javax.annotation.concurrent.ThreadSafe;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -105,6 +110,32 @@ public class CoordinatorRunStats
             stat -> handler.handle(stat.getKey(), rowKey, stat.getLongValue())
         )
     );
+  }
+
+  public List<ServiceEventBuilder<ServiceMetricEvent>> buildMetricEventsToEmit(
+      Map<Dimension, String> serviceDimensions
+  )
+  {
+    final List<ServiceEventBuilder<ServiceMetricEvent>> metricsEvents = new ArrayList<>();
+
+    allStats.forEach((rowKey, stats) -> {
+      for (Object2LongMap.Entry<CoordinatorStat> entry : stats.object2LongEntrySet()) {
+        final CoordinatorStat stat = entry.getKey();
+
+        if (stat.shouldEmit()) {
+          ServiceMetricEvent.Builder eventBuilder = new ServiceMetricEvent.Builder();
+
+          for (Map.Entry<Dimension, String> dim : rowKey.getValues().entrySet()) {
+            eventBuilder.setDimension(dim.getKey().reportedName(), dim.getValue());
+          }
+          metricsEvents.add(
+              eventBuilder.build(stat.getMetricName(), entry.getLongValue())
+          );
+        }
+      }
+    });
+
+    return metricsEvents;
   }
 
   /**

@@ -119,14 +119,7 @@ public class ServiceMetricEvent implements Event
         .putAll(
             Maps.filterEntries(
                 userDims,
-                new Predicate<Map.Entry<String, Object>>()
-                {
-                  @Override
-                  public boolean apply(Map.Entry<String, Object> input)
-                  {
-                    return input.getKey() != null;
-                  }
-                }
+                input -> input.getKey() != null
             )
         )
         .build();

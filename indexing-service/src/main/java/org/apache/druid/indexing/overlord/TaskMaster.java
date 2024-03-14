@@ -309,61 +309,6 @@ public class TaskMaster implements TaskCountStatsProvider, TaskSlotCountStatsPro
   }
 
   @Override
-  public Map<String, Long> getSuccessfulTaskCount()
-  {
-    Optional<TaskQueue> taskQueue = getTaskQueue();
-    if (taskQueue.isPresent()) {
-      return taskQueue.get().getSuccessfulTaskCount();
-    } else {
-      return null;
-    }
-  }
-
-  @Override
-  public Map<String, Long> getFailedTaskCount()
-  {
-    Optional<TaskQueue> taskQueue = getTaskQueue();
-    if (taskQueue.isPresent()) {
-      return taskQueue.get().getFailedTaskCount();
-    } else {
-      return null;
-    }
-  }
-
-  @Override
-  public Map<String, Long> getRunningTaskCount()
-  {
-    Optional<TaskQueue> taskQueue = getTaskQueue();
-    if (taskQueue.isPresent()) {
-      return taskQueue.get().getRunningTaskCount();
-    } else {
-      return null;
-    }
-  }
-
-  @Override
-  public Map<String, Long> getPendingTaskCount()
-  {
-    Optional<TaskQueue> taskQueue = getTaskQueue();
-    if (taskQueue.isPresent()) {
-      return taskQueue.get().getPendingTaskCount();
-    } else {
-      return null;
-    }
-  }
-
-  @Override
-  public Map<String, Long> getWaitingTaskCount()
-  {
-    Optional<TaskQueue> taskQueue = getTaskQueue();
-    if (taskQueue.isPresent()) {
-      return taskQueue.get().getWaitingTaskCount();
-    } else {
-      return null;
-    }
-  }
-
-  @Override
   public CoordinatorRunStats getStats()
   {
     Optional<TaskQueue> taskQueue = getTaskQueue();

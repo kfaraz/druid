@@ -33,4 +33,18 @@ public class Stats
     public static final CoordinatorStat HANDLED_STATUS_UPDATES
         = CoordinatorStat.toDebugAndEmit("handledStatusUpdates", "task/status/updated/count");
   }
+
+  public static class TaskCount
+  {
+    public static final CoordinatorStat SUCCESSFUL
+        = CoordinatorStat.toDebugAndEmit("successfulTasks", "task/success/count");
+    public static final CoordinatorStat FAILED
+        = CoordinatorStat.toDebugAndEmit("successfulTasks", "task/failed/count");
+    public static final CoordinatorStat WAITING
+        = CoordinatorStat.toDebugAndEmit("successfulTasks", "task/waiting/count");
+    public static final CoordinatorStat PENDING
+        = CoordinatorStat.toDebugAndEmit("successfulTasks", "task/pending/count");
+    public static final CoordinatorStat RUNNING
+        = CoordinatorStat.toDebugAndEmit("successfulTasks", "task/running/count");
+  }
 }

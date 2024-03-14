@@ -33,7 +33,6 @@ import org.apache.druid.annotations.SuppressFBWarnings;
 import org.apache.druid.common.utils.IdUtils;
 import org.apache.druid.indexer.TaskLocation;
 import org.apache.druid.indexer.TaskStatus;
-import org.apache.druid.indexing.common.Counters;
 import org.apache.druid.indexing.common.TaskLock;
 import org.apache.druid.indexing.common.actions.TaskActionClientFactory;
 import org.apache.druid.indexing.common.task.IndexTaskUtils;
@@ -55,7 +54,9 @@ import org.apache.druid.java.util.emitter.service.ServiceEmitter;
 import org.apache.druid.java.util.emitter.service.ServiceMetricEvent;
 import org.apache.druid.metadata.EntryExistsException;
 import org.apache.druid.server.coordinator.stats.CoordinatorRunStats;
-import org.apache.druid.utils.CollectionUtils;
+import org.apache.druid.server.coordinator.stats.CoordinatorStat;
+import org.apache.druid.server.coordinator.stats.Dimension;
+import org.apache.druid.server.coordinator.stats.RowKey;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -68,13 +69,11 @@ import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
@@ -140,15 +139,13 @@ public class TaskQueue
 
   private static final EmittingLogger log = new EmittingLogger(TaskQueue.class);
 
-  private final ConcurrentHashMap<String, AtomicLong> totalSuccessfulTaskCount = new ConcurrentHashMap<>();
-  private final ConcurrentHashMap<String, AtomicLong> totalFailedTaskCount = new ConcurrentHashMap<>();
-  @GuardedBy("totalSuccessfulTaskCount")
-  private Map<String, Long> prevTotalSuccessfulTaskCount = new HashMap<>();
-  @GuardedBy("totalFailedTaskCount")
-  private Map<String, Long> prevTotalFailedTaskCount = new HashMap<>();
-
   private final AtomicInteger statusUpdatesInQueue = new AtomicInteger();
   private final AtomicInteger handledStatusUpdates = new AtomicInteger();
+
+  /**
+   * Tracks stats such as successful and failed task counts.
+   */
+  private final CoordinatorRunStats stats = new CoordinatorRunStats();
 
   public TaskQueue(
       TaskLockConfig lockConfig,
@@ -768,10 +765,11 @@ public class TaskQueue
                     task.getId(), status.getStatusCode(), status.getDuration()
                 );
 
+                final RowKey datasourceKey = RowKey.of(Dimension.DATASOURCE, task.getDataSource());
                 if (status.isSuccess()) {
-                  Counters.incrementAndGetLong(totalSuccessfulTaskCount, task.getDataSource());
+                  stats.add(Stats.TaskCount.SUCCESSFUL, datasourceKey, 1);
                 } else {
-                  Counters.incrementAndGetLong(totalFailedTaskCount, task.getDataSource());
+                  stats.add(Stats.TaskCount.FAILED, datasourceKey, 1);
                 }
               }
             }
@@ -854,33 +852,6 @@ public class TaskQueue
     return rv;
   }
 
-  private Map<String, Long> getDeltaValues(Map<String, Long> total, Map<String, Long> prev)
-  {
-    return total.entrySet()
-                .stream()
-                .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue() - prev.getOrDefault(e.getKey(), 0L)));
-  }
-
-  public Map<String, Long> getSuccessfulTaskCount()
-  {
-    Map<String, Long> total = CollectionUtils.mapValues(totalSuccessfulTaskCount, AtomicLong::get);
-    synchronized (totalSuccessfulTaskCount) {
-      Map<String, Long> delta = getDeltaValues(total, prevTotalSuccessfulTaskCount);
-      prevTotalSuccessfulTaskCount = total;
-      return delta;
-    }
-  }
-
-  public Map<String, Long> getFailedTaskCount()
-  {
-    Map<String, Long> total = CollectionUtils.mapValues(totalFailedTaskCount, AtomicLong::get);
-    synchronized (totalFailedTaskCount) {
-      Map<String, Long> delta = getDeltaValues(total, prevTotalFailedTaskCount);
-      prevTotalFailedTaskCount = total;
-      return delta;
-    }
-  }
-
   Map<String, String> getCurrentTaskDatasources()
   {
     giant.lock();
@@ -935,16 +906,33 @@ public class TaskQueue
 
   public CoordinatorRunStats getQueueStats()
   {
+    // Reset the stats for the next reporting cycle
+    final CoordinatorRunStats snapshot = stats.getSnapshotAndReset();
+
     final int queuedUpdates = statusUpdatesInQueue.get();
     final int handledUpdates = handledStatusUpdates.getAndSet(0);
     if (queuedUpdates > 0) {
       log.info("There are [%d] task status updates in queue, handled [%d]", queuedUpdates, handledUpdates);
     }
 
-    final CoordinatorRunStats stats = new CoordinatorRunStats();
-    stats.add(Stats.TaskQueue.STATUS_UPDATES_IN_QUEUE, queuedUpdates);
-    stats.add(Stats.TaskQueue.HANDLED_STATUS_UPDATES, handledUpdates);
-    return stats;
+    addDatasourceStat(Stats.TaskCount.WAITING, getWaitingTaskCount(), snapshot);
+    addDatasourceStat(Stats.TaskCount.RUNNING, getWaitingTaskCount(), snapshot);
+    addDatasourceStat(Stats.TaskCount.PENDING, getWaitingTaskCount(), snapshot);
+
+    snapshot.add(Stats.TaskQueue.STATUS_UPDATES_IN_QUEUE, queuedUpdates);
+    snapshot.add(Stats.TaskQueue.HANDLED_STATUS_UPDATES, handledUpdates);
+    return snapshot;
+  }
+
+  private void addDatasourceStat(
+      CoordinatorStat stat,
+      Map<String, Long> datasourceToCount,
+      CoordinatorRunStats stats
+  )
+  {
+    datasourceToCount.forEach(
+        (datasource, value) -> stats.add(stat, RowKey.of(Dimension.DATASOURCE, datasource), value)
+    );
   }
 
   @VisibleForTesting
