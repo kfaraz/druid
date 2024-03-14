@@ -19,6 +19,7 @@
 
 package org.apache.druid.msq.indexing;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
@@ -47,15 +48,18 @@ import org.apache.druid.msq.indexing.error.WorkerFailedFault;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.OptionalLong;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -108,10 +112,11 @@ public class MSQWorkerTaskLauncher
   @GuardedBy("taskIds")
   private final IntSet fullyStartedTasks = new IntOpenHashSet();
 
-  // Mutable state accessible only to the main loop. LinkedHashMap since order of key set matters. Tasks are added
-  // here once they are submitted for running, but before they are fully started up.
+  // Mutable state accessed by mainLoop, ControllerImpl, and jetty (/liveReports) threads.
+  // Tasks are added here once they are submitted for running, but before they are fully started up.
   // taskId -> taskTracker
-  private final Map<String, TaskTracker> taskTrackers = new LinkedHashMap<>();
+  private final ConcurrentMap<String, TaskTracker> taskTrackers = new ConcurrentSkipListMap<>(Comparator.comparingInt(
+      MSQTasks::workerFromTaskId));
 
   // Set of tasks which are issued a cancel request by the controller.
   private final Set<String> canceledWorkerTasks = ConcurrentHashMap.newKeySet();
@@ -182,7 +187,19 @@ public class MSQWorkerTaskLauncher
    */
   public void stop(final boolean interrupt)
   {
-    if (state.compareAndSet(State.STARTED, State.STOPPED)) {
+    if (state.compareAndSet(State.NEW, State.STOPPED)) {
+      state.set(State.STOPPED);
+      if (interrupt) {
+        cancelTasksOnStop.set(true);
+      }
+
+      synchronized (taskIds) {
+        // Wake up sleeping mainLoop.
+        taskIds.notifyAll();
+      }
+      exec.shutdown();
+      stopFuture.set(null);
+    } else if (state.compareAndSet(State.STARTED, State.STOPPED)) {
       if (interrupt) {
         cancelTasksOnStop.set(true);
       }
@@ -289,7 +306,6 @@ public class MSQWorkerTaskLauncher
    * Blocks the call untill the worker tasks are ready to be contacted for work.
    *
    * @param workerSet
-   *
    * @throws InterruptedException
    */
   public void waitUntilWorkersReady(Set<Integer> workerSet) throws InterruptedException
@@ -334,6 +350,34 @@ public class MSQWorkerTaskLauncher
     synchronized (taskIds) {
       return taskId.equals(taskIds.get(worker));
     }
+  }
+
+  public Map<Integer, List<WorkerStats>> getWorkerStats()
+  {
+    final Map<Integer, List<WorkerStats>> workerStats = new TreeMap<>();
+
+    for (Map.Entry<String, TaskTracker> taskEntry : taskTrackers.entrySet()) {
+
+      TaskTracker taskTracker = taskEntry.getValue();
+
+      TaskStatus taskStatus = taskTracker.statusRef.get();
+      workerStats.computeIfAbsent(taskTracker.workerNumber, k -> new ArrayList<>())
+                 .add(new WorkerStats(
+                     taskEntry.getKey(),
+                     taskStatus.getStatusCode(),
+                     // getDuration() returns -1 for running tasks.
+                     // It's not calculated on-the-fly here since
+                     // taskTracker.startTimeMillis marks task
+                     // submission time rather than the actual start.
+                     taskStatus.getDuration(),
+                     taskTracker.taskPendingTimeInMs()
+                 ));
+    }
+
+    for (List<WorkerStats> workerStatsList : workerStats.values()) {
+      workerStatsList.sort(Comparator.comparing(WorkerStats::getWorkerId));
+    }
+    return workerStats;
   }
 
   private void mainLoop()
@@ -466,9 +510,13 @@ public class MSQWorkerTaskLauncher
   public WorkerCount getWorkerTaskCount()
   {
     synchronized (taskIds) {
-      int runningTasks = fullyStartedTasks.size();
-      int pendingTasks = desiredTaskCount - runningTasks;
-      return new WorkerCount(runningTasks, pendingTasks);
+      if (stopFuture.isDone()) {
+        return new WorkerCount(0, 0);
+      } else {
+        int runningTasks = fullyStartedTasks.size();
+        int pendingTasks = desiredTaskCount - runningTasks;
+        return new WorkerCount(runningTasks, pendingTasks);
+      }
     }
   }
 
@@ -491,18 +539,20 @@ public class MSQWorkerTaskLauncher
       for (Map.Entry<String, TaskStatus> statusEntry : statuses.entrySet()) {
         final String taskId = statusEntry.getKey();
         final TaskTracker tracker = taskTrackers.get(taskId);
-        tracker.status = statusEntry.getValue();
+        tracker.updateStatus(statusEntry.getValue());
+        TaskStatus status = tracker.statusRef.get();
 
-        if (!tracker.status.getStatusCode().isComplete() && tracker.unknownLocation()) {
+        if (!status.getStatusCode().isComplete() && tracker.unknownLocation()) {
           // Look up location if not known. Note: this location is not used to actually contact the task. For that,
           // we have SpecificTaskServiceLocator. This location is only used to determine if a task has started up.
-          tracker.initialLocation = workerManager.location(taskId);
+          tracker.setLocation(workerManager.location(taskId));
         }
 
-        if (tracker.status.getStatusCode() == TaskState.RUNNING && !tracker.unknownLocation()) {
+        if (status.getStatusCode() == TaskState.RUNNING && !tracker.unknownLocation()) {
           synchronized (taskIds) {
             if (fullyStartedTasks.add(tracker.workerNumber)) {
               recentFullyStartedWorkerTimeInMillis.set(System.currentTimeMillis());
+              tracker.setFullyStartedTime(System.currentTimeMillis());
             }
             taskIds.notifyAll();
           }
@@ -531,7 +581,7 @@ public class MSQWorkerTaskLauncher
         continue;
       }
 
-      if (tracker.status == null) {
+      if (tracker.statusRef.get() == null) {
         removeWorkerFromFullyStartedWorkers(tracker);
         final String errorMessage = StringUtils.format("Task [%s] status missing", taskId);
         log.info(errorMessage + ". Trying to relaunch the worker");
@@ -550,9 +600,10 @@ public class MSQWorkerTaskLauncher
         ));
       } else if (tracker.didFail() && !canceledWorkerTasks.contains(taskId)) {
         removeWorkerFromFullyStartedWorkers(tracker);
-        log.info("Task[%s] failed because %s. Trying to relaunch the worker", taskId, tracker.status.getErrorMsg());
+        TaskStatus taskStatus = tracker.statusRef.get();
+        log.info("Task[%s] failed because %s. Trying to relaunch the worker", taskId, taskStatus.getErrorMsg());
         tracker.enableRetrying();
-        retryTask.retry(tracker.msqWorkerTask, new WorkerFailedFault(taskId, tracker.status.getErrorMsg()));
+        retryTask.retry(tracker.msqWorkerTask, new WorkerFailedFault(taskId, taskStatus.getErrorMsg()));
       }
     }
   }
@@ -632,7 +683,7 @@ public class MSQWorkerTaskLauncher
           Limits.PER_WORKER_RELAUNCH_LIMIT,
           relaunchTask.getId(),
           relaunchTask.getWorkerNumber(),
-          tracker.status.getErrorMsg()
+          tracker.statusRef.get().getErrorMsg()
       ));
     }
     if (currentRelaunchCount > Limits.TOTAL_RELAUNCH_LIMIT) {
@@ -640,7 +691,7 @@ public class MSQWorkerTaskLauncher
           Limits.TOTAL_RELAUNCH_LIMIT,
           currentRelaunchCount,
           relaunchTask.getId(),
-          tracker.status.getErrorMsg()
+          tracker.statusRef.get().getErrorMsg()
       ));
     }
   }
@@ -652,8 +703,9 @@ public class MSQWorkerTaskLauncher
     for (final Map.Entry<String, TaskTracker> taskEntry : taskTrackers.entrySet()) {
       final String taskId = taskEntry.getKey();
       final TaskTracker tracker = taskEntry.getValue();
-      if (!canceledWorkerTasks.contains(taskId)
-          && (tracker.status == null || !tracker.status.getStatusCode().isComplete())) {
+      if ((!canceledWorkerTasks.contains(taskId))
+          &&
+          (!tracker.isComplete())) {
         canceledWorkerTasks.add(taskId);
         context.workerManager().cancel(taskId);
       }
@@ -746,11 +798,12 @@ public class MSQWorkerTaskLauncher
   {
     private final int workerNumber;
     private final long startTimeMillis = System.currentTimeMillis();
+    private final AtomicLong taskFullyStartedTimeRef = new AtomicLong();
     private final MSQWorkerTask msqWorkerTask;
-    private TaskStatus status;
-    private TaskLocation initialLocation;
+    private final AtomicReference<TaskStatus> statusRef = new AtomicReference<>();
+    private final AtomicReference<TaskLocation> initialLocationRef = new AtomicReference<>();
 
-    private boolean isRetrying = false;
+    private final AtomicBoolean isRetryingRef = new AtomicBoolean(false);
 
     public TaskTracker(int workerNumber, MSQWorkerTask msqWorkerTask)
     {
@@ -760,16 +813,19 @@ public class MSQWorkerTaskLauncher
 
     public boolean unknownLocation()
     {
+      TaskLocation initialLocation = initialLocationRef.get();
       return initialLocation == null || TaskLocation.unknown().equals(initialLocation);
     }
 
     public boolean isComplete()
     {
+      TaskStatus status = statusRef.get();
       return status != null && status.getStatusCode().isComplete();
     }
 
     public boolean didFail()
     {
+      TaskStatus status = statusRef.get();
       return status != null && status.getStatusCode().isFailure();
     }
 
@@ -784,6 +840,7 @@ public class MSQWorkerTaskLauncher
     public boolean didRunTimeOut(final long maxTaskStartDelayMillis)
     {
       long currentTimeMillis = System.currentTimeMillis();
+      TaskStatus status = statusRef.get();
       return (status == null || status.getStatusCode() == TaskState.RUNNING)
              && unknownLocation()
              && currentTimeMillis - recentFullyStartedWorkerTimeInMillis.get() > maxTaskStartDelayMillis
@@ -795,17 +852,87 @@ public class MSQWorkerTaskLauncher
      */
     public void enableRetrying()
     {
-      isRetrying = true;
+      isRetryingRef.set(true);
     }
 
     /**
      * Checks is the task is retrying,
-     *
-     * @return
      */
     public boolean isRetrying()
     {
-      return isRetrying;
+      return isRetryingRef.get();
+    }
+
+    public void setLocation(TaskLocation taskLocation)
+    {
+      initialLocationRef.set(taskLocation);
+    }
+
+    public void updateStatus(TaskStatus taskStatus)
+    {
+      statusRef.set(taskStatus);
+    }
+
+    public void setFullyStartedTime(long currentTimeMillis)
+    {
+      taskFullyStartedTimeRef.set(currentTimeMillis);
+    }
+
+    public long taskPendingTimeInMs()
+    {
+      long currentFullyStartingTime = taskFullyStartedTimeRef.get();
+      if (currentFullyStartingTime == 0) {
+        return System.currentTimeMillis() - startTimeMillis;
+      } else {
+        return Math.max(0, currentFullyStartingTime - startTimeMillis);
+      }
+    }
+  }
+
+  public static class WorkerStats
+  {
+    String workerId;
+    TaskState state;
+    long duration;
+    long pendingTimeInMs;
+
+    /**
+     * For JSON deserialization only
+     */
+    public WorkerStats()
+    {
+    }
+
+    public WorkerStats(String workerId, TaskState state, long duration, long pendingTimeInMs)
+    {
+      this.workerId = workerId;
+      this.state = state;
+      this.duration = duration;
+      this.pendingTimeInMs = pendingTimeInMs;
+    }
+
+    @JsonProperty
+    public String getWorkerId()
+    {
+      return workerId;
+    }
+
+    @JsonProperty
+    public TaskState getState()
+    {
+      return state;
+    }
+
+    @JsonProperty("durationMs")
+    public long getDuration()
+    {
+      return duration;
+    }
+
+    @JsonProperty("pendingMs")
+    public long getPendingTimeInMs()
+    {
+      return pendingTimeInMs;
     }
   }
 }

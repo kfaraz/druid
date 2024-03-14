@@ -22,10 +22,13 @@ package org.apache.druid.query.rowsandcols;
 import com.google.common.collect.Lists;
 import org.apache.druid.common.config.NullHandling;
 import org.apache.druid.java.util.common.ISE;
+import org.apache.druid.query.rowsandcols.concrete.FrameRowsAndColumns;
+import org.apache.druid.query.rowsandcols.concrete.FrameRowsAndColumnsTest;
 import org.junit.Assert;
 import org.junit.Test;
 
 import javax.annotation.Nonnull;
+
 import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
@@ -63,7 +66,9 @@ public abstract class RowsAndColumnsTestBase
         new Object[]{MapOfColumnsRowsAndColumns.class, Function.identity()},
         new Object[]{ArrayListRowsAndColumns.class, ArrayListRowsAndColumnsTest.MAKER},
         new Object[]{ConcatRowsAndColumns.class, ConcatRowsAndColumnsTest.MAKER},
-        new Object[]{RearrangedRowsAndColumns.class, RearrangedRowsAndColumnsTest.MAKER}
+        new Object[]{RearrangedRowsAndColumns.class, RearrangedRowsAndColumnsTest.MAKER},
+        new Object[]{FrameRowsAndColumns.class, FrameRowsAndColumnsTest.MAKER},
+        new Object[]{StorageAdapterRowsAndColumns.class, StorageAdapterRowsAndColumnsTest.MAKER}
     );
   }
 

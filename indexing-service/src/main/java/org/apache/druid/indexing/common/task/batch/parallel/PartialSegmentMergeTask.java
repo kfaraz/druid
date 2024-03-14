@@ -37,7 +37,6 @@ import org.apache.druid.indexing.common.task.TaskResource;
 import org.apache.druid.java.util.common.FileUtils;
 import org.apache.druid.java.util.common.ISE;
 import org.apache.druid.java.util.common.Pair;
-import org.apache.druid.java.util.common.RetryUtils;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.io.Closer;
 import org.apache.druid.java.util.common.logger.Logger;
@@ -78,7 +77,6 @@ abstract class PartialSegmentMergeTask<S extends ShardSpec> extends PerfectRollu
 
   private final PartialSegmentMergeIOConfig ioConfig;
   private final int numAttempts;
-  private final String supervisorTaskId;
   private final String subtaskSpecId;
 
   PartialSegmentMergeTask(
@@ -101,7 +99,8 @@ abstract class PartialSegmentMergeTask<S extends ShardSpec> extends PerfectRollu
         taskResource,
         dataSchema,
         tuningConfig,
-        context
+        context,
+        supervisorTaskId
     );
 
     Preconditions.checkArgument(
@@ -111,19 +110,12 @@ abstract class PartialSegmentMergeTask<S extends ShardSpec> extends PerfectRollu
     this.subtaskSpecId = subtaskSpecId;
     this.ioConfig = ioConfig;
     this.numAttempts = numAttempts;
-    this.supervisorTaskId = supervisorTaskId;
   }
 
   @JsonProperty
   public int getNumAttempts()
   {
     return numAttempts;
-  }
-
-  @JsonProperty
-  public String getSupervisorTaskId()
-  {
-    return supervisorTaskId;
   }
 
   @JsonProperty
@@ -151,7 +143,7 @@ abstract class PartialSegmentMergeTask<S extends ShardSpec> extends PerfectRollu
     }
 
     final List<TaskLock> locks = toolbox.getTaskActionClient().submit(
-        new SurrogateAction<>(supervisorTaskId, new LockListAction())
+        new SurrogateAction<>(getSupervisorTaskId(), new LockListAction())
     );
     final Map<Interval, String> intervalToVersion = Maps.newHashMapWithExpectedSize(locks.size());
     locks.forEach(lock -> {
@@ -179,7 +171,7 @@ abstract class PartialSegmentMergeTask<S extends ShardSpec> extends PerfectRollu
     LOG.info("Fetch took [%s] seconds", fetchTime);
 
     final ParallelIndexSupervisorTaskClient taskClient = toolbox.getSupervisorTaskClientProvider().build(
-        supervisorTaskId,
+        getSupervisorTaskId(),
         getTuningConfig().getChatHandlerTimeout(),
         getTuningConfig().getChatHandlerNumRetries()
     );
@@ -225,7 +217,7 @@ abstract class PartialSegmentMergeTask<S extends ShardSpec> extends PerfectRollu
         );
         FileUtils.mkdirp(partitionDir);
         for (PartitionLocation location : entryPerBucketId.getValue()) {
-          final File unzippedDir = toolbox.getShuffleClient().fetchSegmentFile(partitionDir, supervisorTaskId, location);
+          final File unzippedDir = toolbox.getShuffleClient().fetchSegmentFile(partitionDir, getSupervisorTaskId(), location);
           intervalToUnzippedFiles.computeIfAbsent(interval, k -> new Int2ObjectOpenHashMap<>())
               .computeIfAbsent(bucketId, k -> new ArrayList<>())
               .add(unzippedDir);
@@ -277,29 +269,24 @@ abstract class PartialSegmentMergeTask<S extends ShardSpec> extends PerfectRollu
                                                .map(AggregatorFactory::getName)
                                                .collect(Collectors.toList());
 
-        // Retry pushing segments because uploading to deep storage might fail especially for cloud storage types
-        final DataSegment segment = RetryUtils.retry(
-            () -> segmentPusher.push(
-                mergedFileAndDimensionNames.lhs,
-                new DataSegment(
-                    getDataSource(),
-                    interval,
-                    Preconditions.checkNotNull(
-                        AbstractBatchIndexTask.findVersion(intervalToVersion, interval),
-                        "version for interval[%s]",
-                        interval
-                    ),
-                    null, // will be filled in the segmentPusher
-                    mergedFileAndDimensionNames.rhs,
-                    metricNames,
-                    createShardSpec(toolbox, interval, bucketId),
-                    null, // will be filled in the segmentPusher
-                    0     // will be filled in the segmentPusher
+        final DataSegment segment = segmentPusher.push(
+            mergedFileAndDimensionNames.lhs,
+            new DataSegment(
+                getDataSource(),
+                interval,
+                Preconditions.checkNotNull(
+                    AbstractBatchIndexTask.findVersion(intervalToVersion, interval),
+                    "version for interval[%s]",
+                    interval
                 ),
-                false
+                null, // will be filled in the segmentPusher
+                mergedFileAndDimensionNames.rhs,
+                metricNames,
+                createShardSpec(toolbox, interval, bucketId),
+                null, // will be filled in the segmentPusher
+                0     // will be filled in the segmentPusher
             ),
-            exception -> !(exception instanceof NullPointerException) && exception instanceof Exception,
-            5
+            false
         );
         long pushFinishTime = System.nanoTime();
         pushedSegments.add(segment);

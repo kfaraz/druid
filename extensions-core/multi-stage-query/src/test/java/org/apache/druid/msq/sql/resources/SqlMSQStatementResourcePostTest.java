@@ -39,6 +39,7 @@ import org.apache.druid.msq.sql.entity.PageInformation;
 import org.apache.druid.msq.sql.entity.ResultSetInformation;
 import org.apache.druid.msq.sql.entity.SqlStatementResult;
 import org.apache.druid.msq.test.MSQTestBase;
+import org.apache.druid.msq.test.MSQTestFileUtils;
 import org.apache.druid.msq.test.MSQTestOverlordServiceClient;
 import org.apache.druid.msq.util.MultiStageQueryContext;
 import org.apache.druid.query.ExecutionMode;
@@ -55,6 +56,7 @@ import org.junit.Test;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.StreamingOutput;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -74,7 +76,8 @@ public class SqlMSQStatementResourcePostTest extends MSQTestBase
         sqlStatementFactory,
         objectMapper,
         indexingServiceClient,
-        localFileStorageConnector
+        localFileStorageConnector,
+        authorizerMapper
     );
   }
 
@@ -176,6 +179,65 @@ public class SqlMSQStatementResourcePostTest extends MSQTestBase
     );
   }
 
+  @Test
+  public void emptyInsert()
+  {
+    Response response = resource.doPost(new SqlQuery(
+        "insert into foo1 select  __time, dim1 , count(*) as cnt from foo where dim1 is not null and __time < TIMESTAMP '1971-01-01 00:00:00' group by 1, 2 PARTITIONED by day clustered by dim1",
+        null,
+        false,
+        false,
+        false,
+        ImmutableMap.<String, Object>builder()
+                    .putAll(defaultAsyncContext())
+                    .build(),
+        null
+    ), SqlStatementResourceTest.makeOkRequest());
+    Assert.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+
+    SqlStatementResult actual = (SqlStatementResult) response.getEntity();
+
+    SqlStatementResult expected = new SqlStatementResult(
+        actual.getQueryId(),
+        SqlStatementState.SUCCESS,
+        MSQTestOverlordServiceClient.CREATED_TIME,
+        null,
+        MSQTestOverlordServiceClient.DURATION,
+        new ResultSetInformation(0L, 0L, null, "foo1", null, null),
+        null
+    );
+    Assert.assertEquals(expected, actual);
+  }
+
+  @Test
+  public void emptyReplace()
+  {
+    Response response = resource.doPost(new SqlQuery(
+        "replace into foo1 overwrite all select  __time, dim1 , count(*) as cnt from foo where dim1 is not null and __time < TIMESTAMP '1971-01-01 00:00:00' group by 1, 2 PARTITIONED by day clustered by dim1",
+        null,
+        false,
+        false,
+        false,
+        ImmutableMap.<String, Object>builder()
+                    .putAll(defaultAsyncContext())
+                    .build(),
+        null
+    ), SqlStatementResourceTest.makeOkRequest());
+    Assert.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+
+    SqlStatementResult actual = (SqlStatementResult) response.getEntity();
+
+    SqlStatementResult expected = new SqlStatementResult(
+        actual.getQueryId(),
+        SqlStatementState.SUCCESS,
+        MSQTestOverlordServiceClient.CREATED_TIME,
+        null,
+        MSQTestOverlordServiceClient.DURATION,
+        new ResultSetInformation(0L, 0L, null, "foo1", null, null),
+        null
+    );
+    Assert.assertEquals(expected, actual);
+  }
 
   @Test
   public void insertCannotBeEmptyFaultTest()
@@ -186,7 +248,10 @@ public class SqlMSQStatementResourcePostTest extends MSQTestBase
         false,
         false,
         false,
-        defaultAsyncContext(),
+        ImmutableMap.<String, Object>builder()
+                    .putAll(defaultAsyncContext())
+                    .put(MultiStageQueryContext.CTX_FAIL_ON_EMPTY_INSERT, true)
+                    .build(),
         null
     ), SqlStatementResourceTest.makeOkRequest());
     Assert.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
@@ -243,7 +308,7 @@ public class SqlMSQStatementResourcePostTest extends MSQTestBase
         + "\"resultFormat\":\"compactedList\","
         + "\"columns\":[\"__time\",\"cnt\",\"dim1\",\"dim2\",\"dim3\",\"m1\",\"m2\",\"unique_dim1\"],"
         + "\"legacy\":false,"
-        + "\"context\":{\"__resultFormat\":\"object\",\"executionMode\":\"ASYNC\",\"scanSignature\":\"[{\\\"name\\\":\\\"__time\\\",\\\"type\\\":\\\"LONG\\\"},{\\\"name\\\":\\\"cnt\\\",\\\"type\\\":\\\"LONG\\\"},{\\\"name\\\":\\\"dim1\\\",\\\"type\\\":\\\"STRING\\\"},{\\\"name\\\":\\\"dim2\\\",\\\"type\\\":\\\"STRING\\\"},{\\\"name\\\":\\\"dim3\\\",\\\"type\\\":\\\"STRING\\\"},{\\\"name\\\":\\\"m1\\\",\\\"type\\\":\\\"FLOAT\\\"},{\\\"name\\\":\\\"m2\\\",\\\"type\\\":\\\"DOUBLE\\\"},{\\\"name\\\":\\\"unique_dim1\\\",\\\"type\\\":\\\"COMPLEX<hyperUnique>\\\"}]\",\"sqlQueryId\":\"queryId\"},\"granularity\":{\"type\":\"all\"}},\"signature\":[{\"name\":\"__time\",\"type\":\"LONG\"},{\"name\":\"dim1\",\"type\":\"STRING\"},{\"name\":\"dim2\",\"type\":\"STRING\"},{\"name\":\"dim3\",\"type\":\"STRING\"},{\"name\":\"cnt\",\"type\":\"LONG\"},{\"name\":\"m1\",\"type\":\"FLOAT\"},{\"name\":\"m2\",\"type\":\"DOUBLE\"},{\"name\":\"unique_dim1\",\"type\":\"COMPLEX<hyperUnique>\"}],\"columnMappings\":[{\"queryColumn\":\"__time\",\"outputColumn\":\"__time\"},{\"queryColumn\":\"dim1\",\"outputColumn\":\"dim1\"},{\"queryColumn\":\"dim2\",\"outputColumn\":\"dim2\"},{\"queryColumn\":\"dim3\",\"outputColumn\":\"dim3\"},{\"queryColumn\":\"cnt\",\"outputColumn\":\"cnt\"},{\"queryColumn\":\"m1\",\"outputColumn\":\"m1\"},{\"queryColumn\":\"m2\",\"outputColumn\":\"m2\"},{\"queryColumn\":\"unique_dim1\",\"outputColumn\":\"unique_dim1\"}]}],"
+        + "\"context\":{\"__resultFormat\":\"object\",\"executionMode\":\"ASYNC\",\"scanSignature\":\"[{\\\"name\\\":\\\"__time\\\",\\\"type\\\":\\\"LONG\\\"},{\\\"name\\\":\\\"cnt\\\",\\\"type\\\":\\\"LONG\\\"},{\\\"name\\\":\\\"dim1\\\",\\\"type\\\":\\\"STRING\\\"},{\\\"name\\\":\\\"dim2\\\",\\\"type\\\":\\\"STRING\\\"},{\\\"name\\\":\\\"dim3\\\",\\\"type\\\":\\\"STRING\\\"},{\\\"name\\\":\\\"m1\\\",\\\"type\\\":\\\"FLOAT\\\"},{\\\"name\\\":\\\"m2\\\",\\\"type\\\":\\\"DOUBLE\\\"},{\\\"name\\\":\\\"unique_dim1\\\",\\\"type\\\":\\\"COMPLEX<hyperUnique>\\\"}]\",\"sqlQueryId\":\"queryId\"},\"columnTypes\":[\"LONG\",\"LONG\",\"STRING\",\"STRING\",\"STRING\",\"FLOAT\",\"DOUBLE\",\"COMPLEX<hyperUnique>\"],\"granularity\":{\"type\":\"all\"}},\"signature\":[{\"name\":\"__time\",\"type\":\"LONG\"},{\"name\":\"dim1\",\"type\":\"STRING\"},{\"name\":\"dim2\",\"type\":\"STRING\"},{\"name\":\"dim3\",\"type\":\"STRING\"},{\"name\":\"cnt\",\"type\":\"LONG\"},{\"name\":\"m1\",\"type\":\"FLOAT\"},{\"name\":\"m2\",\"type\":\"DOUBLE\"},{\"name\":\"unique_dim1\",\"type\":\"COMPLEX<hyperUnique>\"}],\"columnMappings\":[{\"queryColumn\":\"__time\",\"outputColumn\":\"__time\"},{\"queryColumn\":\"dim1\",\"outputColumn\":\"dim1\"},{\"queryColumn\":\"dim2\",\"outputColumn\":\"dim2\"},{\"queryColumn\":\"dim3\",\"outputColumn\":\"dim3\"},{\"queryColumn\":\"cnt\",\"outputColumn\":\"cnt\"},{\"queryColumn\":\"m1\",\"outputColumn\":\"m1\"},{\"queryColumn\":\"m2\",\"outputColumn\":\"m2\"},{\"queryColumn\":\"unique_dim1\",\"outputColumn\":\"unique_dim1\"}]}],"
         + " RESOURCES=[{\"name\":\"foo\",\"type\":\"DATASOURCE\"}],"
         + " ATTRIBUTES={\"statementType\":\"SELECT\"}}",
         String.valueOf(SqlStatementResourceTest.getResultRowsFromResponse(response).get(0))
@@ -274,7 +339,8 @@ public class SqlMSQStatementResourcePostTest extends MSQTestBase
         sqlStatementFactory,
         objectMapper,
         indexingServiceClient,
-        NilStorageConnector.getInstance()
+        NilStorageConnector.getInstance(),
+        authorizerMapper
     );
 
     String errorMessage = "The sql statement api cannot read from the select destination [durableStorage] provided in "
@@ -305,6 +371,7 @@ public class SqlMSQStatementResourcePostTest extends MSQTestBase
   {
     Map<String, Object> context = defaultAsyncContext();
     context.put(MultiStageQueryContext.CTX_SELECT_DESTINATION, MSQSelectDestination.DURABLESTORAGE.getName());
+    context.put(MultiStageQueryContext.CTX_ROWS_PER_PAGE, 2);
 
     SqlStatementResult sqlStatementResult = (SqlStatementResult) resource.doPost(
         new SqlQuery(
@@ -319,6 +386,12 @@ public class SqlMSQStatementResourcePostTest extends MSQTestBase
         SqlStatementResourceTest.makeOkRequest()
     ).getEntity();
 
+    Assert.assertEquals(ImmutableList.of(
+        new PageInformation(0, 2L, 120L, 0, 0),
+        new PageInformation(1, 2L, 118L, 0, 1),
+        new PageInformation(2, 2L, 122L, 0, 2)
+    ), sqlStatementResult.getResultSetInformation().getPages());
+
     assertExpectedResults(
         "{\"cnt\":1,\"dim1\":\"\"}\n"
         + "{\"cnt\":1,\"dim1\":\"10.1\"}\n"
@@ -333,15 +406,12 @@ public class SqlMSQStatementResourcePostTest extends MSQTestBase
             ResultFormat.OBJECTLINES.name(),
             SqlStatementResourceTest.makeOkRequest()
         ),
-        objectMapper);
+        objectMapper
+    );
 
     assertExpectedResults(
         "{\"cnt\":1,\"dim1\":\"\"}\n"
         + "{\"cnt\":1,\"dim1\":\"10.1\"}\n"
-        + "{\"cnt\":1,\"dim1\":\"2\"}\n"
-        + "{\"cnt\":1,\"dim1\":\"1\"}\n"
-        + "{\"cnt\":1,\"dim1\":\"def\"}\n"
-        + "{\"cnt\":1,\"dim1\":\"abc\"}\n"
         + "\n",
         resource.doGetResults(
             sqlStatementResult.getQueryId(),
@@ -349,7 +419,120 @@ public class SqlMSQStatementResourcePostTest extends MSQTestBase
             ResultFormat.OBJECTLINES.name(),
             SqlStatementResourceTest.makeOkRequest()
         ),
-        objectMapper);
+        objectMapper
+    );
+
+    assertExpectedResults(
+        "{\"cnt\":1,\"dim1\":\"def\"}\n"
+        + "{\"cnt\":1,\"dim1\":\"abc\"}\n"
+        + "\n",
+        resource.doGetResults(
+            sqlStatementResult.getQueryId(),
+            2L,
+            ResultFormat.OBJECTLINES.name(),
+            SqlStatementResourceTest.makeOkRequest()
+        ),
+        objectMapper
+    );
+  }
+
+
+  @Test
+  public void testMultipleWorkersWithPageSizeLimiting() throws IOException
+  {
+    Map<String, Object> context = defaultAsyncContext();
+    context.put(MultiStageQueryContext.CTX_SELECT_DESTINATION, MSQSelectDestination.DURABLESTORAGE.getName());
+    context.put(MultiStageQueryContext.CTX_ROWS_PER_PAGE, 2);
+    context.put(MultiStageQueryContext.CTX_MAX_NUM_TASKS, 3);
+
+    final File toRead = MSQTestFileUtils.getResourceAsTemporaryFile(temporaryFolder, this, "/wikipedia-sampled.json");
+    final String toReadAsJson = queryFramework().queryJsonMapper().writeValueAsString(toRead.getAbsolutePath());
+
+
+    SqlStatementResult sqlStatementResult = (SqlStatementResult) resource.doPost(
+        new SqlQuery(
+            "SELECT\n"
+            + "  floor(TIME_PARSE(\"timestamp\") to day) AS __time,\n"
+            + "  user\n"
+            + "FROM TABLE(\n"
+            + "  EXTERN(\n"
+            + "    '{ \"files\": [" + toReadAsJson + "," + toReadAsJson + "],\"type\":\"local\"}',\n"
+            + "    '{\"type\": \"json\"}',\n"
+            + "    '[{\"name\": \"timestamp\", \"type\": \"string\"}, {\"name\": \"page\", \"type\": \"string\"}, {\"name\": \"user\", \"type\": \"string\"}]'\n"
+            + "  )\n"
+            + ") where user like '%ot%'",
+            null,
+            false,
+            false,
+            false,
+            context,
+            null
+        ),
+        SqlStatementResourceTest.makeOkRequest()
+    ).getEntity();
+
+    Assert.assertEquals(ImmutableList.of(
+        new PageInformation(0, 2L, 128L, 0, 0),
+        new PageInformation(1, 2L, 132L, 1, 1),
+        new PageInformation(2, 2L, 128L, 0, 2),
+        new PageInformation(3, 2L, 132L, 1, 3),
+        new PageInformation(4, 2L, 130L, 0, 4)
+    ), sqlStatementResult.getResultSetInformation().getPages());
+
+
+    List<List<Object>> rows = new ArrayList<>();
+    rows.add(ImmutableList.of(1466985600000L, "Lsjbot"));
+    rows.add(ImmutableList.of(1466985600000L, "Lsjbot"));
+    rows.add(ImmutableList.of(1466985600000L, "Beau.bot"));
+    rows.add(ImmutableList.of(1466985600000L, "Beau.bot"));
+    rows.add(ImmutableList.of(1466985600000L, "Lsjbot"));
+    rows.add(ImmutableList.of(1466985600000L, "Lsjbot"));
+    rows.add(ImmutableList.of(1466985600000L, "TaxonBot"));
+    rows.add(ImmutableList.of(1466985600000L, "TaxonBot"));
+    rows.add(ImmutableList.of(1466985600000L, "GiftBot"));
+    rows.add(ImmutableList.of(1466985600000L, "GiftBot"));
+
+    Assert.assertEquals(rows, SqlStatementResourceTest.getResultRowsFromResponse(resource.doGetResults(
+        sqlStatementResult.getQueryId(),
+        null,
+        ResultFormat.ARRAY.name(),
+        SqlStatementResourceTest.makeOkRequest()
+    )));
+
+    Assert.assertEquals(rows.subList(0, 2), SqlStatementResourceTest.getResultRowsFromResponse(resource.doGetResults(
+        sqlStatementResult.getQueryId(),
+        0L,
+        ResultFormat.ARRAY.name(),
+        SqlStatementResourceTest.makeOkRequest()
+    )));
+
+    Assert.assertEquals(rows.subList(2, 4), SqlStatementResourceTest.getResultRowsFromResponse(resource.doGetResults(
+        sqlStatementResult.getQueryId(),
+        1L,
+        ResultFormat.ARRAY.name(),
+        SqlStatementResourceTest.makeOkRequest()
+    )));
+
+    Assert.assertEquals(rows.subList(4, 6), SqlStatementResourceTest.getResultRowsFromResponse(resource.doGetResults(
+        sqlStatementResult.getQueryId(),
+        2L,
+        ResultFormat.ARRAY.name(),
+        SqlStatementResourceTest.makeOkRequest()
+    )));
+
+    Assert.assertEquals(rows.subList(6, 8), SqlStatementResourceTest.getResultRowsFromResponse(resource.doGetResults(
+        sqlStatementResult.getQueryId(),
+        3L,
+        ResultFormat.ARRAY.name(),
+        SqlStatementResourceTest.makeOkRequest()
+    )));
+
+    Assert.assertEquals(rows.subList(8, 10), SqlStatementResourceTest.getResultRowsFromResponse(resource.doGetResults(
+        sqlStatementResult.getQueryId(),
+        4L,
+        ResultFormat.ARRAY.name(),
+        SqlStatementResourceTest.makeOkRequest()
+    )));
   }
 
   @Test
@@ -455,7 +638,12 @@ public class SqlMSQStatementResourcePostTest extends MSQTestBase
     )));
   }
 
-  private byte[] createExpectedResultsInFormat(ResultFormat resultFormat, List<Object[]> resultsList, List<ColumnNameAndTypes> rowSignature, ObjectMapper jsonMapper) throws Exception
+  private byte[] createExpectedResultsInFormat(
+      ResultFormat resultFormat,
+      List<Object[]> resultsList,
+      List<ColumnNameAndTypes> rowSignature,
+      ObjectMapper jsonMapper
+  ) throws Exception
   {
     ByteArrayOutputStream os = new ByteArrayOutputStream();
     try (final ResultFormat.Writer writer = resultFormat.createFormatter(os, jsonMapper)) {
@@ -464,7 +652,8 @@ public class SqlMSQStatementResourcePostTest extends MSQTestBase
     return os.toByteArray();
   }
 
-  private void assertExpectedResults(String expectedResult, Response resultsResponse, ObjectMapper objectMapper) throws IOException
+  private void assertExpectedResults(String expectedResult, Response resultsResponse, ObjectMapper objectMapper)
+      throws IOException
   {
     byte[] bytes = responseToByteArray(resultsResponse, objectMapper);
     Assert.assertEquals(expectedResult, new String(bytes, StandardCharsets.UTF_8));

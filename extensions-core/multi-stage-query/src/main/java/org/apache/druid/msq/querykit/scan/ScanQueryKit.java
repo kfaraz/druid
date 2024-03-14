@@ -59,7 +59,11 @@ public class ScanQueryKit implements QueryKit<ScanQuery>
     RowSignature scanSignature;
     try {
       final String s = scanQuery.context().getString(DruidQuery.CTX_SCAN_SIGNATURE);
-      scanSignature = jsonMapper.readValue(s, RowSignature.class);
+      if (s == null) {
+        scanSignature = scanQuery.getRowSignature();
+      } else {
+        scanSignature = jsonMapper.readValue(s, RowSignature.class);
+      }
     }
     catch (JsonProcessingException e) {
       throw new RuntimeException(e);
@@ -95,6 +99,7 @@ public class ScanQueryKit implements QueryKit<ScanQuery>
         originalQuery.getDataSource(),
         originalQuery.getQuerySegmentSpec(),
         originalQuery.getFilter(),
+        null,
         maxWorkerCount,
         minStageNumber,
         false

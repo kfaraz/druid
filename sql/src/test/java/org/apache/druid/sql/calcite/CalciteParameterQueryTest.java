@@ -22,6 +22,7 @@ package org.apache.druid.sql.calcite;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.avatica.SqlType;
 import org.apache.druid.common.config.NullHandling;
+import org.apache.druid.error.DruidException;
 import org.apache.druid.error.DruidExceptionMatcher;
 import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.common.Intervals;
@@ -45,6 +46,9 @@ import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * This class has copied a subset of the tests in {@link CalciteQueryTest} and
@@ -129,7 +133,7 @@ public class CalciteParameterQueryTest extends BaseCalciteQueryTest
                                    new DoubleSumAggregatorFactory("a1", "m2")
                                ))
                                .postAggregators(
-                                   expressionPostAgg("p0", "(exp(\"a0\") + 10)")
+                                   expressionPostAgg("p0", "(exp(\"a0\") + 10)", ColumnType.DOUBLE)
                                )
                                .context(QUERY_CONTEXT_DEFAULT)
                                .build()),
@@ -166,17 +170,17 @@ public class CalciteParameterQueryTest extends BaseCalciteQueryTest
                   .granularity(Granularities.ALL)
                   .aggregators(aggregators(new CountAggregatorFactory("a0")))
                   .postAggregators(
-                      expressionPostAgg("p0", "'foo'"),
-                      expressionPostAgg("p1", "'xfoo'"),
-                      expressionPostAgg("p2", "'foo'"),
-                      expressionPostAgg("p3", "' foo'"),
-                      expressionPostAgg("p4", "'foo'"),
-                      expressionPostAgg("p5", "'foo'"),
-                      expressionPostAgg("p6", "'foo'"),
-                      expressionPostAgg("p7", "'foo '"),
-                      expressionPostAgg("p8", "'foox'"),
-                      expressionPostAgg("p9", "' foo'"),
-                      expressionPostAgg("p10", "'xfoo'")
+                      expressionPostAgg("p0", "'foo'", ColumnType.STRING),
+                      expressionPostAgg("p1", "'xfoo'", ColumnType.STRING),
+                      expressionPostAgg("p2", "'foo'", ColumnType.STRING),
+                      expressionPostAgg("p3", "' foo'", ColumnType.STRING),
+                      expressionPostAgg("p4", "'foo'", ColumnType.STRING),
+                      expressionPostAgg("p5", "'foo'", ColumnType.STRING),
+                      expressionPostAgg("p6", "'foo'", ColumnType.STRING),
+                      expressionPostAgg("p7", "'foo '", ColumnType.STRING),
+                      expressionPostAgg("p8", "'foox'", ColumnType.STRING),
+                      expressionPostAgg("p9", "' foo'", ColumnType.STRING),
+                      expressionPostAgg("p10", "'xfoo'", ColumnType.STRING)
                   )
                   .context(QUERY_CONTEXT_DEFAULT)
                   .build()
@@ -221,7 +225,7 @@ public class CalciteParameterQueryTest extends BaseCalciteQueryTest
         + "WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?",
         ImmutableList.of(),
         ImmutableList.of(
-            new Object[]{8L, 1249L, 156L, -5L, 1111L}
+            new Object[]{8L, 1249L, 156.125, -5L, 1111L}
         ),
         ImmutableList.of(
             new SqlParameter(SqlType.VARCHAR, "druid"),
@@ -317,16 +321,21 @@ public class CalciteParameterQueryTest extends BaseCalciteQueryTest
                             new CountAggregatorFactory("a1")
                         ))
                         .setPostAggregatorSpecs(ImmutableList.of(
-                            expressionPostAgg("p0", "(\"a0\" / \"a1\")")
+                            expressionPostAgg("p0", "(\"a0\" / \"a1\")", ColumnType.LONG)
                         ))
                         .setHavingSpec(having(expressionFilter("((\"a0\" / \"a1\") == 1)")))
                         .setContext(QUERY_CONTEXT_DEFAULT)
                         .build()
         ),
-        ImmutableList.of(
+        NullHandling.replaceWithDefault()
+        ? ImmutableList.of(
             new Object[]{"10.1", 1L},
             new Object[]{"2", 1L},
             new Object[]{"abc", 1L},
+            new Object[]{"def", 1L}
+        )
+        : ImmutableList.of(
+            new Object[]{"2", 1L},
             new Object[]{"def", 1L}
         ),
         ImmutableList.of(
@@ -354,7 +363,7 @@ public class CalciteParameterQueryTest extends BaseCalciteQueryTest
                   .intervals(querySegmentSpec(Filtration.eternity()))
                   .granularity(Granularities.ALL)
                   .aggregators(aggregators(new DoubleSumAggregatorFactory("a0", "m1")))
-                  .postAggregators(ImmutableList.of(expressionPostAgg("p0", "(\"a0\" / 10)")))
+                  .postAggregators(expressionPostAgg("p0", "(\"a0\" / 10)", ColumnType.DOUBLE))
                   .context(QUERY_CONTEXT_DEFAULT)
                   .build()
         ),
@@ -397,7 +406,7 @@ public class CalciteParameterQueryTest extends BaseCalciteQueryTest
                                    new DoubleSumAggregatorFactory("a1", "m2")
                                ))
                                .postAggregators(
-                                   expressionPostAgg("p0", "(exp(\"a0\") + 10)")
+                                   expressionPostAgg("p0", "(exp(\"a0\") + 10)", ColumnType.DOUBLE)
                                )
                                .context(QUERY_CONTEXT_DEFAULT)
                                .build()),
@@ -434,7 +443,7 @@ public class CalciteParameterQueryTest extends BaseCalciteQueryTest
                                    new DoubleSumAggregatorFactory("a1", "m2")
                                ))
                                .postAggregators(
-                                   expressionPostAgg("p0", "(exp(\"a0\") + 10)")
+                                   expressionPostAgg("p0", "(exp(\"a0\") + 10)", ColumnType.DOUBLE)
                                )
                                .context(QUERY_CONTEXT_DEFAULT)
                                .build()),
@@ -471,7 +480,7 @@ public class CalciteParameterQueryTest extends BaseCalciteQueryTest
                                    new DoubleSumAggregatorFactory("a1", "m2")
                                ))
                                .postAggregators(
-                                   expressionPostAgg("p0", "(exp(\"a0\") + 10)")
+                                   expressionPostAgg("p0", "(exp(\"a0\") + 10)", ColumnType.DOUBLE)
                                )
                                .context(QUERY_CONTEXT_DEFAULT)
                                .build()),
@@ -584,32 +593,40 @@ public class CalciteParameterQueryTest extends BaseCalciteQueryTest
   @Test
   public void testMissingParameter()
   {
-    expectedException.expect(
-        DruidExceptionMatcher.invalidSqlInput().expectMessageIs("No value bound for parameter (position [1])")
+    DruidException exception = assertThrows(
+        DruidException.class,
+        () -> testQuery(
+            "SELECT COUNT(*)\n"
+                + "FROM druid.numfoo\n"
+                + "WHERE l1 > ?",
+            ImmutableList.of(),
+            ImmutableList.of(new Object[] {3L}),
+            ImmutableList.of()
+        )
     );
-    testQuery(
-        "SELECT COUNT(*)\n"
-        + "FROM druid.numfoo\n"
-        + "WHERE l1 > ?",
-        ImmutableList.of(),
-        ImmutableList.of(new Object[]{3L}),
-        ImmutableList.of()
+    assertThat(
+        exception,
+        DruidExceptionMatcher.invalidSqlInput().expectMessageIs("No value bound for parameter (position [1])")
     );
   }
 
   @Test
   public void testPartiallyMissingParameter()
   {
-    expectedException.expect(
-        DruidExceptionMatcher.invalidSqlInput().expectMessageIs("No value bound for parameter (position [2])")
+    DruidException exception = assertThrows(
+        DruidException.class,
+        () -> testQuery(
+            "SELECT COUNT(*)\n"
+                + "FROM druid.numfoo\n"
+                + "WHERE l1 > ? AND f1 = ?",
+            ImmutableList.of(),
+            ImmutableList.of(new Object[] {3L}),
+            ImmutableList.of(new SqlParameter(SqlType.BIGINT, 3L))
+        )
     );
-    testQuery(
-        "SELECT COUNT(*)\n"
-        + "FROM druid.numfoo\n"
-        + "WHERE l1 > ? AND f1 = ?",
-        ImmutableList.of(),
-        ImmutableList.of(new Object[]{3L}),
-        ImmutableList.of(new SqlParameter(SqlType.BIGINT, 3L))
+    assertThat(
+        exception,
+        DruidExceptionMatcher.invalidSqlInput().expectMessageIs("No value bound for parameter (position [2])")
     );
   }
 
@@ -619,14 +636,19 @@ public class CalciteParameterQueryTest extends BaseCalciteQueryTest
     List<SqlParameter> params = new ArrayList<>();
     params.add(null);
     params.add(new SqlParameter(SqlType.INTEGER, 1));
-    expectedException.expect(
-        DruidExceptionMatcher.invalidSqlInput().expectMessageIs("No value bound for parameter (position [1])")
+    DruidException exception = assertThrows(
+        DruidException.class,
+        () -> testQuery(
+            "SELECT 1 + ?, dim1 FROM foo LIMIT ?",
+            ImmutableList.of(),
+            ImmutableList.of(),
+            params
+        )
     );
-    testQuery(
-        "SELECT 1 + ?, dim1 FROM foo LIMIT ?",
-        ImmutableList.of(),
-        ImmutableList.of(),
-        params
+
+    assertThat(
+        exception,
+        DruidExceptionMatcher.invalidSqlInput().expectMessageIs("No value bound for parameter (position [1])")
     );
   }
 

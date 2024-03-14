@@ -195,7 +195,10 @@ public class ExpressionSelectors
       Expr expression
   )
   {
-    ExpressionPlan plan = ExpressionPlanner.plan(columnSelectorFactory, expression);
+    ExpressionPlan plan = ExpressionPlanner.plan(
+        columnSelectorFactory,
+        Expr.singleThreaded(expression, columnSelectorFactory)
+    );
     final RowIdSupplier rowIdSupplier = columnSelectorFactory.getRowIdSupplier();
 
     if (plan.is(ExpressionPlan.Trait.SINGLE_INPUT_SCALAR)) {
@@ -243,7 +246,10 @@ public class ExpressionSelectors
       @Nullable final ExtractionFn extractionFn
   )
   {
-    final ExpressionPlan plan = ExpressionPlanner.plan(columnSelectorFactory, expression);
+    final ExpressionPlan plan = ExpressionPlanner.plan(
+        columnSelectorFactory,
+        Expr.singleThreaded(expression, columnSelectorFactory)
+    );
 
     if (plan.any(ExpressionPlan.Trait.SINGLE_INPUT_SCALAR, ExpressionPlan.Trait.SINGLE_INPUT_MAPPABLE)) {
       final String column = plan.getSingleInputName();
@@ -435,17 +441,17 @@ public class ExpressionSelectors
       if (row.size() == 1 && !coerceArray) {
         return selector.lookupName(row.get(0));
       } else {
+        final int size = row.size();
         // column selector factories hate you and use [] and [null] interchangeably for nullish data
-        if (row.size() == 0 || (row.size() == 1 && selector.getObject() == null)) {
+        if (size == 0 || (size == 1 && selector.getObject() == null)) {
           if (homogenize) {
             return new Object[]{null};
           } else {
             return null;
           }
         }
-        final Object[] strings = new Object[row.size()];
-        // noinspection SSBasedInspection
-        for (int i = 0; i < row.size(); i++) {
+        final Object[] strings = new Object[size];
+        for (int i = 0; i < size; i++) {
           strings[i] = selector.lookupName(row.get(i));
         }
         return strings;

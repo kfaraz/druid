@@ -25,6 +25,7 @@ import {
   MenuDivider,
   MenuItem,
   Position,
+  Tag,
   useHotkeys,
 } from '@blueprintjs/core';
 import { IconNames } from '@blueprintjs/icons';
@@ -35,9 +36,17 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { MenuCheckbox, MenuTristate } from '../../../components';
 import { EditContextDialog, StringInputDialog } from '../../../dialogs';
 import { IndexSpecDialog } from '../../../dialogs/index-spec-dialog/index-spec-dialog';
-import type { DruidEngine, IndexSpec, QueryContext, WorkbenchQuery } from '../../../druid-models';
+import type {
+  ArrayIngestMode,
+  DruidEngine,
+  IndexSpec,
+  QueryContext,
+  WorkbenchQuery,
+} from '../../../druid-models';
 import {
+  changeArrayIngestMode,
   changeDurableShuffleStorage,
+  changeFailOnEmptyInsert,
   changeFinalizeAggregations,
   changeGroupByEnableMultiValueUnnesting,
   changeMaxParseExceptions,
@@ -45,7 +54,10 @@ import {
   changeUseApproximateCountDistinct,
   changeUseApproximateTopN,
   changeUseCache,
+  changeWaitUntilSegmentsLoad,
+  getArrayIngestMode,
   getDurableShuffleStorage,
+  getFailOnEmptyInsert,
   getFinalizeAggregations,
   getGroupByEnableMultiValueUnnesting,
   getMaxParseExceptions,
@@ -53,8 +65,10 @@ import {
   getUseApproximateCountDistinct,
   getUseApproximateTopN,
   getUseCache,
+  getWaitUntilSegmentsLoad,
   summarizeIndexSpec,
 } from '../../../druid-models';
+import { getLink } from '../../../links';
 import { deepGet, deepSet, pluralIfNeeded, tickIcon } from '../../../utils';
 import { MaxTasksButton } from '../max-tasks-button/max-tasks-button';
 import { QueryParametersDialog } from '../query-parameters-dialog/query-parameters-dialog';
@@ -83,6 +97,20 @@ const NAMED_TIMEZONES: string[] = [
   'Australia/Sydney', // +11.0
 ];
 
+const ARRAY_INGEST_MODE_DESCRIPTION: Record<ArrayIngestMode, JSX.Element> = {
+  array: (
+    <>
+      array: Load SQL <Tag minimal>VARCHAR ARRAY</Tag> as Druid{' '}
+      <Tag minimal>ARRAY&lt;STRING&gt;</Tag>
+    </>
+  ),
+  mvd: (
+    <>
+      mvd: Load SQL <Tag minimal>VARCHAR ARRAY</Tag> as Druid multi-value <Tag minimal>STRING</Tag>
+    </>
+  ),
+};
+
 export interface RunPanelProps {
   query: WorkbenchQuery;
   onQueryChange(query: WorkbenchQuery): void;
@@ -108,8 +136,11 @@ export const RunPanel = React.memo(function RunPanel(props: RunPanelProps) {
   const numContextKeys = Object.keys(queryContext).length;
   const queryParameters = query.queryParameters;
 
+  const arrayIngestMode = getArrayIngestMode(queryContext);
   const maxParseExceptions = getMaxParseExceptions(queryContext);
+  const failOnEmptyInsert = getFailOnEmptyInsert(queryContext);
   const finalizeAggregations = getFinalizeAggregations(queryContext);
+  const waitUntilSegmentsLoad = getWaitUntilSegmentsLoad(queryContext);
   const groupByEnableMultiValueUnnesting = getGroupByEnableMultiValueUnnesting(queryContext);
   const sqlJoinAlgorithm = queryContext.sqlJoinAlgorithm ?? 'broadcast';
   const selectDestination = queryContext.selectDestination ?? 'taskReport';
@@ -303,12 +334,30 @@ export const RunPanel = React.memo(function RunPanel(props: RunPanelProps) {
                       ))}
                     </MenuItem>
                     <MenuTristate
+                      icon={IconNames.DISABLE}
+                      text="Fail on empty insert"
+                      value={failOnEmptyInsert}
+                      undefinedEffectiveValue={false}
+                      onValueChange={v =>
+                        changeQueryContext(changeFailOnEmptyInsert(queryContext, v))
+                      }
+                    />
+                    <MenuTristate
                       icon={IconNames.TRANSLATE}
                       text="Finalize aggregations"
                       value={finalizeAggregations}
                       undefinedEffectiveValue={!ingestMode}
                       onValueChange={v =>
                         changeQueryContext(changeFinalizeAggregations(queryContext, v))
+                      }
+                    />
+                    <MenuTristate
+                      icon={IconNames.STOPWATCH}
+                      text="Wait until segments have loaded"
+                      value={waitUntilSegmentsLoad}
+                      undefinedEffectiveValue={ingestMode}
+                      onValueChange={v =>
+                        changeQueryContext(changeWaitUntilSegmentsLoad(queryContext, v))
                       }
                     />
                     <MenuTristate
@@ -447,6 +496,35 @@ export const RunPanel = React.memo(function RunPanel(props: RunPanelProps) {
               queryContext={queryContext}
               changeQueryContext={changeQueryContext}
             />
+          )}
+          {ingestMode && (
+            <Popover2
+              position={Position.BOTTOM_LEFT}
+              content={
+                <Menu>
+                  {([undefined, 'array', 'mvd'] as (ArrayIngestMode | undefined)[]).map((m, i) => (
+                    <MenuItem
+                      key={i}
+                      icon={tickIcon(m === arrayIngestMode)}
+                      text={m ? ARRAY_INGEST_MODE_DESCRIPTION[m] : '(server default)'}
+                      onClick={() => changeQueryContext(changeArrayIngestMode(queryContext, m))}
+                    />
+                  ))}
+                  <MenuDivider />
+                  <MenuItem
+                    icon={IconNames.HELP}
+                    text="Documentation"
+                    href={`${getLink('DOCS')}/querying/arrays#arrayingestmode`}
+                    target="_blank"
+                  />
+                </Menu>
+              }
+            >
+              <Button
+                text={`Array ingest mode: ${arrayIngestMode ?? '(server default)'}`}
+                rightIcon={IconNames.CARET_DOWN}
+              />
+            </Popover2>
           )}
         </ButtonGroup>
       )}

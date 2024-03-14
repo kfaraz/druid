@@ -25,8 +25,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
 import com.opencsv.RFC4180Parser;
 import com.opencsv.RFC4180ParserBuilder;
+import org.apache.druid.error.DruidException;
+import org.apache.druid.indexing.common.TaskLockType;
+import org.apache.druid.indexing.common.task.Tasks;
+import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.msq.exec.ClusterStatisticsMergeMode;
 import org.apache.druid.msq.exec.Limits;
+import org.apache.druid.msq.exec.SegmentSource;
 import org.apache.druid.msq.indexing.destination.MSQSelectDestination;
 import org.apache.druid.msq.kernel.WorkerAssignmentStrategy;
 import org.apache.druid.msq.sql.MSQMode;
@@ -38,7 +43,9 @@ import javax.annotation.Nullable;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -73,6 +80,15 @@ import java.util.stream.Collectors;
  * {@link org.apache.druid.segment.AutoTypeColumnSchema} for all 'standard' type columns during segment generation,
  * see {@link DimensionSchemaUtils#createDimensionSchema} for more details.
  *
+ * <li><b>arrayIngestMode</b>: Tri-state query context that controls the behaviour and support of arrays that are
+ * ingested via MSQ. If set to 'none', arrays are not allowed to be ingested in MSQ. If set to 'array', array types
+ * can be ingested as expected. If set to 'mvd', numeric arrays can not be ingested, and string arrays will be
+ * ingested as MVDs (this is kept for legacy purpose).
+ *
+ * <li><b>taskLockType</b>: Temporary flag to allow MSQ to use experimental lock types. Valid values are present in
+ * {@link TaskLockType}. If the flag is not set, msq uses {@link TaskLockType#EXCLUSIVE} for replace queries and
+ * {@link TaskLockType#SHARED} for insert queries.
+ *
  * </ol>
  **/
 public class MultiStageQueryContext
@@ -90,6 +106,9 @@ public class MultiStageQueryContext
   public static final String CTX_FINALIZE_AGGREGATIONS = "finalizeAggregations";
   private static final boolean DEFAULT_FINALIZE_AGGREGATIONS = true;
 
+  public static final String CTX_INCLUDE_SEGMENT_SOURCE = "includeSegmentSource";
+  public static final SegmentSource DEFAULT_INCLUDE_SEGMENT_SOURCE = SegmentSource.NONE;
+
   public static final String CTX_DURABLE_SHUFFLE_STORAGE = "durableShuffleStorage";
   private static final boolean DEFAULT_DURABLE_SHUFFLE_STORAGE = false;
   public static final String CTX_SELECT_DESTINATION = "selectDestination";
@@ -97,6 +116,12 @@ public class MultiStageQueryContext
 
   public static final String CTX_FAULT_TOLERANCE = "faultTolerance";
   public static final boolean DEFAULT_FAULT_TOLERANCE = false;
+
+  public static final String CTX_FAIL_ON_EMPTY_INSERT = "failOnEmptyInsert";
+  public static final boolean DEFAULT_FAIL_ON_EMPTY_INSERT = false;
+
+  public static final String CTX_SEGMENT_LOAD_WAIT = "waitUntilSegmentsLoad";
+  public static final boolean DEFAULT_SEGMENT_LOAD_WAIT = false;
   public static final String CTX_MAX_INPUT_BYTES_PER_WORKER = "maxInputBytesPerWorker";
 
   public static final String CTX_CLUSTER_STATISTICS_MERGE_MODE = "clusterStatisticsMergeMode";
@@ -104,6 +129,9 @@ public class MultiStageQueryContext
 
   public static final String CTX_ROWS_PER_SEGMENT = "rowsPerSegment";
   static final int DEFAULT_ROWS_PER_SEGMENT = 3000000;
+
+  public static final String CTX_ROWS_PER_PAGE = "rowsPerPage";
+  static final int DEFAULT_ROWS_PER_PAGE = 100000;
 
   public static final String CTX_ROWS_IN_MEMORY = "rowsInMemory";
   // Lower than the default to minimize the impact of per-row overheads that are not accounted for by
@@ -121,6 +149,12 @@ public class MultiStageQueryContext
   public static final String CTX_INDEX_SPEC = "indexSpec";
 
   public static final String CTX_USE_AUTO_SCHEMAS = "useAutoColumnSchemas";
+  public static final boolean DEFAULT_USE_AUTO_SCHEMAS = false;
+
+  public static final String CTX_ARRAY_INGEST_MODE = "arrayIngestMode";
+  public static final ArrayIngestMode DEFAULT_ARRAY_INGEST_MODE = ArrayIngestMode.MVD;
+
+  public static final String CTX_SKIP_TYPE_VERIFICATION = "skipTypeVerification";
 
   private static final Pattern LOOKS_LIKE_JSON_ARRAY = Pattern.compile("^\\s*\\[.*", Pattern.DOTALL);
 
@@ -145,6 +179,22 @@ public class MultiStageQueryContext
     return queryContext.getBoolean(
         CTX_FAULT_TOLERANCE,
         DEFAULT_FAULT_TOLERANCE
+    );
+  }
+
+  public static boolean isFailOnEmptyInsertEnabled(final QueryContext queryContext)
+  {
+    return queryContext.getBoolean(
+        CTX_FAIL_ON_EMPTY_INSERT,
+        DEFAULT_FAIL_ON_EMPTY_INSERT
+    );
+  }
+
+  public static boolean shouldWaitForSegmentLoad(final QueryContext queryContext)
+  {
+    return queryContext.getBoolean(
+        CTX_SEGMENT_LOAD_WAIT,
+        DEFAULT_SEGMENT_LOAD_WAIT
     );
   }
 
@@ -181,6 +231,15 @@ public class MultiStageQueryContext
     );
   }
 
+  public static SegmentSource getSegmentSources(final QueryContext queryContext)
+  {
+    return queryContext.getEnum(
+        CTX_INCLUDE_SEGMENT_SOURCE,
+        SegmentSource.class,
+        DEFAULT_INCLUDE_SEGMENT_SOURCE
+    );
+  }
+
   public static WorkerAssignmentStrategy getAssignmentStrategy(final QueryContext queryContext)
   {
     return QueryContexts.getAsEnum(
@@ -205,6 +264,15 @@ public class MultiStageQueryContext
         DEFAULT_ROWS_PER_SEGMENT
     );
   }
+
+  public static int getRowsPerPage(final QueryContext queryContext)
+  {
+    return queryContext.getInt(
+        CTX_ROWS_PER_PAGE,
+        DEFAULT_ROWS_PER_PAGE
+    );
+  }
+
 
   public static MSQSelectDestination getSelectDestination(final QueryContext queryContext)
   {
@@ -232,7 +300,7 @@ public class MultiStageQueryContext
 
   public static List<String> getSortOrder(final QueryContext queryContext)
   {
-    return MultiStageQueryContext.decodeSortOrder(queryContext.getString(CTX_SORT_ORDER));
+    return decodeList(CTX_SORT_ORDER, queryContext.getString(CTX_SORT_ORDER));
   }
 
   @Nullable
@@ -243,40 +311,47 @@ public class MultiStageQueryContext
 
   public static boolean useAutoColumnSchemas(final QueryContext queryContext)
   {
-    return queryContext.getBoolean(CTX_USE_AUTO_SCHEMAS, false);
+    return queryContext.getBoolean(CTX_USE_AUTO_SCHEMAS, DEFAULT_USE_AUTO_SCHEMAS);
+  }
+
+  public static ArrayIngestMode getArrayIngestMode(final QueryContext queryContext)
+  {
+    return queryContext.getEnum(CTX_ARRAY_INGEST_MODE, ArrayIngestMode.class, DEFAULT_ARRAY_INGEST_MODE);
+  }
+
+  public static Set<String> getColumnsExcludedFromTypeVerification(final QueryContext queryContext)
+  {
+    return new HashSet<>(decodeList(CTX_SKIP_TYPE_VERIFICATION, queryContext.getString(CTX_SKIP_TYPE_VERIFICATION)));
   }
 
   /**
-   * Decodes {@link #CTX_SORT_ORDER} from either a JSON or CSV string.
+   * Decodes a list from either a JSON or CSV string.
    */
-  @Nullable
   @VisibleForTesting
-  static List<String> decodeSortOrder(@Nullable final String sortOrderString)
+  static List<String> decodeList(final String keyName, @Nullable final String listString)
   {
-    if (sortOrderString == null) {
+    if (listString == null) {
       return Collections.emptyList();
-    } else if (LOOKS_LIKE_JSON_ARRAY.matcher(sortOrderString).matches()) {
+    } else if (LOOKS_LIKE_JSON_ARRAY.matcher(listString).matches()) {
       try {
         // Not caching this ObjectMapper in a static, because we expect to use it infrequently (once per INSERT
         // query that uses this feature) and there is no need to keep it around longer than that.
-        return new ObjectMapper().readValue(sortOrderString, new TypeReference<List<String>>()
-        {
-        });
+        return new ObjectMapper().readValue(listString, new TypeReference<List<String>>() {});
       }
       catch (JsonProcessingException e) {
-        throw QueryContexts.badValueException(CTX_SORT_ORDER, "CSV or JSON array", sortOrderString);
+        throw QueryContexts.badValueException(keyName, "CSV or JSON array", listString);
       }
     } else {
       final RFC4180Parser csvParser = new RFC4180ParserBuilder().withSeparator(',').build();
 
       try {
-        return Arrays.stream(csvParser.parseLine(sortOrderString))
+        return Arrays.stream(csvParser.parseLine(listString))
                      .filter(s -> s != null && !s.isEmpty())
                      .map(String::trim)
                      .collect(Collectors.toList());
       }
       catch (IOException e) {
-        throw QueryContexts.badValueException(CTX_SORT_ORDER, "CSV or JSON array", sortOrderString);
+        throw QueryContexts.badValueException(keyName, "CSV or JSON array", listString);
       }
     }
   }
@@ -300,5 +375,61 @@ public class MultiStageQueryContext
     catch (Exception e) {
       throw QueryContexts.badValueException(CTX_INDEX_SPEC, "an indexSpec", indexSpecObject);
     }
+  }
+
+  /**
+   * This method is used to validate and get the taskLockType from the queryContext.
+   * If the queryContext does not contain the taskLockType, then {@link TaskLockType#EXCLUSIVE} is used for replace queries and
+   * {@link TaskLockType#SHARED} is used for insert queries.
+   * If the queryContext contains the taskLockType, then it is validated and returned.
+   */
+  public static TaskLockType validateAndGetTaskLockType(QueryContext queryContext, boolean isReplaceQuery)
+  {
+    final boolean useConcurrentLocks = queryContext.getBoolean(
+        Tasks.USE_CONCURRENT_LOCKS,
+        Tasks.DEFAULT_USE_CONCURRENT_LOCKS
+    );
+    if (useConcurrentLocks) {
+      return isReplaceQuery ? TaskLockType.REPLACE : TaskLockType.APPEND;
+    }
+    final TaskLockType taskLockType = QueryContexts.getAsEnum(
+        Tasks.TASK_LOCK_TYPE,
+        queryContext.getString(Tasks.TASK_LOCK_TYPE, null),
+        TaskLockType.class
+    );
+    if (taskLockType == null) {
+      if (isReplaceQuery) {
+        return TaskLockType.EXCLUSIVE;
+      } else {
+        return TaskLockType.SHARED;
+      }
+    }
+    final String appendErrorMessage = StringUtils.format(
+        " Please use [%s] key in the context parameter and use one of the TaskLock types as mentioned earlier or "
+        + "remove this key for automatic lock type selection", Tasks.TASK_LOCK_TYPE);
+
+    if (isReplaceQuery && !(taskLockType.equals(TaskLockType.EXCLUSIVE) || taskLockType.equals(TaskLockType.REPLACE))) {
+      throw DruidException.forPersona(DruidException.Persona.USER)
+                          .ofCategory(DruidException.Category.INVALID_INPUT)
+                          .build(
+                              "TaskLock must be of type [%s] or [%s] for a REPLACE query. Found invalid type [%s] set."
+                              + appendErrorMessage,
+                              TaskLockType.EXCLUSIVE,
+                              TaskLockType.REPLACE,
+                              taskLockType
+                          );
+    }
+    if (!isReplaceQuery && !(taskLockType.equals(TaskLockType.SHARED) || taskLockType.equals(TaskLockType.APPEND))) {
+      throw DruidException.forPersona(DruidException.Persona.USER)
+                          .ofCategory(DruidException.Category.INVALID_INPUT)
+                          .build(
+                              "TaskLock must be of type [%s] or [%s] for an INSERT query. Found invalid type [%s] set."
+                              + appendErrorMessage,
+                              TaskLockType.SHARED,
+                              TaskLockType.APPEND,
+                              taskLockType
+                          );
+    }
+    return taskLockType;
   }
 }
