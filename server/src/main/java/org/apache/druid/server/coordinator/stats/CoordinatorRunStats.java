@@ -129,7 +129,7 @@ public class CoordinatorRunStats
             eventBuilder.setDimension(dim.getKey().reportedName(), dim.getValue());
           }
           metricsEvents.add(
-              eventBuilder.build(stat.getMetricName(), entry.getLongValue())
+              eventBuilder.setMetric(stat.getMetricName(), entry.getLongValue())
           );
         }
       }
