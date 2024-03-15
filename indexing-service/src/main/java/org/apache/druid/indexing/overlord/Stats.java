@@ -39,12 +39,26 @@ public class Stats
     public static final CoordinatorStat SUCCESSFUL
         = CoordinatorStat.toDebugAndEmit("successfulTasks", "task/success/count");
     public static final CoordinatorStat FAILED
-        = CoordinatorStat.toDebugAndEmit("successfulTasks", "task/failed/count");
+        = CoordinatorStat.toDebugAndEmit("failedTasks", "task/failed/count");
     public static final CoordinatorStat WAITING
-        = CoordinatorStat.toDebugAndEmit("successfulTasks", "task/waiting/count");
+        = CoordinatorStat.toDebugAndEmit("waitingTasks", "task/waiting/count");
     public static final CoordinatorStat PENDING
-        = CoordinatorStat.toDebugAndEmit("successfulTasks", "task/pending/count");
+        = CoordinatorStat.toDebugAndEmit("pendingTasks", "task/pending/count");
     public static final CoordinatorStat RUNNING
-        = CoordinatorStat.toDebugAndEmit("successfulTasks", "task/running/count");
+        = CoordinatorStat.toDebugAndEmit("runningTasks", "task/running/count");
+  }
+
+  public static class TaskSlotCount
+  {
+    public static final CoordinatorStat TOTAL
+        = CoordinatorStat.toDebugAndEmit("totalTaskSlots", "taskSlot/total/count");
+    public static final CoordinatorStat USED
+        = CoordinatorStat.toDebugAndEmit("usedTaskSlots", "taskSlot/used/count");
+    public static final CoordinatorStat IDLE
+        = CoordinatorStat.toDebugAndEmit("idleTaskSlots", "taskSlot/idle/count");
+    public static final CoordinatorStat LAZY
+        = CoordinatorStat.toDebugAndEmit("lazyTaskSlots", "taskSlot/lazy/count");
+    public static final CoordinatorStat BLACKLISTED
+        = CoordinatorStat.toDebugAndEmit("blacklistedTaskSlots", "taskSlot/blacklisted/count");
   }
 }

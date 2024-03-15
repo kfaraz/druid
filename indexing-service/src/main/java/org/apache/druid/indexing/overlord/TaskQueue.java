@@ -76,6 +76,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
@@ -147,7 +148,8 @@ public class TaskQueue
   /**
    * Tracks stats such as successful and failed task counts.
    */
-  private final CoordinatorRunStats stats = new CoordinatorRunStats();
+  private final AtomicReference<CoordinatorRunStats> stats
+      = new AtomicReference<>(new CoordinatorRunStats());
 
   public TaskQueue(
       TaskLockConfig lockConfig,
@@ -782,9 +784,9 @@ public class TaskQueue
 
                 final RowKey datasourceKey = RowKey.of(Dimension.DATASOURCE, task.getDataSource());
                 if (status.isSuccess()) {
-                  stats.add(Stats.TaskCount.SUCCESSFUL, datasourceKey, 1);
+                  stats.get().add(Stats.TaskCount.SUCCESSFUL, datasourceKey, 1);
                 } else {
-                  stats.add(Stats.TaskCount.FAILED, datasourceKey, 1);
+                  stats.get().add(Stats.TaskCount.FAILED, datasourceKey, 1);
                 }
               }
             }
@@ -932,7 +934,7 @@ public class TaskQueue
   public CoordinatorRunStats getQueueStats()
   {
     // Reset the stats for the next reporting cycle
-    final CoordinatorRunStats snapshot = stats.getSnapshotAndReset();
+    final CoordinatorRunStats snapshot = stats.getAndSet(new CoordinatorRunStats());
 
     final int queuedUpdates = statusUpdatesInQueue.get();
     final int handledUpdates = handledStatusUpdates.getAndSet(0);
@@ -941,8 +943,8 @@ public class TaskQueue
     }
 
     addDatasourceStat(Stats.TaskCount.WAITING, getWaitingTaskCount(), snapshot);
-    addDatasourceStat(Stats.TaskCount.RUNNING, getWaitingTaskCount(), snapshot);
-    addDatasourceStat(Stats.TaskCount.PENDING, getWaitingTaskCount(), snapshot);
+    addDatasourceStat(Stats.TaskCount.RUNNING, getRunningTaskCount(), snapshot);
+    addDatasourceStat(Stats.TaskCount.PENDING, getPendingTaskCount(), snapshot);
 
     snapshot.add(Stats.TaskQueue.STATUS_UPDATES_IN_QUEUE, queuedUpdates);
     snapshot.add(Stats.TaskQueue.HANDLED_STATUS_UPDATES, handledUpdates);
@@ -956,7 +958,11 @@ public class TaskQueue
   )
   {
     datasourceToCount.forEach(
-        (datasource, value) -> stats.add(stat, RowKey.of(Dimension.DATASOURCE, datasource), value)
+        (datasource, value) -> stats.add(
+            stat,
+            RowKey.of(Dimension.DATASOURCE, datasource),
+            value
+        )
     );
   }
 
