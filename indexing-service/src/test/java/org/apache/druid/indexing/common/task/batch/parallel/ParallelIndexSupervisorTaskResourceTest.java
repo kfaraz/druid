@@ -459,7 +459,6 @@ public class ParallelIndexSupervisorTaskResourceTest extends AbstractParallelInd
         )
     );
 
-    // set up test tools
     return new TestSupervisorTask(
         null,
         null,
@@ -522,10 +521,7 @@ public class ParallelIndexSupervisorTaskResourceTest extends AbstractParallelInd
     @Override
     SinglePhaseParallelIndexTaskRunner createSinglePhaseTaskRunner(TaskToolbox toolbox)
     {
-      return new TestRunner(
-          toolbox,
-          this
-      );
+      return new TestRunner(toolbox, this);
     }
   }
 

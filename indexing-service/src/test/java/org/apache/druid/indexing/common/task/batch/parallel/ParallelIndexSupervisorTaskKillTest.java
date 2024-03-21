@@ -290,10 +290,7 @@ public class ParallelIndexSupervisorTaskKillTest extends AbstractParallelIndexSu
     @Override
     SinglePhaseParallelIndexTaskRunner createSinglePhaseTaskRunner(TaskToolbox toolbox)
     {
-      return new TestRunner(
-          toolbox,
-          this
-      );
+      return new TestRunner(toolbox, this);
     }
   }
 

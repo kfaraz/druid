@@ -83,10 +83,10 @@ public class ParseExceptionHandler
     if (savedParseExceptionReports != null) {
       ParseExceptionReport parseExceptionReport = new ParseExceptionReport(
           e.getInput(),
-          e.isFromPartiallyValidRow() ? "processedWithError" : "unparseable",
-          e.isFromPartiallyValidRow()
-          ? ((UnparseableColumnsParseException) e).getColumnExceptionMessages()
-          : ImmutableList.of(e.getMessage()),
+          e.isFromPartiallyValidRow() ? RowIngestionMeters.PROCESSED_WITH_ERROR
+                                      : RowIngestionMeters.UNPARSEABLE,
+          e.isFromPartiallyValidRow() ? ((UnparseableColumnsParseException) e).getColumnExceptionMessages()
+                                      : ImmutableList.of(e.getMessage()),
           e.getTimeOfExceptionMillis()
       );
       savedParseExceptionReports.add(parseExceptionReport);

@@ -43,8 +43,6 @@ import org.apache.druid.indexer.MetadataStorageUpdaterJobHandler;
 import org.apache.druid.indexer.TaskMetricsGetter;
 import org.apache.druid.indexer.TaskMetricsUtils;
 import org.apache.druid.indexer.TaskStatus;
-import org.apache.druid.indexing.common.IngestionStatsAndErrorsTaskReport;
-import org.apache.druid.indexing.common.IngestionStatsAndErrorsTaskReportData;
 import org.apache.druid.indexing.common.TaskLock;
 import org.apache.druid.indexing.common.TaskLockType;
 import org.apache.druid.indexing.common.TaskReport;
@@ -87,7 +85,6 @@ import javax.ws.rs.core.Response;
 import java.io.File;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -489,10 +486,9 @@ public class HadoopIndexTask extends HadoopTask implements ChatHandler
               toolbox.getJsonMapper().writeValueAsString(dataSegmentAndIndexZipFilePaths)
           );
 
-          ArrayList<DataSegment> segments = new ArrayList<>(dataSegmentAndIndexZipFilePaths.stream()
-                                                                                           .map(
-                                                                                               DataSegmentAndIndexZipFilePath::getSegment)
-                                                                                           .collect(Collectors.toList()));
+          List<DataSegment> segments = dataSegmentAndIndexZipFilePaths.stream().map(
+              DataSegmentAndIndexZipFilePath::getSegment
+          ).collect(Collectors.toList());
           toolbox.publishSegments(segments);
 
           // Try to wait for segments to be loaded by the cluster if the tuning config specifies a non-zero value
@@ -512,10 +508,7 @@ public class HadoopIndexTask extends HadoopTask implements ChatHandler
         } else {
           errorMsg = buildSegmentsStatus.getErrorMsg();
           toolbox.getTaskReportFileWriter().write(getId(), getTaskCompletionReports());
-          return TaskStatus.failure(
-              getId(),
-              errorMsg
-          );
+          return TaskStatus.failure(getId(), errorMsg);
         }
       }
       catch (Exception e) {
@@ -684,21 +677,13 @@ public class HadoopIndexTask extends HadoopTask implements ChatHandler
 
   private Map<String, TaskReport> getTaskCompletionReports()
   {
-    return TaskReport.buildTaskReports(
-        new IngestionStatsAndErrorsTaskReport(
-            getId(),
-            new IngestionStatsAndErrorsTaskReportData(
-                ingestionState,
-                null,
-                getTaskCompletionRowStats(),
-                errorMsg,
-                segmentAvailabilityConfirmationCompleted,
-                segmentAvailabilityWaitTimeMs,
-                Collections.emptyMap(),
-                null,
-                null
-            )
-        )
+    return buildIngestionStatsReport(
+        ingestionState,
+        null,
+        getTaskCompletionRowStats(),
+        errorMsg,
+        null,
+        null
     );
   }
 

@@ -31,7 +31,10 @@ import java.util.Map;
  */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
 @JsonSubTypes(value = {
-    @JsonSubTypes.Type(name = "ingestionStatsAndErrors", value = IngestionStatsAndErrorsTaskReport.class),
+    @JsonSubTypes.Type(
+        name = IngestionStatsAndErrorsTaskReport.REPORT_KEY,
+        value = IngestionStatsAndErrorsTaskReport.class
+    ),
     @JsonSubTypes.Type(name = KillTaskReport.REPORT_KEY, value = KillTaskReport.class)
 })
 public interface TaskReport

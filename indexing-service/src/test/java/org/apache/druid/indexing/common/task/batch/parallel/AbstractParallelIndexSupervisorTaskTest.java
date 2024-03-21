@@ -23,7 +23,6 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.InjectableValues;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.jsontype.NamedType;
-import com.google.common.base.Function;
 import com.google.common.base.Optional;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -65,6 +64,7 @@ import org.apache.druid.indexing.common.config.TaskConfigBuilder;
 import org.apache.druid.indexing.common.stats.DropwizardRowIngestionMetersFactory;
 import org.apache.druid.indexing.common.task.CompactionTask;
 import org.apache.druid.indexing.common.task.IngestionTestBase;
+import org.apache.druid.indexing.common.task.NoopTask;
 import org.apache.druid.indexing.common.task.NoopTestTaskReportFileWriter;
 import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.indexing.common.task.TaskResource;
@@ -106,6 +106,7 @@ import org.apache.druid.server.security.AuthTestUtils;
 import org.apache.druid.server.security.AuthorizerMapper;
 import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.timeline.SegmentId;
+import org.apache.druid.utils.CollectionUtils;
 import org.apache.druid.utils.CompressionUtils;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 import org.joda.time.DateTime;
@@ -123,7 +124,6 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -378,8 +378,7 @@ public class AbstractParallelIndexSupervisorTaskTest extends IngestionTestBase
                   taskContainer.statusFuture.cancel(true);
                   LOG.info(
                       "Transient task failure test. Killed task[%s] for spec[%s]",
-                      taskContainer.task.getId(),
-                      subtaskSpecId
+                      taskContainer.task.getId(), subtaskSpecId
                   );
                 }
               }
@@ -475,15 +474,14 @@ public class AbstractParallelIndexSupervisorTaskTest extends IngestionTestBase
           }
       );
       taskContainer.setStatusFuture(statusFuture);
-      final ListenableFuture<TaskStatus> cleanupFuture = Futures.transform(
+      return Futures.transform(
           statusFuture,
-          (Function<TaskStatus, TaskStatus>) status -> {
+          status -> {
             shutdownTask(task);
             return status;
           },
           MoreExecutors.directExecutor()
       );
-      return cleanupFuture;
     }
 
     @Nullable
@@ -558,7 +556,11 @@ public class AbstractParallelIndexSupervisorTaskTest extends IngestionTestBase
       if (!task.isPresent()) {
         return null;
       }
-      return Futures.immediateFuture(((ParallelIndexSupervisorTask) task.get()).doGetLiveReports("full"));
+
+      Map<String, TaskReport> reportMap = ((ParallelIndexSupervisorTask) task.get()).doGetLiveReports("full");
+      return Futures.immediateFuture(
+          CollectionUtils.mapValues(reportMap, report -> report)
+      );
     }
 
     public TaskContainer getTaskContainer(String taskId)
@@ -781,20 +783,13 @@ public class AbstractParallelIndexSupervisorTaskTest extends IngestionTestBase
     }
   }
 
-  protected Map<String, Object> buildExpectedTaskReportSequential(
+  protected Map<String, TaskReport> buildExpectedTaskReportSequential(
       String taskId,
       List<ParseExceptionReport> expectedUnparseableEvents,
       RowIngestionMetersTotals expectedDeterminePartitions,
       RowIngestionMetersTotals expectedTotals
   )
   {
-    final Map<String, Object> payload = new HashMap<>();
-
-    payload.put("ingestionState", IngestionState.COMPLETED);
-    payload.put(
-        "unparseableEvents",
-        ImmutableMap.of("determinePartitions", ImmutableList.of(), "buildSegments", expectedUnparseableEvents)
-    );
     Map<String, Object> emptyAverageMinuteMap = ImmutableMap.of(
         "processed", 0.0,
         "processedBytes", 0.0,
@@ -809,72 +804,80 @@ public class AbstractParallelIndexSupervisorTaskTest extends IngestionTestBase
         "15m", emptyAverageMinuteMap
     );
 
-    payload.put(
-        "rowStats",
-        ImmutableMap.of(
-            "movingAverages",
-            ImmutableMap.of("determinePartitions", emptyAverages, "buildSegments", emptyAverages),
-            "totals",
-            ImmutableMap.of("determinePartitions", expectedDeterminePartitions, "buildSegments", expectedTotals)
-        )
+    Map<String, Object> rowStats = ImmutableMap.of(
+        "movingAverages",
+        ImmutableMap.of("determinePartitions", emptyAverages, "buildSegments", emptyAverages),
+        "totals",
+        ImmutableMap.of("determinePartitions", expectedDeterminePartitions, "buildSegments", expectedTotals)
     );
 
-    final Map<String, Object> ingestionStatsAndErrors = new HashMap<>();
-    ingestionStatsAndErrors.put("taskId", taskId);
-    ingestionStatsAndErrors.put("payload", payload);
-    ingestionStatsAndErrors.put("type", "ingestionStatsAndErrors");
-
-    return Collections.singletonMap("ingestionStatsAndErrors", ingestionStatsAndErrors);
+    return TaskReport.buildTaskReports(
+        new IngestionStatsAndErrorsTaskReport(
+            taskId,
+            new IngestionStatsAndErrorsTaskReportData(
+                IngestionState.COMPLETED,
+                ImmutableMap.of("determinePartitions", ImmutableList.of(), "buildSegments", expectedUnparseableEvents),
+                rowStats,
+                null,
+                false,
+                0L,
+                null,
+                null,
+                null
+            )
+        )
+    );
   }
 
-  protected Map<String, Object> buildExpectedTaskReportParallel(
+  protected Map<String, TaskReport> buildExpectedTaskReportParallel(
       String taskId,
       List<ParseExceptionReport> expectedUnparseableEvents,
       RowIngestionMetersTotals expectedTotals
   )
   {
-    Map<String, Object> returnMap = new HashMap<>();
-    Map<String, Object> ingestionStatsAndErrors = new HashMap<>();
-    Map<String, Object> payload = new HashMap<>();
-
-    payload.put("ingestionState", IngestionState.COMPLETED);
-    payload.put("unparseableEvents", ImmutableMap.of("buildSegments", expectedUnparseableEvents));
-    payload.put("rowStats", ImmutableMap.of("totals", ImmutableMap.of("buildSegments", expectedTotals)));
-
-    ingestionStatsAndErrors.put("taskId", taskId);
-    ingestionStatsAndErrors.put("payload", payload);
-    ingestionStatsAndErrors.put("type", "ingestionStatsAndErrors");
-
-    returnMap.put("ingestionStatsAndErrors", ingestionStatsAndErrors);
-    return returnMap;
+    return TaskReport.buildTaskReports(
+        new IngestionStatsAndErrorsTaskReport(
+            taskId,
+            new IngestionStatsAndErrorsTaskReportData(
+                IngestionState.COMPLETED,
+                ImmutableMap.of("buildSegments", expectedUnparseableEvents),
+                ImmutableMap.of("totals", ImmutableMap.of("buildSegments", expectedTotals)),
+                null,
+                false,
+                0L,
+                Collections.emptyMap(),
+                null,
+                null
+            )
+        )
+    );
   }
 
   protected void compareTaskReports(
-      Map<String, Object> expectedReports,
-      Map<String, Object> actualReports
+      Map<String, TaskReport> expectedReportMap,
+      Map<String, TaskReport> actualReportMap
   )
   {
-    expectedReports = (Map<String, Object>) expectedReports.get("ingestionStatsAndErrors");
-    actualReports = (Map<String, Object>) actualReports.get("ingestionStatsAndErrors");
+    final IngestionStatsAndErrorsTaskReport expectedReports
+        = (IngestionStatsAndErrorsTaskReport) expectedReportMap.get("ingestionStatsAndErrors");
+    final IngestionStatsAndErrorsTaskReport actualReports
+        = (IngestionStatsAndErrorsTaskReport) actualReportMap.get("ingestionStatsAndErrors");
 
-    Assert.assertEquals(expectedReports.get("taskId"), actualReports.get("taskId"));
-    Assert.assertEquals(expectedReports.get("type"), actualReports.get("type"));
+    Assert.assertEquals(expectedReports.getTaskId(), actualReports.getTaskId());
 
-    Map<String, Object> expectedPayload = (Map<String, Object>) expectedReports.get("payload");
-    Map<String, Object> actualPayload = (Map<String, Object>) actualReports.get("payload");
-    Assert.assertEquals(expectedPayload.get("ingestionState"), actualPayload.get("ingestionState"));
+    IngestionStatsAndErrorsTaskReportData expectedPayload = expectedReports.getPayload();
+    IngestionStatsAndErrorsTaskReportData actualPayload = actualReports.getPayload();
+    Assert.assertEquals(expectedPayload.getIngestionState(), actualPayload.getIngestionState());
 
-    Map<String, Object> expectedTotals = (Map<String, Object>) expectedPayload.get("totals");
-    Map<String, Object> actualTotals = (Map<String, Object>) actualReports.get("totals");
+    Map<String, Object> expectedTotals = expectedPayload.getRowStats();
+    Map<String, Object> actualTotals = actualPayload.getRowStats();
     Assert.assertEquals(expectedTotals, actualTotals);
 
     List<ParseExceptionReport> expectedParseExceptionReports =
-        (List<ParseExceptionReport>) ((Map<String, Object>)
-            expectedPayload.get("unparseableEvents")).get("buildSegments");
+        (List<ParseExceptionReport>) (expectedPayload.getUnparseableEvents()).get("buildSegments");
 
     List<ParseExceptionReport> actualParseExceptionReports =
-        (List<ParseExceptionReport>) ((Map<String, Object>)
-            actualPayload.get("unparseableEvents")).get("buildSegments");
+        (List<ParseExceptionReport>) (actualPayload.getUnparseableEvents()).get("buildSegments");
 
     List<String> expectedMessages = expectedParseExceptionReports
         .stream().map(r -> r.getDetails().get(0)).collect(Collectors.toList());

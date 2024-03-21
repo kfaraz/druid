@@ -132,7 +132,8 @@ public abstract class ParallelIndexPhaseRunner<SubTaskType extends Task, SubTask
     try {
       LOG.info("Submitting initial tasks");
       // Submit initial tasks
-      while (isRunning() && subTaskSpecIterator.hasNext() && taskMonitor.getNumRunningTasks() < maxNumConcurrentSubTasks) {
+      while (isRunning() && subTaskSpecIterator.hasNext()
+             && taskMonitor.getNumRunningTasks() < maxNumConcurrentSubTasks) {
         submitNewTask(taskMonitor, subTaskSpecIterator.next());
       }
 

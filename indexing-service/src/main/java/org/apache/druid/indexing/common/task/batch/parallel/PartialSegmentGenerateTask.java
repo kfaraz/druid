@@ -25,8 +25,6 @@ import org.apache.druid.data.input.InputSource;
 import org.apache.druid.indexer.IngestionState;
 import org.apache.druid.indexer.TaskStatus;
 import org.apache.druid.indexer.partitions.PartitionsSpec;
-import org.apache.druid.indexing.common.IngestionStatsAndErrorsTaskReport;
-import org.apache.druid.indexing.common.IngestionStatsAndErrorsTaskReportData;
 import org.apache.druid.indexing.common.TaskRealtimeMetricsMonitorBuilder;
 import org.apache.druid.indexing.common.TaskReport;
 import org.apache.druid.indexing.common.TaskToolbox;
@@ -58,7 +56,6 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -253,21 +250,13 @@ abstract class PartialSegmentGenerateTask<T extends GeneratedPartitionsReport> e
    */
   private Map<String, TaskReport> getTaskCompletionReports(Long segmentsRead)
   {
-    return TaskReport.buildTaskReports(
-        new IngestionStatsAndErrorsTaskReport(
-            getId(),
-            new IngestionStatsAndErrorsTaskReportData(
-                IngestionState.COMPLETED,
-                getTaskCompletionUnparseableEvents(),
-                getTaskCompletionRowStats(),
-                "",
-                false, // not applicable for parallel subtask
-                segmentAvailabilityWaitTimeMs,
-                Collections.emptyMap(),
-                segmentsRead,
-                null
-            )
-        )
+    return buildIngestionStatsReport(
+        IngestionState.COMPLETED,
+        getTaskCompletionUnparseableEvents(),
+        getTaskCompletionRowStats(),
+        null,
+        segmentsRead,
+        null
     );
   }
 

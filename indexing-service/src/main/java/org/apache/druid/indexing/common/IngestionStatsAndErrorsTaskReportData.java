@@ -19,6 +19,7 @@
 
 package org.apache.druid.indexing.common;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.apache.druid.indexer.IngestionState;
@@ -30,32 +31,33 @@ import java.util.Objects;
 public class IngestionStatsAndErrorsTaskReportData
 {
   @JsonProperty
-  private IngestionState ingestionState;
+  private final IngestionState ingestionState;
 
   @JsonProperty
-  private Map<String, Object> unparseableEvents;
+  private final Map<String, Object> unparseableEvents;
 
   @JsonProperty
-  private Map<String, Object> rowStats;
+  private final Map<String, Object> rowStats;
 
   @JsonProperty
-  @Nullable
-  private String errorMsg;
+  private final String errorMsg;
 
   @JsonProperty
-  private boolean segmentAvailabilityConfirmed;
+  private final boolean segmentAvailabilityConfirmed;
 
   @JsonProperty
-  private long segmentAvailabilityWaitTimeMs;
+  private final long segmentAvailabilityWaitTimeMs;
 
   @JsonProperty
-  private Map<String, Long> recordsProcessed;
+  private final Map<String, Long> recordsProcessed;
 
   @JsonProperty
-  private Long segmentsRead;
-  @JsonProperty
-  private Long segmentsPublished;
+  private final Long segmentsRead;
 
+  @JsonProperty
+  private final Long segmentsPublished;
+
+  @JsonCreator
   public IngestionStatsAndErrorsTaskReportData(
       @JsonProperty("ingestionState") IngestionState ingestionState,
       @JsonProperty("unparseableEvents") Map<String, Object> unparseableEvents,
@@ -63,9 +65,9 @@ public class IngestionStatsAndErrorsTaskReportData
       @JsonProperty("errorMsg") @Nullable String errorMsg,
       @JsonProperty("segmentAvailabilityConfirmed") boolean segmentAvailabilityConfirmed,
       @JsonProperty("segmentAvailabilityWaitTimeMs") long segmentAvailabilityWaitTimeMs,
-      @JsonProperty("recordsProcessed") Map<String, Long> recordsProcessed,
-      @Nullable @JsonProperty("segmentsRead") Long segmentsRead,
-      @Nullable @JsonProperty("segmentsPublished") Long segmentsPublished
+      @JsonProperty("recordsProcessed") @Nullable Map<String, Long> recordsProcessed,
+      @JsonProperty("segmentsRead") @Nullable Long segmentsRead,
+      @JsonProperty("segmentsPublished") @Nullable Long segmentsPublished
   )
   {
     this.ingestionState = ingestionState;
@@ -97,8 +99,8 @@ public class IngestionStatsAndErrorsTaskReportData
     return rowStats;
   }
 
-  @JsonProperty
   @Nullable
+  @JsonProperty
   public String getErrorMsg()
   {
     return errorMsg;
@@ -116,23 +118,23 @@ public class IngestionStatsAndErrorsTaskReportData
     return segmentAvailabilityWaitTimeMs;
   }
 
-  @JsonProperty
   @Nullable
+  @JsonProperty
   public Map<String, Long> getRecordsProcessed()
   {
     return recordsProcessed;
   }
 
-  @JsonProperty
   @Nullable
+  @JsonProperty
   @JsonInclude(JsonInclude.Include.NON_NULL)
   public Long getSegmentsRead()
   {
     return segmentsRead;
   }
 
-  @JsonProperty
   @Nullable
+  @JsonProperty
   @JsonInclude(JsonInclude.Include.NON_NULL)
   public Long getSegmentsPublished()
   {

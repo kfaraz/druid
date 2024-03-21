@@ -22,20 +22,15 @@ package org.apache.druid.indexing.common.task.batch.parallel;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Optional;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
 import com.google.common.collect.FluentIterable;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import org.apache.druid.data.input.InputRow;
 import org.apache.druid.data.input.InputSource;
 import org.apache.druid.indexer.IngestionState;
 import org.apache.druid.indexer.TaskStatus;
 import org.apache.druid.indexer.partitions.DynamicPartitionsSpec;
-import org.apache.druid.indexing.common.IngestionStatsAndErrorsTaskReport;
-import org.apache.druid.indexing.common.IngestionStatsAndErrorsTaskReportData;
 import org.apache.druid.indexing.common.TaskRealtimeMetricsMonitorBuilder;
 import org.apache.druid.indexing.common.TaskReport;
 import org.apache.druid.indexing.common.TaskToolbox;
@@ -343,17 +338,14 @@ public class SinglePhaseSubTask extends AbstractBatchSubtask implements ChatHand
   }
 
   /**
-   * This method reads input data row by row and adds the read row to a proper segment using {@link BaseAppenderatorDriver}.
-   * If there is no segment for the row, a new one is created.  Segments can be published in the middle of reading inputs
-   * if one of below conditions are satisfied.
-   *
+   * Reads input data row by row and adds each row to a segment using {@link BaseAppenderatorDriver}.
+   * If there is no segment for the row, a new one is created. Segments can be
+   * published in the middle of reading the input if any one of following
+   * conditions is satisfied:
    * <ul>
-   * <li>
-   * If the number of rows in a segment exceeds {@link DynamicPartitionsSpec#maxRowsPerSegment}
-   * </li>
-   * <li>
-   * If the number of rows added to {@link BaseAppenderatorDriver} so far exceeds {@link DynamicPartitionsSpec#maxTotalRows}
-   * </li>
+   * <li>Number of rows in the segment exceeds {@link DynamicPartitionsSpec#maxRowsPerSegment}</li>
+   * <li>Number of rows added to {@link BaseAppenderatorDriver} so far exceeds
+   * {@link DynamicPartitionsSpec#maxTotalRows}</li>
    * </ul>
    * <p>
    * At the end of this method, all the remaining segments are published.
@@ -383,7 +375,6 @@ public class SinglePhaseSubTask extends AbstractBatchSubtask implements ChatHand
     final ParallelIndexTuningConfig tuningConfig = ingestionSchema.getTuningConfig();
     final DynamicPartitionsSpec partitionsSpec = (DynamicPartitionsSpec) tuningConfig.getGivenOrDefaultPartitionsSpec();
     final long pushTimeout = tuningConfig.getPushTimeout();
-    final boolean explicitIntervals = !granularitySpec.inputIntervals().isEmpty();
     final boolean useLineageBasedSegmentAllocation = getContextValue(
         SinglePhaseParallelIndexTaskRunner.CTX_USE_LINEAGE_BASED_SEGMENT_ALLOCATION_KEY,
         SinglePhaseParallelIndexTaskRunner.LEGACY_DEFAULT_USE_LINEAGE_BASED_SEGMENT_ALLOCATION
@@ -427,16 +418,7 @@ public class SinglePhaseSubTask extends AbstractBatchSubtask implements ChatHand
             dataSchema,
             inputSource,
             inputSource.needsFormat() ? ParallelIndexSupervisorTask.getInputFormat(ingestionSchema) : null,
-            inputRow -> {
-              if (inputRow == null) {
-                return false;
-              }
-              if (explicitIntervals) {
-                final Optional<Interval> optInterval = granularitySpec.bucketInterval(inputRow.getTimestamp());
-                return optInterval.isPresent();
-              }
-              return true;
-            },
+            AbstractBatchIndexTask.allowNonNullRowsWithinInputIntervalsOf(granularitySpec),
             rowIngestionMeters,
             parseExceptionHandler
         )
@@ -508,24 +490,9 @@ public class SinglePhaseSubTask extends AbstractBatchSubtask implements ChatHand
   )
   {
     IndexTaskUtils.datasourceAuthorizationCheck(req, Action.READ, getDataSource(), authorizerMapper);
-    Map<String, List<ParseExceptionReport>> events = new HashMap<>();
 
-    boolean needsBuildSegments = false;
-
-    if (full != null) {
-      needsBuildSegments = true;
-    } else {
-      switch (ingestionState) {
-        case BUILD_SEGMENTS:
-        case COMPLETED:
-          needsBuildSegments = true;
-          break;
-        default:
-          break;
-      }
-    }
-
-    if (needsBuildSegments) {
+    final Map<String, List<ParseExceptionReport>> events = new HashMap<>();
+    if (hasBuildSegmentsInfoInReport(full != null)) {
       events.put(
           RowIngestionMeters.BUILD_SEGMENTS,
           IndexTaskUtils.getReportListFromSavedParseExceptions(
@@ -537,28 +504,12 @@ public class SinglePhaseSubTask extends AbstractBatchSubtask implements ChatHand
     return Response.ok(events).build();
   }
 
-  private Map<String, Object> doGetRowStats(String full)
+  private Map<String, Object> doGetRowStats(boolean isFullReport)
   {
-    Map<String, Object> returnMap = new HashMap<>();
     Map<String, Object> totalsMap = new HashMap<>();
     Map<String, Object> averagesMap = new HashMap<>();
 
-    boolean needsBuildSegments = false;
-
-    if (full != null) {
-      needsBuildSegments = true;
-    } else {
-      switch (ingestionState) {
-        case BUILD_SEGMENTS:
-        case COMPLETED:
-          needsBuildSegments = true;
-          break;
-        default:
-          break;
-      }
-    }
-
-    if (needsBuildSegments) {
+    if (hasBuildSegmentsInfoInReport(isFullReport)) {
       totalsMap.put(
           RowIngestionMeters.BUILD_SEGMENTS,
           rowIngestionMeters.getTotals()
@@ -569,9 +520,10 @@ public class SinglePhaseSubTask extends AbstractBatchSubtask implements ChatHand
       );
     }
 
-    returnMap.put("totals", totalsMap);
-    returnMap.put("movingAverages", averagesMap);
-    return returnMap;
+    final Map<String, Object> rowStats = new HashMap<>();
+    rowStats.put("totals", totalsMap);
+    rowStats.put("movingAverages", averagesMap);
+    return rowStats;
   }
 
   @GET
@@ -583,27 +535,19 @@ public class SinglePhaseSubTask extends AbstractBatchSubtask implements ChatHand
   )
   {
     IndexTaskUtils.datasourceAuthorizationCheck(req, Action.READ, getDataSource(), authorizerMapper);
-    return Response.ok(doGetRowStats(full)).build();
+    return Response.ok(doGetRowStats(full != null)).build();
   }
 
-  @VisibleForTesting
-  public Map<String, Object> doGetLiveReports(String full)
+  private Map<String, TaskReport> doGetLiveReports(boolean isFullReport)
   {
-    Map<String, Object> returnMap = new HashMap<>();
-    Map<String, Object> ingestionStatsAndErrors = new HashMap<>();
-    Map<String, Object> payload = new HashMap<>();
-    Map<String, Object> events = getTaskCompletionUnparseableEvents();
-
-    payload.put("ingestionState", ingestionState);
-    payload.put("unparseableEvents", events);
-    payload.put("rowStats", doGetRowStats(full));
-
-    ingestionStatsAndErrors.put("taskId", getId());
-    ingestionStatsAndErrors.put("payload", payload);
-    ingestionStatsAndErrors.put("type", "ingestionStatsAndErrors");
-
-    returnMap.put("ingestionStatsAndErrors", ingestionStatsAndErrors);
-    return returnMap;
+    return buildIngestionStatsReport(
+        ingestionState,
+        getTaskCompletionUnparseableEvents(),
+        doGetRowStats(isFullReport),
+        null,
+        null,
+        null
+    );
   }
 
   @GET
@@ -615,57 +559,48 @@ public class SinglePhaseSubTask extends AbstractBatchSubtask implements ChatHand
   )
   {
     IndexTaskUtils.datasourceAuthorizationCheck(req, Action.READ, getDataSource(), authorizerMapper);
-    return Response.ok(doGetLiveReports(full)).build();
+    return Response.ok(doGetLiveReports(full != null)).build();
   }
 
   private Map<String, Object> getTaskCompletionRowStats()
   {
-    Map<String, Object> metrics = new HashMap<>();
-    metrics.put(
+    return Collections.singletonMap(
         RowIngestionMeters.BUILD_SEGMENTS,
         rowIngestionMeters.getTotals()
     );
-    return metrics;
+  }
+
+  private boolean hasBuildSegmentsInfoInReport(boolean isFullReport)
+  {
+    return isFullReport
+           || ingestionState == IngestionState.BUILD_SEGMENTS
+           || ingestionState == IngestionState.COMPLETED;
   }
 
   /**
    * Generate an IngestionStatsAndErrorsTaskReport for the task.
-   **
-   * @return
    */
   private Map<String, TaskReport> getTaskCompletionReports()
   {
-    return TaskReport.buildTaskReports(
-        new IngestionStatsAndErrorsTaskReport(
-            getId(),
-            new IngestionStatsAndErrorsTaskReportData(
-                IngestionState.COMPLETED,
-                getTaskCompletionUnparseableEvents(),
-                getTaskCompletionRowStats(),
-                errorMsg,
-                false, // not applicable for parallel subtask
-                segmentAvailabilityWaitTimeMs,
-                Collections.emptyMap(),
-                null,
-                null
-            )
-        )
+    return buildIngestionStatsReport(
+        IngestionState.COMPLETED,
+        getTaskCompletionUnparseableEvents(),
+        getTaskCompletionRowStats(),
+        errorMsg,
+        null,
+        null
     );
   }
 
   private Map<String, Object> getTaskCompletionUnparseableEvents()
   {
-    Map<String, Object> unparseableEventsMap = new HashMap<>();
     List<ParseExceptionReport> parseExceptionMessages = IndexTaskUtils.getReportListFromSavedParseExceptions(
         parseExceptionHandler.getSavedParseExceptionReports()
     );
 
-    if (parseExceptionMessages != null) {
-      unparseableEventsMap.put(RowIngestionMeters.BUILD_SEGMENTS, parseExceptionMessages);
-    } else {
-      unparseableEventsMap.put(RowIngestionMeters.BUILD_SEGMENTS, ImmutableList.of());
-    }
-
-    return unparseableEventsMap;
+    return Collections.singletonMap(
+        RowIngestionMeters.BUILD_SEGMENTS,
+        parseExceptionMessages == null ? Collections.emptyList() : parseExceptionMessages
+    );
   }
 }

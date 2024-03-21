@@ -248,12 +248,13 @@ public class ParallelIndexSupervisorTask extends AbstractBatchIndexTask implemen
     }
 
     if (isGuaranteedRollup(getIngestionMode(), ingestionSchema.getTuningConfig())) {
-      checkPartitionsSpecForForceGuaranteedRollup(ingestionSchema.getTuningConfig().getGivenOrDefaultPartitionsSpec());
+      checkPartitionsSpecForForceGuaranteedRollup(
+          ingestionSchema.getTuningConfig().getGivenOrDefaultPartitionsSpec()
+      );
     }
 
     this.baseInputSource = ingestionSchema.getIOConfig().getNonNullInputSource();
-    this.missingIntervalsInOverwriteMode = (getIngestionMode()
-                                            != IngestionMode.APPEND)
+    this.missingIntervalsInOverwriteMode = getIngestionMode() != IngestionMode.APPEND
                                            && ingestionSchema.getDataSchema()
                                                              .getGranularitySpec()
                                                              .inputIntervals()
@@ -491,7 +492,6 @@ public class ParallelIndexSupervisorTask extends AbstractBatchIndexTask implemen
   @Override
   public TaskStatus runTask(TaskToolbox toolbox) throws Exception
   {
-
     if (ingestionSchema.getTuningConfig().getMaxSavedParseExceptions()
         != TuningConfig.DEFAULT_MAX_SAVED_PARSE_EXCEPTIONS) {
       LOG.warn("maxSavedParseExceptions is not supported yet");
@@ -527,7 +527,6 @@ public class ParallelIndexSupervisorTask extends AbstractBatchIndexTask implemen
     );
 
     try {
-
       initializeSubTaskCleaner();
       this.toolbox = toolbox;
 
@@ -535,10 +534,7 @@ public class ParallelIndexSupervisorTask extends AbstractBatchIndexTask implemen
         // emit metric for parallel batch ingestion mode:
         emitMetric(toolbox.getEmitter(), "ingest/count", 1);
 
-        if (isGuaranteedRollup(
-            getIngestionMode(),
-            ingestionSchema.getTuningConfig()
-        )) {
+        if (isGuaranteedRollup(getIngestionMode(), ingestionSchema.getTuningConfig())) {
           return runMultiPhaseParallel(toolbox);
         } else {
           return runSinglePhaseParallel(toolbox);
@@ -546,18 +542,17 @@ public class ParallelIndexSupervisorTask extends AbstractBatchIndexTask implemen
       } else {
         if (!baseInputSource.isSplittable()) {
           LOG.warn(
-              "firehoseFactory[%s] is not splittable. Running sequentially.",
+              "Running task sequentially as input source[%s] is not splittable.",
               baseInputSource.getClass().getSimpleName()
           );
         } else if (ingestionSchema.getTuningConfig().getMaxNumConcurrentSubTasks() <= 1) {
           LOG.warn(
-              "maxNumConcurrentSubTasks[%s] is less than or equal to 1. Running sequentially. "
-              + "Please set maxNumConcurrentSubTasks to something higher than 1 if you want to run in parallel "
-              + "ingestion mode.",
+              "Running task sequentially as 'maxNumConcurrentSubTasks' is [%s]."
+              + "Set 'maxNumConcurrentSubTasks' to greater than 1 to run in parallel mode.",
               ingestionSchema.getTuningConfig().getMaxNumConcurrentSubTasks()
           );
         } else {
-          throw new ISE("Unknown reason for sequentail mode. Failing this task.");
+          throw new ISE("Unknown reason for sequential mode. Failing this task.");
         }
 
         return runSequential(toolbox);
@@ -586,7 +581,7 @@ public class ParallelIndexSupervisorTask extends AbstractBatchIndexTask implemen
   }
 
   /**
-   * Returns true if this task can run in the parallel mode with the given inputSource and tuningConfig.
+   * Checks if a task can be run in parallel mode for the given inputSource and tuningConfig.
    * This method should be synchronized with CompactSegments.isParallelMode(ClientCompactionTaskQueryTuningConfig).
    */
   public static boolean isParallelMode(InputSource inputSource, @Nullable ParallelIndexTuningConfig tuningConfig)
@@ -594,10 +589,10 @@ public class ParallelIndexSupervisorTask extends AbstractBatchIndexTask implemen
     if (null == tuningConfig) {
       return false;
     }
-    boolean useRangePartitions = useRangePartitions(tuningConfig);
-    // Range partitioning is not implemented for runSequential() (but hash partitioning is)
-    int minRequiredNumConcurrentSubTasks = useRangePartitions ? 1 : 2;
-    return inputSource.isSplittable() && tuningConfig.getMaxNumConcurrentSubTasks() >= minRequiredNumConcurrentSubTasks;
+    // Range partitioning requires 2 sub tasks as it can only be run in parallel mode
+    int minRequiredNumConcurrentSubTasks = useRangePartitions(tuningConfig) ? 1 : 2;
+    return inputSource.isSplittable()
+           && tuningConfig.getMaxNumConcurrentSubTasks() >= minRequiredNumConcurrentSubTasks;
   }
 
   private static boolean useRangePartitions(ParallelIndexTuningConfig tuningConfig)
@@ -612,15 +607,13 @@ public class ParallelIndexSupervisorTask extends AbstractBatchIndexTask implemen
 
   /**
    * Attempt to wait for indexed segments to become available on the cluster.
-   * @param reportsMap Map containing information with published segments that we are going to wait for.
    */
   private void waitForSegmentAvailability(Map<String, PushedSegmentsReport> reportsMap)
   {
     ArrayList<DataSegment> segmentsToWaitFor = new ArrayList<>();
-    reportsMap.values()
-              .forEach(report -> {
-                segmentsToWaitFor.addAll(report.getNewSegments());
-              });
+    reportsMap.values().forEach(
+        report -> segmentsToWaitFor.addAll(report.getNewSegments())
+    );
     waitForSegmentAvailability(
         toolbox,
         segmentsToWaitFor,
@@ -1237,37 +1230,24 @@ public class ParallelIndexSupervisorTask extends AbstractBatchIndexTask implemen
 
   /**
    * Generate an IngestionStatsAndErrorsTaskReport for the task.
-   *
-   * @param taskStatus {@link TaskStatus}
-   * @param segmentAvailabilityConfirmed Whether or not the segments were confirmed to be available for query when
-   *                                     when the task completed.
-   * @return
    */
-  private Map<String, TaskReport> getTaskCompletionReports(TaskStatus taskStatus, boolean segmentAvailabilityConfirmed)
+  private Map<String, TaskReport> getTaskCompletionReports(TaskStatus taskStatus)
   {
     Pair<Map<String, Object>, Map<String, Object>> rowStatsAndUnparseableEvents =
         doGetRowStatsAndUnparseableEvents("true", true);
-    return TaskReport.buildTaskReports(
-        new IngestionStatsAndErrorsTaskReport(
-            getId(),
-            new IngestionStatsAndErrorsTaskReportData(
-                IngestionState.COMPLETED,
-                rowStatsAndUnparseableEvents.rhs,
-                rowStatsAndUnparseableEvents.lhs,
-                taskStatus.getErrorMsg(),
-                segmentAvailabilityConfirmed,
-                segmentAvailabilityWaitTimeMs,
-                Collections.emptyMap(),
-                segmentsRead,
-                segmentsPublished
-            )
-        )
+    return buildIngestionStatsReport(
+        ingestionState,
+        rowStatsAndUnparseableEvents.rhs,
+        rowStatsAndUnparseableEvents.lhs,
+        taskStatus.getErrorMsg(),
+        segmentsRead,
+        segmentsPublished
     );
   }
 
   private void updateAndWriteCompletionReports(TaskStatus status)
   {
-    completionReports = getTaskCompletionReports(status, segmentAvailabilityConfirmationCompleted);
+    completionReports = getTaskCompletionReports(status);
     writeCompletionReports();
   }
 
@@ -1583,11 +1563,11 @@ public class ParallelIndexSupervisorTask extends AbstractBatchIndexTask implemen
     } else if (buildSegmentsRowStats instanceof Map) {
       Map<String, Object> buildSegmentsRowStatsMap = (Map<String, Object>) buildSegmentsRowStats;
       return new RowIngestionMetersTotals(
-          ((Number) buildSegmentsRowStatsMap.get("processed")).longValue(),
-          ((Number) buildSegmentsRowStatsMap.get("processedBytes")).longValue(),
-          ((Number) buildSegmentsRowStatsMap.get("processedWithError")).longValue(),
-          ((Number) buildSegmentsRowStatsMap.get("thrownAway")).longValue(),
-          ((Number) buildSegmentsRowStatsMap.get("unparseable")).longValue()
+          ((Number) buildSegmentsRowStatsMap.get(RowIngestionMeters.PROCESSED)).longValue(),
+          ((Number) buildSegmentsRowStatsMap.get(RowIngestionMeters.PROCESSED_BYTES)).longValue(),
+          ((Number) buildSegmentsRowStatsMap.get(RowIngestionMeters.PROCESSED_WITH_ERROR)).longValue(),
+          ((Number) buildSegmentsRowStatsMap.get(RowIngestionMeters.THROWN_AWAY)).longValue(),
+          ((Number) buildSegmentsRowStatsMap.get(RowIngestionMeters.UNPARSEABLE)).longValue()
       );
     } else {
       // should never happen
@@ -1736,7 +1716,7 @@ public class ParallelIndexSupervisorTask extends AbstractBatchIndexTask implemen
     IngestionStatsAndErrorsTaskReport ingestionStatsAndErrorsReport = (IngestionStatsAndErrorsTaskReport) taskReport.get(
         IngestionStatsAndErrorsTaskReport.REPORT_KEY);
     IngestionStatsAndErrorsTaskReportData reportData =
-        (IngestionStatsAndErrorsTaskReportData) ingestionStatsAndErrorsReport.getPayload();
+        ingestionStatsAndErrorsReport.getPayload();
     RowIngestionMetersTotals totals = getTotalsFromBuildSegmentsRowStats(
         reportData.getRowStats().get(RowIngestionMeters.BUILD_SEGMENTS)
     );
@@ -1763,10 +1743,7 @@ public class ParallelIndexSupervisorTask extends AbstractBatchIndexTask implemen
     }
 
     if (isParallelMode()) {
-      if (isGuaranteedRollup(
-          getIngestionMode(),
-          ingestionSchema.getTuningConfig()
-      )) {
+      if (isGuaranteedRollup(getIngestionMode(), ingestionSchema.getTuningConfig())) {
         return doGetRowStatsAndUnparseableEventsParallelMultiPhase(
             (ParallelIndexTaskRunner<?, ?>) currentRunner,
             includeUnparseable
@@ -1804,36 +1781,29 @@ public class ParallelIndexSupervisorTask extends AbstractBatchIndexTask implemen
   }
 
   @VisibleForTesting
-  public Map<String, Object> doGetLiveReports(String full)
+  public Map<String, TaskReport> doGetLiveReports(String full)
   {
-    Map<String, Object> returnMap = new HashMap<>();
-    Map<String, Object> ingestionStatsAndErrors = new HashMap<>();
-    Map<String, Object> payload = new HashMap<>();
+    Pair<Map<String, Object>, Map<String, Object>> rowStatsAndUnparsebleEvents
+        = doGetRowStatsAndUnparseableEvents(full, true);
 
-    Pair<Map<String, Object>, Map<String, Object>> rowStatsAndUnparsebleEvents =
-        doGetRowStatsAndUnparseableEvents(full, true);
-
-    // use the sequential task's ingestion state if we were running that mode
-    IngestionState ingestionStateForReport;
+    final IngestionState ingestionStateForReport;
     if (isParallelMode()) {
       ingestionStateForReport = ingestionState;
     } else {
-      IndexTask currentSequentialTask = (IndexTask) currentSubTaskHolder.getTask();
+      IndexTask currentSequentialTask = currentSubTaskHolder.getTask();
       ingestionStateForReport = currentSequentialTask == null
                                 ? ingestionState
                                 : currentSequentialTask.getIngestionState();
     }
 
-    payload.put("ingestionState", ingestionStateForReport);
-    payload.put("unparseableEvents", rowStatsAndUnparsebleEvents.rhs);
-    payload.put("rowStats", rowStatsAndUnparsebleEvents.lhs);
-
-    ingestionStatsAndErrors.put("taskId", getId());
-    ingestionStatsAndErrors.put("payload", payload);
-    ingestionStatsAndErrors.put("type", "ingestionStatsAndErrors");
-
-    returnMap.put("ingestionStatsAndErrors", ingestionStatsAndErrors);
-    return returnMap;
+    return buildIngestionStatsReport(
+        ingestionStateForReport,
+        rowStatsAndUnparsebleEvents.rhs,
+        rowStatsAndUnparsebleEvents.lhs,
+        null,
+        null,
+        null
+    );
   }
 
   @GET
@@ -1850,8 +1820,9 @@ public class ParallelIndexSupervisorTask extends AbstractBatchIndexTask implemen
   }
 
   /**
-   * Like {@link OverlordClient#taskReportAsMap}, but synchronous, and returns null instead of throwing an error if
-   * the server returns 404.
+   * Fetches the task report synchronously.
+   *
+   * @return null if the server could not find the task report.
    */
   @Nullable
   @VisibleForTesting

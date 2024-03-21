@@ -28,11 +28,13 @@ import org.apache.druid.indexer.TaskState;
 import org.apache.druid.indexer.partitions.HashedPartitionsSpec;
 import org.apache.druid.indexer.partitions.SingleDimensionPartitionsSpec;
 import org.apache.druid.indexing.common.LockGranularity;
+import org.apache.druid.indexing.common.TaskReport;
 import org.apache.druid.java.util.common.Intervals;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.segment.incremental.RowIngestionMetersTotals;
 import org.apache.druid.segment.incremental.RowMeters;
 import org.joda.time.Interval;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -133,8 +135,8 @@ public class MultiPhaseParallelIndexingRowStatsTest extends AbstractMultiPhasePa
         false
     );
 
-    final RowIngestionMetersTotals expectedTotals = RowMeters.with().totalProcessed(200);
-    final Map<String, Object> expectedReports =
+    final RowIngestionMetersTotals expectedTotals = RowMeters.with().bytes(5630).totalProcessed(200);
+    final Map<String, TaskReport> expectedReports =
         maxNumConcurrentSubTasks <= 1
         ? buildExpectedTaskReportSequential(
             task.getId(),
@@ -148,7 +150,7 @@ public class MultiPhaseParallelIndexingRowStatsTest extends AbstractMultiPhasePa
             expectedTotals
         );
 
-    Map<String, Object> actualReports = runTaskAndGetReports(task, TaskState.SUCCESS);
+    Map<String, TaskReport> actualReports = runTaskAndGetReports(task, TaskState.SUCCESS);
     compareTaskReports(expectedReports, actualReports);
   }
 
@@ -169,12 +171,12 @@ public class MultiPhaseParallelIndexingRowStatsTest extends AbstractMultiPhasePa
         false,
         false
     );
-    Map<String, Object> expectedReports = buildExpectedTaskReportParallel(
+    Map<String, TaskReport> expectedReports = buildExpectedTaskReportParallel(
         task.getId(),
         ImmutableList.of(),
-        new RowIngestionMetersTotals(200, 0, 0, 0, 0)
+        new RowIngestionMetersTotals(200, 5630, 0, 0, 0)
     );
-    Map<String, Object> actualReports = runTaskAndGetReports(task, TaskState.SUCCESS);
+    Map<String, TaskReport> actualReports = runTaskAndGetReports(task, TaskState.SUCCESS);
     compareTaskReports(expectedReports, actualReports);
   }
 }

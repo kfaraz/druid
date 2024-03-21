@@ -31,6 +31,7 @@ import org.apache.druid.indexer.TaskStatus;
 import org.apache.druid.indexer.partitions.PartitionsSpec;
 import org.apache.druid.indexing.common.LockGranularity;
 import org.apache.druid.indexing.common.SegmentCacheManagerFactory;
+import org.apache.druid.indexing.common.TaskReport;
 import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.indexing.common.task.Tasks;
 import org.apache.druid.indexing.input.DruidInputSource;
@@ -59,6 +60,7 @@ import org.apache.druid.segment.loading.SegmentLoadingException;
 import org.apache.druid.segment.loading.SegmentLocalCacheLoader;
 import org.apache.druid.segment.loading.TombstoneLoadSpec;
 import org.apache.druid.timeline.DataSegment;
+import org.apache.druid.utils.CollectionUtils;
 import org.joda.time.Interval;
 import org.junit.Assert;
 
@@ -183,10 +185,14 @@ abstract class AbstractMultiPhaseParallelIndexingTest extends AbstractParallelIn
     return getIndexingServiceClient().getPublishedSegments(task);
   }
 
-  Map<String, Object> runTaskAndGetReports(Task task, TaskState expectedTaskStatus)
+  Map<String, TaskReport> runTaskAndGetReports(Task task, TaskState expectedTaskStatus)
   {
     runTaskAndVerifyStatus(task, expectedTaskStatus);
-    return FutureUtils.getUnchecked(getIndexingServiceClient().taskReportAsMap(task.getId()), true);
+    Map<String, Object> reportAsMap = FutureUtils.getUnchecked(
+        getIndexingServiceClient().taskReportAsMap(task.getId()), true
+    );
+
+    return CollectionUtils.mapValues(reportAsMap, report -> (TaskReport) report);
   }
 
   protected ParallelIndexSupervisorTask createTask(
