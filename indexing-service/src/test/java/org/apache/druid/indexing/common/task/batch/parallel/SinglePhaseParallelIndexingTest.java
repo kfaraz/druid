@@ -91,8 +91,8 @@ public class SinglePhaseParallelIndexingTest extends AbstractParallelIndexSuperv
   public static Iterable<Object[]> constructorFeeder()
   {
     return ImmutableList.of(
-        //new Object[]{LockGranularity.TIME_CHUNK, false},
-        //new Object[]{LockGranularity.TIME_CHUNK, true},
+        new Object[]{LockGranularity.TIME_CHUNK, false},
+        new Object[]{LockGranularity.TIME_CHUNK, true},
         new Object[]{LockGranularity.SEGMENT, true}
     );
   }
