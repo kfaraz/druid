@@ -535,9 +535,8 @@ public class CompactionTask extends AbstractBatchIndexTask
         }
       }
 
-      String msg = StringUtils.format(
-          "Ran [%d] specs, [%d] succeeded, [%d] failed",
-          totalNumSpecs, totalNumSpecs - failCnt, failCnt
+      String msg = StringUtils.format("Ran [%d] specs, [%d] succeeded, [%d] failed",
+                                      totalNumSpecs, totalNumSpecs - failCnt, failCnt
       );
 
       toolbox.getTaskReportFileWriter().write(getId(), completionReports);

@@ -127,6 +127,7 @@ import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.utils.CompressionUtils;
 import org.assertj.core.api.Assertions;
 import org.easymock.EasyMock;
+import org.easymock.EasyMockSupport;
 import org.joda.time.Interval;
 import org.junit.Assert;
 import org.junit.Rule;
@@ -151,7 +152,7 @@ import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 
-public abstract class SeekableStreamIndexTaskTestBase
+public abstract class SeekableStreamIndexTaskTestBase extends EasyMockSupport
 {
   private static final Logger log = new Logger(SeekableStreamIndexTaskTestBase.class);
 
