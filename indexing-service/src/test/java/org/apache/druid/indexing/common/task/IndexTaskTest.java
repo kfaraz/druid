@@ -111,7 +111,6 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.ExpectedException;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -135,9 +134,6 @@ public class IndexTaskTest extends IngestionTestBase
 {
   @Rule
   public TemporaryFolder temporaryFolder = new TemporaryFolder();
-
-  @Rule
-  public ExpectedException expectedException = ExpectedException.none();
 
   private static final String DATASOURCE = "test";
   private static final TimestampSpec DEFAULT_TIMESTAMP_SPEC = new TimestampSpec("ts", "auto", null);
@@ -903,29 +899,31 @@ public class IndexTaskTest extends IngestionTestBase
     }
 
     // Expect exception if reingest with dropExisting and null intervals is attempted
-    expectedException.expect(IAE.class);
-    expectedException.expectMessage(
-        "GranularitySpec's intervals cannot be empty for replace."
-    );
-    IndexTask indexTask = new IndexTask(
-        null,
-        null,
-        createDefaultIngestionSpec(
-            jsonMapper,
-            tmpDir,
-            new UniformGranularitySpec(
-                Granularities.HOUR,
-                Granularities.MINUTE,
-                null
-            ),
+    IAE exception = Assert.assertThrows(
+        IAE.class,
+        () -> new IndexTask(
             null,
-            createTuningConfigWithMaxRowsPerSegment(2, true),
-            false,
-            true
-        ),
-        null
+            null,
+            createDefaultIngestionSpec(
+                jsonMapper,
+                tmpDir,
+                new UniformGranularitySpec(
+                    Granularities.HOUR,
+                    Granularities.MINUTE,
+                    null
+                ),
+                null,
+                createTuningConfigWithMaxRowsPerSegment(2, true),
+                false,
+                true
+            ),
+            null
+        )
     );
-
+    Assert.assertEquals(
+        "GranularitySpec's intervals cannot be empty for replace.",
+        exception.getMessage()
+    );
   }
 
   @Test
@@ -2322,11 +2320,14 @@ public class IndexTaskTest extends IngestionTestBase
         ),
         null
     );
-    expectedException.expect(UnsupportedOperationException.class);
-    expectedException.expectMessage(
-        "partitionsSpec[org.apache.druid.indexer.partitions.SingleDimensionPartitionsSpec] is not supported"
+    Exception excpetion = Assert.assertThrows(
+        UnsupportedOperationException.class,
+        () -> task.isReady(createActionClient(task))
     );
-    task.isReady(createActionClient(task));
+    Assert.assertEquals(
+        "partitionsSpec[org.apache.druid.indexer.partitions.SingleDimensionPartitionsSpec] is not supported",
+        excpetion.getMessage()
+    );
   }
 
   @Test
@@ -2663,29 +2664,34 @@ public class IndexTaskTest extends IngestionTestBase
 
  
   @Test
-  public void testErrorWhenDropFlagTrueAndOverwriteFalse() throws Exception
+  public void testErrorWhenDropFlagTrueAndOverwriteFalse()
   {
-    expectedException.expect(IAE.class);
-    expectedException.expectMessage(
-        "Cannot simultaneously replace and append to existing segments. Either dropExisting or appendToExisting should be set to false"
-    );
-    new IndexTask(
-        null,
-        null,
-        createDefaultIngestionSpec(
-            jsonMapper,
-            temporaryFolder.newFolder(),
-            new UniformGranularitySpec(
-                Granularities.MINUTE,
-                Granularities.MINUTE,
-                Collections.singletonList(Intervals.of("2014-01-01/2014-01-02"))
-            ),
+    Exception exception = Assert.assertThrows(
+        IAE.class,
+        () -> new IndexTask(
             null,
-            createTuningConfigWithMaxRowsPerSegment(10, true),
-            true,
-            true
-        ),
-        null
+            null,
+            createDefaultIngestionSpec(
+                jsonMapper,
+                temporaryFolder.newFolder(),
+                new UniformGranularitySpec(
+                    Granularities.MINUTE,
+                    Granularities.MINUTE,
+                    Collections.singletonList(Intervals.of("2014-01-01/2014-01-02"))
+                ),
+                null,
+                createTuningConfigWithMaxRowsPerSegment(10, true),
+                true,
+                true
+            ),
+            null
+        )
+    );
+
+    Assert.assertEquals(
+        "Cannot simultaneously replace and append to existing segments."
+        + " Either dropExisting or appendToExisting should be set to false",
+        exception.getMessage()
     );
   }
 

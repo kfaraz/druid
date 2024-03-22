@@ -427,20 +427,14 @@ public class IndexTask extends AbstractBatchIndexTask implements ChatHandler
   {
     IndexTaskUtils.datasourceAuthorizationCheck(req, Action.READ, getDataSource(), authorizerMapper);
 
-    final Map<String, Object> payload = new HashMap<>();
-    payload.put("ingestionState", ingestionState);
-    payload.put("unparseableEvents", getTaskCompletionUnparseableEvents());
-    payload.put("rowStats", doGetRowStats(full != null));
-
-    final Map<String, Object> ingestionStatsAndErrors = new HashMap<>();
-    ingestionStatsAndErrors.put("taskId", getId());
-    ingestionStatsAndErrors.put("payload", payload);
-    ingestionStatsAndErrors.put("type", "ingestionStatsAndErrors");
-
     return Response.ok(
-        Collections.singletonMap(
-            IngestionStatsAndErrorsTaskReport.REPORT_KEY,
-            ingestionStatsAndErrors
+        buildIngestionStatsReport(
+            ingestionState,
+            getTaskCompletionUnparseableEvents(),
+            doGetRowStats(full != null),
+            null,
+            null,
+            null
         )
     ).build();
   }
@@ -554,15 +548,7 @@ public class IndexTask extends AbstractBatchIndexTask implements ChatHandler
 
   private void updateAndWriteCompletionReports(TaskToolbox toolbox)
   {
-    completionReports = getTaskCompletionReports();
-    if (isStandAloneTask) {
-      toolbox.getTaskReportFileWriter().write(getId(), completionReports);
-    }
-  }
-
-  private Map<String, TaskReport> getTaskCompletionReports()
-  {
-    return buildIngestionStatsReport(
+    completionReports = buildIngestionStatsReport(
         ingestionState,
         getTaskCompletionUnparseableEvents(),
         getTaskCompletionRowStats(),
@@ -570,11 +556,15 @@ public class IndexTask extends AbstractBatchIndexTask implements ChatHandler
         null,
         null
     );
+
+    if (isStandAloneTask) {
+      toolbox.getTaskReportFileWriter().write(getId(), completionReports);
+    }
   }
 
   private Map<String, Object> getTaskCompletionUnparseableEvents()
   {
-    Map<String, Object> unparseableEventsMap = new HashMap<>();
+    final Map<String, Object> unparseableEventsMap = new HashMap<>();
     CircularBuffer<ParseExceptionReport> determinePartitionsParseExceptionReports =
         determinePartitionsParseExceptionHandler.getSavedParseExceptionReports();
     CircularBuffer<ParseExceptionReport> buildSegmentsParseExceptionReports =
@@ -596,17 +586,15 @@ public class IndexTask extends AbstractBatchIndexTask implements ChatHandler
 
   private Map<String, Object> getTaskCompletionRowStats()
   {
-    Map<String, Object> metrics = new HashMap<>();
+    final Map<String, Object> metrics = new HashMap<>();
     metrics.put(
         RowIngestionMeters.DETERMINE_PARTITIONS,
         determinePartitionsMeters.getTotals()
     );
-
     metrics.put(
         RowIngestionMeters.BUILD_SEGMENTS,
         buildSegmentsMeters.getTotals()
     );
-
     return metrics;
   }
 
@@ -885,7 +873,7 @@ public class IndexTask extends AbstractBatchIndexTask implements ChatHandler
         sequenceNameFunction = segmentAllocator.getSequenceNameFunction();
         break;
       default:
-        throw new UOE("[%s] secondary partition type is not supported", partitionsSpec.getType());
+        throw new UOE("Secondary partition type[%s] is not supported", partitionsSpec.getType());
     }
 
     final TaskLockType taskLockType = getTaskLockHelper().getLockTypeToUse();
@@ -1006,11 +994,12 @@ public class IndexTask extends AbstractBatchIndexTask implements ChatHandler
         );
         log.info("Published [%s] segments", published.getSegments().size());
 
-        // publish metrics:
+        // Emit metrics
         emitMetric(toolbox.getEmitter(), "ingest/tombstones/count", tombStones.size());
-        // segments count metric is documented to include tombstones
-        emitMetric(toolbox.getEmitter(), "ingest/segments/count",
-                   published.getSegments().size() + tombStones.size()
+        emitMetric(
+            toolbox.getEmitter(),
+            "ingest/segments/count",
+            published.getSegments().size() + tombStones.size()
         );
 
         log.debugSegments(published.getSegments(), "Published segments");
