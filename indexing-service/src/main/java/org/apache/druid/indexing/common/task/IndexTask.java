@@ -48,7 +48,7 @@ import org.apache.druid.indexer.partitions.DynamicPartitionsSpec;
 import org.apache.druid.indexer.partitions.HashedPartitionsSpec;
 import org.apache.druid.indexer.partitions.PartitionsSpec;
 import org.apache.druid.indexer.partitions.SecondaryPartitionType;
-import org.apache.druid.indexing.common.IngestionStatsAndErrorsTaskReport;
+import org.apache.druid.indexing.common.IngestionRowStats;
 import org.apache.druid.indexing.common.TaskLockType;
 import org.apache.druid.indexing.common.TaskRealtimeMetricsMonitorBuilder;
 import org.apache.druid.indexing.common.TaskReport;
@@ -77,6 +77,7 @@ import org.apache.druid.java.util.common.parsers.CloseableIterator;
 import org.apache.druid.segment.IndexMerger;
 import org.apache.druid.segment.IndexSpec;
 import org.apache.druid.segment.incremental.AppendableIndexSpec;
+import org.apache.druid.segment.incremental.MultiPhaseRowStats;
 import org.apache.druid.segment.incremental.ParseExceptionHandler;
 import org.apache.druid.segment.incremental.ParseExceptionReport;
 import org.apache.druid.segment.incremental.RowIngestionMeters;
@@ -367,42 +368,23 @@ public class IndexTask extends AbstractBatchIndexTask implements ChatHandler
     return events;
   }
 
-  public Map<String, Object> doGetRowStats(boolean isFullReport)
+  public IngestionRowStats doGetRowStats(boolean isFullReport)
   {
-    final Map<String, Object> totalsMap = new HashMap<>();
-    final Map<String, Object> averagesMap = new HashMap<>();
-
-    boolean needsDeterminePartitions = isFullReport
-                                       || ingestionState == IngestionState.DETERMINE_PARTITIONS;
-    if (needsDeterminePartitions) {
-      totalsMap.put(
-          RowIngestionMeters.DETERMINE_PARTITIONS,
-          determinePartitionsMeters.getTotals()
-      );
-      averagesMap.put(
-          RowIngestionMeters.DETERMINE_PARTITIONS,
-          determinePartitionsMeters.getMovingAverages()
-      );
-    }
-
-    boolean needsBuildSegments = isFullReport
-                                 || ingestionState == IngestionState.BUILD_SEGMENTS
-                                 || ingestionState == IngestionState.COMPLETED;
-    if (needsBuildSegments) {
-      totalsMap.put(
-          RowIngestionMeters.BUILD_SEGMENTS,
-          buildSegmentsMeters.getTotals()
-      );
-      averagesMap.put(
-          RowIngestionMeters.BUILD_SEGMENTS,
-          buildSegmentsMeters.getMovingAverages()
-      );
-    }
-
-    final Map<String, Object> rowStatsMap = new HashMap<>();
-    rowStatsMap.put("totals", totalsMap);
-    rowStatsMap.put("movingAverages", averagesMap);
-    return rowStatsMap;
+    final boolean needsDeterminePartitions = isFullReport
+                                             || ingestionState == IngestionState.DETERMINE_PARTITIONS;
+    final boolean needsBuildSegments = isFullReport
+                                       || ingestionState == IngestionState.BUILD_SEGMENTS
+                                       || ingestionState == IngestionState.COMPLETED;
+    return IngestionRowStats.totalsAndMovingAverages(
+        new MultiPhaseRowStats<>(
+            needsBuildSegments ? buildSegmentsMeters.getTotals() : null,
+            needsDeterminePartitions ? determinePartitionsMeters.getTotals() : null
+        ),
+        new MultiPhaseRowStats<>(
+            needsBuildSegments ? buildSegmentsMeters.getMovingAverages() : null,
+            needsDeterminePartitions ? determinePartitionsMeters.getMovingAverages() : null
+        )
+    );
   }
 
   @GET
@@ -584,18 +566,15 @@ public class IndexTask extends AbstractBatchIndexTask implements ChatHandler
     return unparseableEventsMap;
   }
 
-  private Map<String, Object> getTaskCompletionRowStats()
+  private IngestionRowStats getTaskCompletionRowStats()
   {
-    final Map<String, Object> metrics = new HashMap<>();
-    metrics.put(
-        RowIngestionMeters.DETERMINE_PARTITIONS,
-        determinePartitionsMeters.getTotals()
+    return IngestionRowStats.totalsAndMovingAverages(
+        new MultiPhaseRowStats<>(
+            buildSegmentsMeters.getTotals(),
+            determinePartitionsMeters.getTotals()
+        ),
+        null
     );
-    metrics.put(
-        RowIngestionMeters.BUILD_SEGMENTS,
-        buildSegmentsMeters.getTotals()
-    );
-    return metrics;
   }
 
   /**

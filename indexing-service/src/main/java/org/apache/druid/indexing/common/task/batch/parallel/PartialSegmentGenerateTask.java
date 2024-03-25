@@ -25,6 +25,7 @@ import org.apache.druid.data.input.InputSource;
 import org.apache.druid.indexer.IngestionState;
 import org.apache.druid.indexer.TaskStatus;
 import org.apache.druid.indexer.partitions.PartitionsSpec;
+import org.apache.druid.indexing.common.IngestionRowStats;
 import org.apache.druid.indexing.common.TaskRealtimeMetricsMonitorBuilder;
 import org.apache.druid.indexing.common.TaskReport;
 import org.apache.druid.indexing.common.TaskToolbox;
@@ -253,7 +254,7 @@ abstract class PartialSegmentGenerateTask<T extends GeneratedPartitionsReport> e
     return buildIngestionStatsReport(
         IngestionState.COMPLETED,
         getTaskCompletionUnparseableEvents(),
-        getTaskCompletionRowStats(),
+        IngestionRowStats.buildSegments(buildSegmentsMeters.getTotals()),
         null,
         segmentsRead,
         null
@@ -274,15 +275,5 @@ abstract class PartialSegmentGenerateTask<T extends GeneratedPartitionsReport> e
     }
 
     return unparseableEventsMap;
-  }
-
-  private Map<String, Object> getTaskCompletionRowStats()
-  {
-    Map<String, Object> metrics = new HashMap<>();
-    metrics.put(
-        RowIngestionMeters.BUILD_SEGMENTS,
-        buildSegmentsMeters.getTotals()
-    );
-    return metrics;
   }
 }

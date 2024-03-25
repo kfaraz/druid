@@ -31,8 +31,9 @@ import org.apache.druid.data.input.InputSource;
 import org.apache.druid.data.input.InputSourceReader;
 import org.apache.druid.data.input.impl.DimensionsSpec;
 import org.apache.druid.indexer.IngestionState;
+import org.apache.druid.indexing.common.IngestionRowStats;
+import org.apache.druid.indexing.common.IngestionStatsAndErrors;
 import org.apache.druid.indexing.common.IngestionStatsAndErrorsTaskReport;
-import org.apache.druid.indexing.common.IngestionStatsAndErrorsTaskReportData;
 import org.apache.druid.indexing.common.LockGranularity;
 import org.apache.druid.indexing.common.TaskLock;
 import org.apache.druid.indexing.common.TaskLockType;
@@ -890,7 +891,7 @@ public abstract class AbstractBatchIndexTask extends AbstractTask
   protected Map<String, TaskReport> buildIngestionStatsReport(
       IngestionState ingestionState,
       Map<String, Object> unparseableEvents,
-      Map<String, Object> rowStats,
+      IngestionRowStats rowStats,
       String errorMessage,
       Long segmentsRead,
       Long segmentsPublished
@@ -899,7 +900,7 @@ public abstract class AbstractBatchIndexTask extends AbstractTask
     return TaskReport.buildTaskReports(
         new IngestionStatsAndErrorsTaskReport(
             getId(),
-            new IngestionStatsAndErrorsTaskReportData(
+            new IngestionStatsAndErrors(
                 ingestionState,
                 unparseableEvents,
                 rowStats,

@@ -43,6 +43,7 @@ import org.apache.druid.indexer.MetadataStorageUpdaterJobHandler;
 import org.apache.druid.indexer.TaskMetricsGetter;
 import org.apache.druid.indexer.TaskMetricsUtils;
 import org.apache.druid.indexer.TaskStatus;
+import org.apache.druid.indexing.common.IngestionRowStats;
 import org.apache.druid.indexing.common.TaskLock;
 import org.apache.druid.indexing.common.TaskLockType;
 import org.apache.druid.indexing.common.TaskReport;
@@ -687,22 +688,16 @@ public class HadoopIndexTask extends HadoopTask implements ChatHandler
     );
   }
 
-  private Map<String, Object> getTaskCompletionRowStats()
+  private IngestionRowStats getTaskCompletionRowStats()
   {
-    Map<String, Object> metrics = new HashMap<>();
-    if (determineConfigStatus != null) {
-      metrics.put(
-          RowIngestionMeters.DETERMINE_PARTITIONS,
-          determineConfigStatus.getMetrics()
-      );
-    }
-    if (buildSegmentsStatus != null) {
-      metrics.put(
-          RowIngestionMeters.BUILD_SEGMENTS,
-          buildSegmentsStatus.getMetrics()
-      );
-    }
-    return metrics;
+    // TODO: what about the metric names??
+    // They are completely different
+    return new IngestionRowStats(
+        buildSegmentsStatus == null ? null : buildSegmentsStatus.getMetrics(),
+        determineConfigStatus == null ? null : determineConfigStatus.getMetrics(),
+        null,
+        null
+    );
   }
 
   public static class InnerProcessingStatsGetter implements TaskMetricsGetter

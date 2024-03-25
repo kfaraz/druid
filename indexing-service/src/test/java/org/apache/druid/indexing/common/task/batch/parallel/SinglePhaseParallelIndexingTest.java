@@ -441,7 +441,7 @@ public class SinglePhaseParallelIndexingTest extends AbstractParallelIndexSuperv
         false,
         Collections.emptyList()
     );
-    Map<String, TaskReport> actualReports = task.doGetLiveReports("full");
+    Map<String, TaskReport> actualReports = task.doGetLiveReports(true);
     final long processedBytes = 335;
     Map<String, TaskReport> expectedReports = buildExpectedTaskReportParallel(
         task.getId(),
@@ -492,7 +492,7 @@ public class SinglePhaseParallelIndexingTest extends AbstractParallelIndexSuperv
 
     TaskContainer taskContainer = getIndexingServiceClient().getTaskContainer(task.getId());
     final ParallelIndexSupervisorTask executedTask = (ParallelIndexSupervisorTask) taskContainer.getTask();
-    Map<String, TaskReport> actualReports = executedTask.doGetLiveReports("full");
+    Map<String, TaskReport> actualReports = executedTask.doGetLiveReports(true);
 
     final long processedBytes = 335;
     RowIngestionMetersTotals expectedTotals = new RowIngestionMetersTotals(10, processedBytes, 1, 1, 1);

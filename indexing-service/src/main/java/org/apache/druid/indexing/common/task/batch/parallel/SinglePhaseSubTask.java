@@ -31,6 +31,7 @@ import org.apache.druid.data.input.InputSource;
 import org.apache.druid.indexer.IngestionState;
 import org.apache.druid.indexer.TaskStatus;
 import org.apache.druid.indexer.partitions.DynamicPartitionsSpec;
+import org.apache.druid.indexing.common.IngestionRowStats;
 import org.apache.druid.indexing.common.TaskRealtimeMetricsMonitorBuilder;
 import org.apache.druid.indexing.common.TaskReport;
 import org.apache.druid.indexing.common.TaskToolbox;
@@ -50,6 +51,7 @@ import org.apache.druid.java.util.common.ISE;
 import org.apache.druid.java.util.common.granularity.Granularity;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.java.util.common.parsers.CloseableIterator;
+import org.apache.druid.segment.incremental.MultiPhaseRowStats;
 import org.apache.druid.segment.incremental.ParseExceptionHandler;
 import org.apache.druid.segment.incremental.ParseExceptionReport;
 import org.apache.druid.segment.incremental.RowIngestionMeters;
@@ -504,26 +506,16 @@ public class SinglePhaseSubTask extends AbstractBatchSubtask implements ChatHand
     return Response.ok(events).build();
   }
 
-  private Map<String, Object> doGetRowStats(boolean isFullReport)
+  private IngestionRowStats doGetRowStats(boolean isFullReport)
   {
-    Map<String, Object> totalsMap = new HashMap<>();
-    Map<String, Object> averagesMap = new HashMap<>();
-
     if (hasBuildSegmentsInfoInReport(isFullReport)) {
-      totalsMap.put(
-          RowIngestionMeters.BUILD_SEGMENTS,
-          rowIngestionMeters.getTotals()
+      return IngestionRowStats.totalsAndMovingAverages(
+          MultiPhaseRowStats.buildSegments(rowIngestionMeters.getTotals()),
+          MultiPhaseRowStats.buildSegments(rowIngestionMeters.getMovingAverages())
       );
-      averagesMap.put(
-          RowIngestionMeters.BUILD_SEGMENTS,
-          rowIngestionMeters.getMovingAverages()
-      );
+    } else {
+      return IngestionRowStats.empty();
     }
-
-    final Map<String, Object> rowStats = new HashMap<>();
-    rowStats.put("totals", totalsMap);
-    rowStats.put("movingAverages", averagesMap);
-    return rowStats;
   }
 
   @GET
@@ -562,12 +554,9 @@ public class SinglePhaseSubTask extends AbstractBatchSubtask implements ChatHand
     return Response.ok(doGetLiveReports(full != null)).build();
   }
 
-  private Map<String, Object> getTaskCompletionRowStats()
+  private IngestionRowStats getTaskCompletionRowStats()
   {
-    return Collections.singletonMap(
-        RowIngestionMeters.BUILD_SEGMENTS,
-        rowIngestionMeters.getTotals()
-    );
+    return IngestionRowStats.buildSegments(rowIngestionMeters.getTotals());
   }
 
   private boolean hasBuildSegmentsInfoInReport(boolean isFullReport)

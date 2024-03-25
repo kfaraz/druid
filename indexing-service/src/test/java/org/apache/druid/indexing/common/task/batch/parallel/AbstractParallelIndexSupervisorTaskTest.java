@@ -49,8 +49,8 @@ import org.apache.druid.indexer.TaskLocation;
 import org.apache.druid.indexer.TaskStatus;
 import org.apache.druid.indexer.TaskStatusPlus;
 import org.apache.druid.indexer.partitions.PartitionsSpec;
+import org.apache.druid.indexing.common.IngestionStatsAndErrors;
 import org.apache.druid.indexing.common.IngestionStatsAndErrorsTaskReport;
-import org.apache.druid.indexing.common.IngestionStatsAndErrorsTaskReportData;
 import org.apache.druid.indexing.common.RetryPolicyConfig;
 import org.apache.druid.indexing.common.RetryPolicyFactory;
 import org.apache.druid.indexing.common.SegmentCacheManagerFactory;
@@ -556,7 +556,7 @@ public class AbstractParallelIndexSupervisorTaskTest extends IngestionTestBase
         return null;
       }
 
-      Map<String, TaskReport> reportMap = ((ParallelIndexSupervisorTask) task.get()).doGetLiveReports("full");
+      Map<String, TaskReport> reportMap = ((ParallelIndexSupervisorTask) task.get()).doGetLiveReports(true);
       return Futures.immediateFuture(
           CollectionUtils.mapValues(reportMap, report -> report)
       );
@@ -813,7 +813,7 @@ public class AbstractParallelIndexSupervisorTaskTest extends IngestionTestBase
     return TaskReport.buildTaskReports(
         new IngestionStatsAndErrorsTaskReport(
             taskId,
-            new IngestionStatsAndErrorsTaskReportData(
+            new IngestionStatsAndErrors(
                 IngestionState.COMPLETED,
                 ImmutableMap.of("determinePartitions", ImmutableList.of(), "buildSegments", expectedUnparseableEvents),
                 rowStats,
@@ -837,7 +837,7 @@ public class AbstractParallelIndexSupervisorTaskTest extends IngestionTestBase
     return TaskReport.buildTaskReports(
         new IngestionStatsAndErrorsTaskReport(
             taskId,
-            new IngestionStatsAndErrorsTaskReportData(
+            new IngestionStatsAndErrors(
                 IngestionState.COMPLETED,
                 ImmutableMap.of("buildSegments", expectedUnparseableEvents),
                 ImmutableMap.of("totals", ImmutableMap.of("buildSegments", expectedTotals)),
@@ -864,8 +864,8 @@ public class AbstractParallelIndexSupervisorTaskTest extends IngestionTestBase
 
     Assert.assertEquals(expectedReports.getTaskId(), actualReports.getTaskId());
 
-    IngestionStatsAndErrorsTaskReportData expectedPayload = expectedReports.getPayload();
-    IngestionStatsAndErrorsTaskReportData actualPayload = actualReports.getPayload();
+    IngestionStatsAndErrors expectedPayload = expectedReports.getPayload();
+    IngestionStatsAndErrors actualPayload = actualReports.getPayload();
     Assert.assertEquals(expectedPayload.getIngestionState(), actualPayload.getIngestionState());
 
     Map<String, Object> expectedTotals = expectedPayload.getRowStats();
@@ -1076,12 +1076,12 @@ public class AbstractParallelIndexSupervisorTaskTest extends IngestionTestBase
     });
   }
 
-  public List<IngestionStatsAndErrorsTaskReportData> getIngestionReports() throws IOException
+  public List<IngestionStatsAndErrors> getIngestionReports() throws IOException
   {
     return getReports().entrySet()
                        .stream()
                        .filter(entry -> entry.getKey().contains(IngestionStatsAndErrorsTaskReport.REPORT_KEY))
-                       .map(entry -> (IngestionStatsAndErrorsTaskReportData) entry.getValue().getPayload())
+                       .map(entry -> (IngestionStatsAndErrors) entry.getValue().getPayload())
                        .collect(Collectors.toList());
   }
 }

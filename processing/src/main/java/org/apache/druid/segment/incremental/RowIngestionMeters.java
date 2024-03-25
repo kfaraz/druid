@@ -35,6 +35,8 @@ public interface RowIngestionMeters extends InputStats
 {
   String BUILD_SEGMENTS = "buildSegments";
   String DETERMINE_PARTITIONS = "determinePartitions";
+  String TOTALS = "totals";
+  String MOVING_AVERAGES = "movingAverages";
 
   String PROCESSED = "processed";
   String PROCESSED_WITH_ERROR = "processedWithError";
