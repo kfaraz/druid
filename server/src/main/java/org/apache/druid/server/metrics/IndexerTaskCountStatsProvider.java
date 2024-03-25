@@ -17,23 +17,28 @@
  * under the License.
  */
 
-package org.apache.druid.segment.index.semantic;
+package org.apache.druid.server.metrics;
 
-import org.apache.druid.collections.bitmap.ImmutableBitmap;
-import org.apache.druid.segment.index.BitmapColumnIndex;
-
-import java.nio.ByteBuffer;
-import java.util.List;
+import java.util.Map;
 
 /**
- * Construct a {@link BitmapColumnIndex} for a set of utf8 byte values which might be present in the column.
+ * Provides task count metrics for the indexers
+ * These metrics are reported by indexers
  */
-public interface Utf8ValueSetIndexes
+public interface IndexerTaskCountStatsProvider
 {
   /**
-   * Get the wrapped {@link ImmutableBitmap} corresponding to the specified set of values (if they are contained in the
-   * underlying column). The set must be sorted using
-   * {@link org.apache.druid.java.util.common.ByteBufferUtils#utf8Comparator()}.
+   * Map from datasource name to the number of running tasks on the Indexer.
    */
-  BitmapColumnIndex forSortedValuesUtf8(List<ByteBuffer> sortedValuesUtf8);
+  Map<String, Long> getWorkerRunningTasks();
+
+  /**
+   * Map from datasource name to the number of assigned tasks to the Indexer.
+   */
+  Map<String, Long> getWorkerAssignedTasks();
+
+  /**
+   * Map from datasource name to the number of completed tasks by the Indexer.
+   */
+  Map<String, Long> getWorkerCompletedTasks();
 }
