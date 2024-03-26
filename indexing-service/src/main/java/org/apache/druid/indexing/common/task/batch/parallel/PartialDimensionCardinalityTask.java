@@ -190,7 +190,7 @@ public class PartialDimensionCardinalityTask extends PerfectRollupWorkerTask
             dataSchema,
             inputSource,
             inputFormat,
-            AbstractBatchIndexTask.allowNonNullRowsWithinInputIntervalsOf(granularitySpec),
+            allowNonNullRowsWithinInputIntervalsOf(granularitySpec),
             buildSegmentsMeters,
             parseExceptionHandler
         );

@@ -238,7 +238,7 @@ public class PartialDimensionDistributionTask extends PerfectRollupWorkerTask
             dataSchema,
             inputSource,
             inputFormat,
-            AbstractBatchIndexTask.allowNonNullRowsWithinInputIntervalsOf(granularitySpec),
+            allowNonNullRowsWithinInputIntervalsOf(granularitySpec),
             buildSegmentsMeters,
             parseExceptionHandler
         );

@@ -420,7 +420,7 @@ public class SinglePhaseSubTask extends AbstractBatchSubtask implements ChatHand
             dataSchema,
             inputSource,
             inputSource.needsFormat() ? ParallelIndexSupervisorTask.getInputFormat(ingestionSchema) : null,
-            AbstractBatchIndexTask.allowNonNullRowsWithinInputIntervalsOf(granularitySpec),
+            allowNonNullRowsWithinInputIntervalsOf(granularitySpec),
             rowIngestionMeters,
             parseExceptionHandler
         )

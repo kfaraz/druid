@@ -236,7 +236,9 @@ public abstract class AbstractBatchIndexTask extends AbstractTask
    * This predicate filters out <b>all</b> rows if the granularity spec has no
    * input intervals.
    */
-  protected static Predicate<InputRow> allowNonNullRowsStrictlyWithinInputIntervalsOf(GranularitySpec granularitySpec)
+  protected static Predicate<InputRow> allowNonNullRowsStrictlyWithinInputIntervalsOf(
+      GranularitySpec granularitySpec
+  )
   {
     return inputRow ->
         inputRow != null
@@ -249,7 +251,9 @@ public abstract class AbstractBatchIndexTask extends AbstractTask
    * This predicate <b>allows all non-null</b> rows if the granularity spec has
    * no input intervals.
    */
-  protected static Predicate<InputRow> allowNonNullRowsWithinInputIntervalsOf(GranularitySpec granularitySpec)
+  protected static Predicate<InputRow> allowNonNullRowsWithinInputIntervalsOf(
+      GranularitySpec granularitySpec
+  )
   {
     return inputRow ->
         inputRow != null

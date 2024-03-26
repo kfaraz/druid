@@ -733,7 +733,7 @@ public class IndexTask extends AbstractBatchIndexTask implements ChatHandler
         ingestionSchema.getDataSchema(),
         inputSource,
         inputSource.needsFormat() ? getInputFormat(ingestionSchema) : null,
-        AbstractBatchIndexTask.allowNonNullRowsWithinInputIntervalsOf(granularitySpec),
+        allowNonNullRowsWithinInputIntervalsOf(granularitySpec),
         determinePartitionsMeters,
         determinePartitionsParseExceptionHandler
     )) {
