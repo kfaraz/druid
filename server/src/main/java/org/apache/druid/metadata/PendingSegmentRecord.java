@@ -31,16 +31,7 @@ import javax.annotation.Nullable;
 import java.sql.ResultSet;
 
 /**
- * Representation of a record in the pending segments table. <br/>
- * Mapping of column in table to field:
- *
- * <ul>
- * <li>  id -> id (Unique identifier for pending segment) <li/>
- * <li>  sequence_name -> sequenceName (sequence name used for segment allocation) <li/>
- * <li>  sequence_prev_id -> sequencePrevId (previous segment id used for segment allocation) <li/>
- * <li>  upgraded_from_segment_id -> upgradedFromSegmentId (Id of the root segment from which this was upgraded) <li/>
- * <li>  task_allocator_id -> taskAllocatorId (Associates a task / task group / replica group with the pending segment) <li/>
- * </ul>
+ * Represents a record in the pending segments metadata table.
  */
 public class PendingSegmentRecord
 {
@@ -65,6 +56,9 @@ public class PendingSegmentRecord
     this.taskAllocatorId = taskAllocatorId;
   }
 
+  /**
+   * Unique ID of this pending segment.
+   */
   public SegmentIdWithShardSpec getId()
   {
     return id;
@@ -75,14 +69,20 @@ public class PendingSegmentRecord
     return sequenceName;
   }
 
+  /**
+   * ID of the last segment allocated using the same {@link #sequenceName}.
+   */
   public String getSequencePrevId()
   {
     return sequencePrevId;
   }
 
   /**
-   * The original pending segment using which this upgraded segment was created.
-   * Can be null for pending segments allocated before this column was added or for segments that have not been upgraded.
+   * ID of the original pending segment which was upgraded to obtain this
+   * pending segment.
+   *
+   * @return null for pending segments that were freshly allocated and not
+   * upgraded from any other pending segment.
    */
   @Nullable
   public String getUpgradedFromSegmentId()
@@ -91,8 +91,8 @@ public class PendingSegmentRecord
   }
 
   /**
-   * task / taskGroup / replica group of task that allocated this segment.
-   * Can be null for pending segments allocated before this column was added.
+   * Unique string used by an appending task (or its sub-tasks and replicas)
+   * to allocate pending segments and identify pending segments allocated to it.
    */
   @Nullable
   public String getTaskAllocatorId()

@@ -19,14 +19,20 @@
 
 package org.apache.druid.indexing.common.task;
 
+import org.apache.druid.metadata.PendingSegmentRecord;
+
 /**
- * An interface to be implemented by every appending task that allocates pending segments.
+ * An append task that can allocate pending segments. All concrete {@link Task}
+ * implementations that need to allocate pending segments must implement this
+ * interface.
  */
 public interface PendingSegmentAllocatingTask
 {
   /**
-   * Unique string used by an appending task (or its sub-tasks and replicas) to allocate pending segments
-   * and identify pending segments allocated to it.
+   * Unique string used by an appending task (or its sub-tasks and replicas)
+   * to allocate pending segments and identify pending segments allocated to it.
+   *
+   * @see PendingSegmentRecord#getTaskAllocatorId()
    */
   String getTaskAllocatorId();
 }
