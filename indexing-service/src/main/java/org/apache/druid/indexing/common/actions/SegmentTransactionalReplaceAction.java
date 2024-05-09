@@ -24,10 +24,14 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.google.common.base.Optional;
 import com.google.common.collect.ImmutableSet;
+import org.apache.druid.error.InvalidInput;
+import org.apache.druid.indexing.common.TaskLock;
+import org.apache.druid.indexing.common.TaskLockType;
 import org.apache.druid.indexing.common.task.IndexTaskUtils;
 import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.indexing.overlord.CriticalAction;
 import org.apache.druid.indexing.overlord.SegmentPublishResult;
+import org.apache.druid.indexing.overlord.TaskLockbox;
 import org.apache.druid.indexing.overlord.supervisor.SupervisorManager;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.metadata.PendingSegmentRecord;
@@ -116,15 +120,25 @@ public class SegmentTransactionalReplaceAction implements TaskAction<SegmentPubl
   @Override
   public SegmentPublishResult perform(Task task, TaskActionToolbox toolbox)
   {
-    TaskLocks.checkLockCoversSegments(task, toolbox.getTaskLockbox(), segments);
+    final TaskLockbox taskLockbox = toolbox.getTaskLockbox();
+    TaskLocks.checkLockCoversSegments(task, taskLockbox, segments);
+    for (TaskLock taskLock : taskLockbox.findLocksForTask(task)) {
+      if (taskLock.getType() != TaskLockType.REPLACE) {
+        throw InvalidInput.exception(
+            "Cannot use action[%s] for task[%s] as it is holding a lock of type[%s] instead of [REPLACE].",
+            "SegmentTransactionalReplaceAction", task.getId(), taskLock.getType()
+        );
+      }
+    }
 
-    // Find the active replace locks held only by this task
-    final Set<ReplaceTaskLock> replaceLocksForTask
-        = toolbox.getTaskLockbox().findReplaceLocksForTask(task);
-
-    final SegmentPublishResult publishResult;
     try {
-      publishResult = toolbox.getTaskLockbox().doInCriticalSection(
+      taskLockbox.acquireCommitLock(task, TaskLockbox.COMMIT_LOCK_TIMEOUT_MILLIS);
+
+      // Find the active replace locks held only by this task
+      final Set<ReplaceTaskLock> replaceLocksForTask
+          = toolbox.getTaskLockbox().findReplaceLocksForTask(task);
+
+      final SegmentPublishResult publishResult = toolbox.getTaskLockbox().doInCriticalSection(
           task,
           segments.stream().map(DataSegment::getInterval).collect(Collectors.toSet()),
           CriticalAction.<SegmentPublishResult>builder()
@@ -140,51 +154,54 @@ public class SegmentTransactionalReplaceAction implements TaskAction<SegmentPubl
               )
               .build()
       );
+
+      IndexTaskUtils.emitSegmentPublishMetrics(publishResult, task, toolbox);
+
+      // Upgrade any overlapping pending segments
+      // Do not perform upgrade in the same transaction as replace commit so that
+      // failure to upgrade pending segments does not affect success of the commit
+      if (publishResult.isSuccess() && toolbox.getSupervisorManager() != null) {
+        tryRegisterUpgradedPendingSegmentsOnSupervisor(task, toolbox, publishResult.getUpgradedPendingSegments());
+      }
+
+      return publishResult;
     }
     catch (Exception e) {
       throw new RuntimeException(e);
     }
-
-    IndexTaskUtils.emitSegmentPublishMetrics(publishResult, task, toolbox);
-
-    // Upgrade any overlapping pending segments
-    // Do not perform upgrade in the same transaction as replace commit so that
-    // failure to upgrade pending segments does not affect success of the commit
-    if (publishResult.isSuccess() && toolbox.getSupervisorManager() != null) {
-      try {
-        registerUpgradedPendingSegmentsOnSupervisor(task, toolbox, publishResult.getUpgradedPendingSegments());
-      }
-      catch (Exception e) {
-        log.error(e, "Error while upgrading pending segments for task[%s]", task.getId());
-      }
+    finally {
+      taskLockbox.releaseCommitLock(task);
     }
-
-    return publishResult;
   }
 
   /**
    * Registers upgraded pending segments on the active supervisor, if any
    */
-  private void registerUpgradedPendingSegmentsOnSupervisor(
+  private void tryRegisterUpgradedPendingSegmentsOnSupervisor(
       Task task,
       TaskActionToolbox toolbox,
       List<PendingSegmentRecord> upgradedPendingSegments
   )
   {
-    final SupervisorManager supervisorManager = toolbox.getSupervisorManager();
-    final Optional<String> activeSupervisorIdWithAppendLock =
-        supervisorManager.getActiveSupervisorIdForDatasourceWithAppendLock(task.getDataSource());
+    try {
+      final SupervisorManager supervisorManager = toolbox.getSupervisorManager();
+      final Optional<String> activeSupervisorIdWithAppendLock =
+          supervisorManager.getActiveSupervisorIdForDatasourceWithAppendLock(task.getDataSource());
 
-    if (!activeSupervisorIdWithAppendLock.isPresent()) {
-      return;
+      if (!activeSupervisorIdWithAppendLock.isPresent()) {
+        return;
+      }
+
+      upgradedPendingSegments.forEach(
+          upgradedPendingSegment -> supervisorManager.registerUpgradedPendingSegmentOnSupervisor(
+              activeSupervisorIdWithAppendLock.get(),
+              upgradedPendingSegment
+          )
+      );
     }
-
-    upgradedPendingSegments.forEach(
-        upgradedPendingSegment -> supervisorManager.registerUpgradedPendingSegmentOnSupervisor(
-            activeSupervisorIdWithAppendLock.get(),
-            upgradedPendingSegment
-        )
-    );
+    catch (Exception e) {
+      log.error(e, "Error while upgrading pending segments for task[%s]", task.getId());
+    }
   }
 
   @Override

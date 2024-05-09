@@ -32,13 +32,13 @@ import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.indexing.overlord.CriticalAction;
 import org.apache.druid.indexing.overlord.DataSourceMetadata;
 import org.apache.druid.indexing.overlord.SegmentPublishResult;
+import org.apache.druid.indexing.overlord.TaskLockbox;
 import org.apache.druid.metadata.ReplaceTaskLock;
 import org.apache.druid.segment.SegmentSchemaMapping;
 import org.apache.druid.segment.SegmentUtils;
 import org.apache.druid.timeline.DataSegment;
 
 import javax.annotation.Nullable;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -148,46 +148,45 @@ public class SegmentTransactionalAppendAction implements TaskAction<SegmentPubli
           task.getType()
       );
     }
-    // Verify that all the locks are of expected type
-    final List<TaskLock> locks = toolbox.getTaskLockbox().findLocksForTask(task);
-    for (TaskLock lock : locks) {
-      if (lock.getType() != TaskLockType.APPEND) {
+    final TaskLockbox taskLockbox = toolbox.getTaskLockbox();
+    TaskLocks.checkLockCoversSegments(task, taskLockbox, segments);
+    for (TaskLock taskLock : taskLockbox.findLocksForTask(task)) {
+      if (taskLock.getType() != TaskLockType.APPEND) {
         throw InvalidInput.exception(
             "Cannot use action[%s] for task[%s] as it is holding a lock of type[%s] instead of [APPEND].",
-            "SegmentTransactionalAppendAction", task.getId(), lock.getType()
+            "SegmentTransactionalAppendAction", task.getId(), taskLock.getType()
         );
       }
     }
 
-    TaskLocks.checkLockCoversSegments(task, toolbox.getTaskLockbox(), segments);
-
-    final String datasource = task.getDataSource();
-    final Map<DataSegment, ReplaceTaskLock> segmentToReplaceLock
-        = TaskLocks.findReplaceLocksCoveringSegments(datasource, toolbox.getTaskLockbox(), segments);
-
-    final CriticalAction.Action<SegmentPublishResult> publishAction;
-    final String taskAllocatorId = ((PendingSegmentAllocatingTask) task).getTaskAllocatorId();
-    if (startMetadata == null) {
-      publishAction = () -> toolbox.getIndexerMetadataStorageCoordinator().commitAppendSegments(
-          segments,
-          segmentToReplaceLock,
-          taskAllocatorId,
-          segmentSchemaMapping
-      );
-    } else {
-      publishAction = () -> toolbox.getIndexerMetadataStorageCoordinator().commitAppendSegmentsAndMetadata(
-          segments,
-          segmentToReplaceLock,
-          startMetadata,
-          endMetadata,
-          taskAllocatorId,
-          segmentSchemaMapping
-      );
-    }
-
-    final SegmentPublishResult retVal;
     try {
-      retVal = toolbox.getTaskLockbox().doInCriticalSection(
+      taskLockbox.acquireCommitLock(task, TaskLockbox.COMMIT_LOCK_TIMEOUT_MILLIS);
+
+      final String datasource = task.getDataSource();
+      final Map<DataSegment, ReplaceTaskLock> segmentToReplaceLock
+          = TaskLocks.findReplaceLocksCoveringSegments(datasource, toolbox.getTaskLockbox(), segments);
+
+      final CriticalAction.Action<SegmentPublishResult> publishAction;
+      final String taskAllocatorId = ((PendingSegmentAllocatingTask) task).getTaskAllocatorId();
+      if (startMetadata == null) {
+        publishAction = () -> toolbox.getIndexerMetadataStorageCoordinator().commitAppendSegments(
+            segments,
+            segmentToReplaceLock,
+            taskAllocatorId,
+            segmentSchemaMapping
+        );
+      } else {
+        publishAction = () -> toolbox.getIndexerMetadataStorageCoordinator().commitAppendSegmentsAndMetadata(
+            segments,
+            segmentToReplaceLock,
+            startMetadata,
+            endMetadata,
+            taskAllocatorId,
+            segmentSchemaMapping
+        );
+      }
+
+      final SegmentPublishResult publishResult = toolbox.getTaskLockbox().doInCriticalSection(
           task,
           segments.stream().map(DataSegment::getInterval).collect(Collectors.toSet()),
           CriticalAction.<SegmentPublishResult>builder()
@@ -200,13 +199,16 @@ public class SegmentTransactionalAppendAction implements TaskAction<SegmentPubli
               )
               .build()
       );
+
+      IndexTaskUtils.emitSegmentPublishMetrics(publishResult, task, toolbox);
+      return publishResult;
     }
     catch (Exception e) {
       throw new RuntimeException(e);
     }
-
-    IndexTaskUtils.emitSegmentPublishMetrics(retVal, task, toolbox);
-    return retVal;
+    finally {
+      taskLockbox.releaseCommitLock(task);
+    }
   }
 
   @Override

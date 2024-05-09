@@ -19,6 +19,7 @@
 
 package org.apache.druid.indexing.overlord;
 
+import com.amazonaws.util.Throwables;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -29,6 +30,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
+import org.apache.druid.error.DruidException;
 import org.apache.druid.indexer.TaskStatus;
 import org.apache.druid.indexing.common.LockGranularity;
 import org.apache.druid.indexing.common.SegmentLock;
@@ -69,11 +71,11 @@ import org.apache.druid.timeline.partition.PartialShardSpec;
 import org.apache.druid.timeline.partition.PartitionIds;
 import org.easymock.EasyMock;
 import org.joda.time.Interval;
+import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.ExpectedException;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -84,6 +86,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 public class TaskLockboxTest
@@ -91,22 +96,17 @@ public class TaskLockboxTest
   @Rule
   public final TestDerbyConnector.DerbyConnectorRule derby = new TestDerbyConnector.DerbyConnectorRule();
 
-  @Rule
-  public ExpectedException expectedException = ExpectedException.none();
-
   private ObjectMapper objectMapper;
   private TaskStorage taskStorage;
   private IndexerMetadataStorageCoordinator metadataStorageCoordinator;
   private TaskLockbox lockbox;
   private TaskLockboxValidator validator;
   private SegmentSchemaManager segmentSchemaManager;
+  private final List<ExecutorService> executorServices = new ArrayList<>();
 
   private final int HIGH_PRIORITY = 15;
   private final int MEDIUM_PRIORITY = 10;
   private final int LOW_PRIORITY = 5;
-
-  @Rule
-  public final ExpectedException exception = ExpectedException.none();
 
   @Before
   public void setup()
@@ -145,6 +145,15 @@ public class TaskLockboxTest
 
     lockbox = new TaskLockbox(taskStorage, metadataStorageCoordinator);
     validator = new TaskLockboxValidator(lockbox, taskStorage);
+    executorServices.clear();
+  }
+
+  @After
+  public void tearDown()
+  {
+    for (ExecutorService exec : executorServices) {
+      exec.shutdownNow();
+    }
   }
 
   private LockResult acquireTimeChunkLock(TaskLockType lockType, Task task, Interval interval, long timeoutMs)
@@ -186,14 +195,16 @@ public class TaskLockboxTest
   }
 
   @Test
-  public void testLockAfterTaskComplete() throws InterruptedException
+  public void testLockAfterTaskComplete()
   {
-    Task task = NoopTask.create();
-    exception.expect(ISE.class);
-    exception.expectMessage("Unable to grant lock to inactive Task");
+    final Task task = NoopTask.create();
     lockbox.add(task);
     lockbox.remove(task);
-    acquireTimeChunkLock(TaskLockType.EXCLUSIVE, task, Intervals.of("2015-01-01/2015-01-02"));
+    final ISE exception = Assert.assertThrows(
+        ISE.class,
+        () -> acquireTimeChunkLock(TaskLockType.EXCLUSIVE, task, Intervals.of("2015-01-01/2015-01-02"))
+    );
+    Assert.assertTrue(exception.getMessage().contains("Unable to grant lock to inactive Task"));
   }
 
   @Test
@@ -311,12 +322,15 @@ public class TaskLockboxTest
   @Test
   public void testTryLockAfterTaskComplete()
   {
-    Task task = NoopTask.create();
-    exception.expect(ISE.class);
-    exception.expectMessage("Unable to grant lock to inactive Task");
+    final Task task = NoopTask.create();
     lockbox.add(task);
     lockbox.remove(task);
-    Assert.assertFalse(tryTimeChunkLock(TaskLockType.EXCLUSIVE, task, Intervals.of("2015-01-01/2015-01-02")).isOk());
+
+    ISE exception = Assert.assertThrows(
+        ISE.class,
+        () -> tryTimeChunkLock(TaskLockType.EXCLUSIVE, task, Intervals.of("2015-01-01/2015-01-02"))
+    );
+    Assert.assertTrue(exception.getMessage().contains("Unable to grant lock to inactive Task"));
   }
 
   @Test
@@ -2000,6 +2014,120 @@ public class TaskLockboxTest
     taskLockbox.remove(appendTask);
 
     EasyMock.verify(coordinator);
+  }
+
+  @Test
+  public void testAcquireTransactionalLocksSuccess() throws Exception
+  {
+    final Task appendTask = NoopTask.create();
+    final ExecutorService appendExec = createNewExecutor();
+    // Add several append locks consecutively and then release them in the at once later
+    for (int i = 0; i < 5; i++) {
+      acquireTransactionalAppendLock(appendTask, appendExec);
+    }
+    for (int i = 0; i < 5; i++) {
+      releaseTransactionalAppendLock(appendTask, appendExec);
+    }
+
+    // Add and remove replace locks in one after the other
+    final Task replaceTask = NoopTask.create();
+    final ExecutorService replaceExec = createNewExecutor();
+    acquireTransactionalReplaceLock(replaceTask, replaceExec);
+    releaseTransactionalReplaceLock(replaceTask, replaceExec);
+    acquireTransactionalReplaceLock(replaceTask, replaceExec);
+    releaseTransactionalReplaceLock(replaceTask, replaceExec);
+
+    // Add several append locks consecutively and then release them in the at once later
+    for (int i = 0; i < 5; i++) {
+      acquireTransactionalAppendLock(appendTask, appendExec);
+    }
+    for (int i = 0; i < 5; i++) {
+      releaseTransactionalAppendLock(appendTask, appendExec);
+    }
+  }
+
+  @Test
+  public void testAcquireReplaceTimesOutAfterAcquiringReplace() throws Exception
+  {
+    final Task replaceTask0 = NoopTask.create();
+    acquireTransactionalReplaceLock(replaceTask0, createNewExecutor());
+
+    final Task replaceTask1 = NoopTask.create();
+    ExecutionException exception = Assert.assertThrows(
+        ExecutionException.class,
+        () -> acquireTransactionalReplaceLock(replaceTask1, createNewExecutor())
+    );
+    final Throwable rootCause = Throwables.getRootCause(exception);
+    Assert.assertTrue(rootCause instanceof DruidException);
+    Assert.assertEquals(
+        "Timed out while acquiring transactional replace lock for datasource[none].",
+        rootCause.getMessage()
+    );
+  }
+
+  @Test
+  public void testAcquireReplaceTimesOutAfterAcquiringAppend() throws Exception
+  {
+    final Task appendTask = NoopTask.create();
+    acquireTransactionalAppendLock(appendTask, createNewExecutor());
+
+    final Task replaceTask = NoopTask.create();
+    ExecutionException exception = Assert.assertThrows(
+        ExecutionException.class,
+        () -> acquireTransactionalReplaceLock(replaceTask, createNewExecutor())
+    );
+    final Throwable rootCause = Throwables.getRootCause(exception);
+    Assert.assertTrue(rootCause instanceof DruidException);
+    Assert.assertEquals(
+        "Timed out while acquiring transactional replace lock for datasource[none].",
+        rootCause.getMessage()
+    );
+  }
+
+  @Test
+  public void testAcquireAppendTimesOutAfterAcquiringReplace() throws Exception
+  {
+    final Task replaceTask = NoopTask.create();
+    acquireTransactionalReplaceLock(replaceTask, createNewExecutor());
+
+    final Task appendTask = NoopTask.create();
+    ExecutionException exception = Assert.assertThrows(
+        ExecutionException.class,
+        () -> acquireTransactionalAppendLock(appendTask, createNewExecutor())
+    );
+    final Throwable rootCause = Throwables.getRootCause(exception);
+    Assert.assertTrue(rootCause instanceof DruidException);
+    Assert.assertEquals(
+        "Timed out while acquiring transaction lock for datasource[none].",
+        rootCause.getMessage()
+    );
+  }
+
+  private ExecutorService createNewExecutor()
+  {
+    final ExecutorService executor = Executors.newSingleThreadExecutor();
+    executorServices.add(executor);
+    return executor;
+  }
+
+  private void acquireTransactionalAppendLock(Task task, ExecutorService exec) throws Exception
+  {
+    exec.submit(() -> lockbox.acquireAppendTransactionLock(task, 100)).get();
+  }
+
+  private void releaseTransactionalAppendLock(Task task, ExecutorService exec) throws Exception
+  {
+    exec.submit(() -> lockbox.releaseAppendTransactionLock(task)).get();
+  }
+
+  private void acquireTransactionalReplaceLock(Task task, ExecutorService exec) throws Exception
+  {
+    exec.submit(() -> lockbox.acquireReplaceTransactionLock(task, 100)).get();
+  }
+
+  private void releaseTransactionalReplaceLock(Task task, ExecutorService exec) throws Exception
+  {
+    exec.submit(() -> lockbox.releaseTransactionalReplaceLock(task)).get();
   }
 
   private class TaskLockboxValidator

@@ -86,6 +86,8 @@ import java.util.stream.Collectors;
  */
 public class TaskLockbox
 {
+  public static final long COMMIT_LOCK_TIMEOUT_MILLIS = 120_000L;
+
   // Datasource -> startTime -> Interval -> list of (Tasks + TaskLock)
   // Multiple shared locks can be acquired for the same dataSource and interval.
   // Note that revoked locks are also maintained in this map to notify that those locks are revoked to the callers when
@@ -98,6 +100,7 @@ public class TaskLockbox
   private final IndexerMetadataStorageCoordinator metadataStorageCoordinator;
   private final ReentrantLock giant = new ReentrantLock(true);
   private final Condition lockReleaseCondition = giant.newCondition();
+  private final Condition commitLockReleaseCondition = giant.newCondition();
 
   private static final EmittingLogger log = new EmittingLogger(TaskLockbox.class);
 
@@ -849,6 +852,11 @@ public class TaskLockbox
                                                      .orElseThrow(
                                                          () -> new ISE("Failed to find lock posse for lock[%s]", lock)
                                                      );
+        foundPosse.finishCommitForTask(taskId);
+        if (!foundPosse.isCommitting()) {
+          commitLockReleaseCondition.notifyAll();
+        }
+
         possesHolder.remove(foundPosse);
         possesHolder.add(foundPosse.withTaskLock(revokedLock));
         log.info("Revoked taskLock[%s]", lock);
@@ -1092,13 +1100,11 @@ public class TaskLockbox
       final NavigableMap<DateTime, SortedMap<Interval, List<TaskLockPosse>>> dsRunning = running.get(
           task.getDataSource()
       );
-
       if (dsRunning == null || dsRunning.isEmpty()) {
         return;
       }
 
       final SortedMap<Interval, List<TaskLockPosse>> intervalToPosses = dsRunning.get(interval.getStart());
-
       if (intervalToPosses == null || intervalToPosses.isEmpty()) {
         return;
       }
@@ -1177,6 +1183,11 @@ public class TaskLockbox
     giant.lock();
     try {
       for (final TaskLockPosse taskLockPosse : findLockPossesForTask(task)) {
+        taskLockPosse.finishCommitForTask(task.getId());
+        if (!taskLockPosse.isCommitting()) {
+          commitLockReleaseCondition.notifyAll();
+        }
+
         unlock(
             task,
             taskLockPosse.getTaskLock().getInterval(),
@@ -1272,10 +1283,96 @@ public class TaskLockbox
   }
 
   /**
-   * Return the currently-active lock posses for some task.
+   * Tries to acquire a commit lock for the given Task to ensure that there are
+   * no competing commits which might lead to an invalid data state.
+   * If there are ongoing commit transactions which conflict with the locked
+   * intervals of this task, this method waits until those commits have finished
+   * or the specified timeout has elapsed.
    *
-   * @param task task for which to locate locks
+   * @throws DruidException if interrupted or timed out while acquiring the lock.
    */
+  public void acquireCommitLock(Task task, long timeoutMillis)
+  {
+    long remainingTimeoutNanos = TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
+    giant.lock();
+    try {
+      // Wait if there is a conflicting commit in progress
+      while (isConflictingCommitInProgress(task)) {
+        if (remainingTimeoutNanos <= 0) {
+          throw DruidException
+              .forPersona(DruidException.Persona.OPERATOR)
+              .ofCategory(DruidException.Category.TIMEOUT)
+              .build("Timed out while acquiring commit lock.");
+        }
+        remainingTimeoutNanos = commitLockReleaseCondition.awaitNanos(remainingTimeoutNanos);
+      }
+
+      findLockPossesForTask(task).forEach(posse -> posse.startCommitForTask(task.getId()));
+    }
+    catch (InterruptedException e) {
+      throw DruidException
+          .forPersona(DruidException.Persona.OPERATOR)
+          .ofCategory(DruidException.Category.RUNTIME_FAILURE)
+          .build(e, "Interrupted while acquiring commit lock.");
+    }
+    finally {
+      giant.unlock();
+    }
+  }
+
+  /**
+   * Releases all the commit locks held by this Task.
+   */
+  public void releaseCommitLock(Task task)
+  {
+    giant.lock();
+    try {
+      final List<TaskLockPosse> locksHeldByTask = findLockPossesForTask(task);
+      locksHeldByTask.forEach(posse -> posse.finishCommitForTask(task.getId()));
+
+      final boolean hasAnyCommitFinished = locksHeldByTask.stream().anyMatch(posse -> !posse.isCommitting());
+      if (hasAnyCommitFinished) {
+        commitLockReleaseCondition.notifyAll();
+      }
+    } finally {
+      giant.unlock();
+    }
+  }
+
+  @GuardedBy("giant")
+  private boolean isConflictingCommitInProgress(Task task)
+  {
+    final List<TaskLockPosse> locksHeldByTask = findLockPossesForTask(task);
+    for (TaskLockPosse posse : locksHeldByTask) {
+      // Find all the locks that overlap with this one
+      final TaskLock lockHeldByTask = posse.getTaskLock();
+      List<TaskLockPosse> overlappingPosses =
+          findLockPossesOverlapsInterval(task.getDataSource(), lockHeldByTask.getInterval());
+
+      // Conditions to verify if any posse already has a conflicting transaction:
+      // 1. Task Group ID must be different
+      // 2. Commit must be in progress
+      // 3. At least one of the two locks must not be of type APPEND
+      // (APPEND transactions do not compete with each other)
+      boolean isConflictingTransaction = overlappingPosses.stream().anyMatch(
+          conflictingPosse ->
+              conflictingPosse.isCommitting()
+              && !conflictingPosse.getTaskLock().getGroupId().equals(task.getGroupId())
+              && (conflictingPosse.getTaskLock().getType() != TaskLockType.APPEND
+                  || lockHeldByTask.getType() != TaskLockType.APPEND)
+      );
+      if (isConflictingTransaction) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Return the currently-active lock posses for some task.
+   */
+  @GuardedBy("giant")
   private List<TaskLockPosse> findLockPossesForTask(final Task task)
   {
     giant.lock();
@@ -1606,22 +1703,25 @@ public class TaskLockbox
   {
     private final TaskLock taskLock;
     private final Set<String> taskIds;
+    private final Set<String> committingTaskIds;
 
     TaskLockPosse(TaskLock taskLock)
     {
       this.taskLock = taskLock;
       this.taskIds = new HashSet<>();
+      committingTaskIds = new HashSet<>();
     }
 
-    private TaskLockPosse(TaskLock taskLock, Set<String> taskIds)
+    private TaskLockPosse(TaskLock taskLock, Set<String> taskIds, Set<String> committingTaskIds)
     {
       this.taskLock = taskLock;
       this.taskIds = new HashSet<>(taskIds);
+      this.committingTaskIds = new HashSet<>(committingTaskIds);
     }
 
     TaskLockPosse withTaskLock(TaskLock taskLock)
     {
-      return new TaskLockPosse(taskLock, taskIds);
+      return new TaskLockPosse(taskLock, taskIds, committingTaskIds);
     }
 
     TaskLock getTaskLock()
@@ -1659,12 +1759,28 @@ public class TaskLockbox
     boolean removeTask(Task task)
     {
       Preconditions.checkNotNull(task, "task");
+      committingTaskIds.remove(task.getId());
       return taskIds.remove(task.getId());
     }
 
     boolean isTasksEmpty()
     {
       return taskIds.isEmpty();
+    }
+
+    boolean isCommitting()
+    {
+      return !committingTaskIds.isEmpty();
+    }
+
+    void startCommitForTask(String taskId)
+    {
+      committingTaskIds.add(taskId);
+    }
+
+    void finishCommitForTask(String taskId)
+    {
+      committingTaskIds.remove(taskId);
     }
 
     /**
