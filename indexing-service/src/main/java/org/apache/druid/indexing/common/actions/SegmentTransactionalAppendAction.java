@@ -158,8 +158,10 @@ public class SegmentTransactionalAppendAction implements TaskAction<SegmentPubli
         );
       }
     }
-    taskLockbox.acquireTransactionalAppendLock(task, TaskLockbox.LOCK_ACQUIRE_TIMEOUT_MILLIS);
+
     try {
+      taskLockbox.acquireCommitLock(task, TaskLockbox.COMMIT_LOCK_TIMEOUT_MILLIS);
+
       final String datasource = task.getDataSource();
       final Map<DataSegment, ReplaceTaskLock> segmentToReplaceLock
           = TaskLocks.findReplaceLocksCoveringSegments(datasource, toolbox.getTaskLockbox(), segments);
@@ -205,7 +207,7 @@ public class SegmentTransactionalAppendAction implements TaskAction<SegmentPubli
       throw new RuntimeException(e);
     }
     finally {
-      taskLockbox.releaseTransactionalAppendLock(task);
+      taskLockbox.releaseCommitLock(task);
     }
   }
 

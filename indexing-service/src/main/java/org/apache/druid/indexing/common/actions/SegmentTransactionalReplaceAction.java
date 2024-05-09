@@ -130,8 +130,10 @@ public class SegmentTransactionalReplaceAction implements TaskAction<SegmentPubl
         );
       }
     }
-    taskLockbox.acquireTransactionalReplaceLock(task, TaskLockbox.LOCK_ACQUIRE_TIMEOUT_MILLIS);
+
     try {
+      taskLockbox.acquireCommitLock(task, TaskLockbox.COMMIT_LOCK_TIMEOUT_MILLIS);
+
       // Find the active replace locks held only by this task
       final Set<ReplaceTaskLock> replaceLocksForTask
           = toolbox.getTaskLockbox().findReplaceLocksForTask(task);
@@ -168,7 +170,7 @@ public class SegmentTransactionalReplaceAction implements TaskAction<SegmentPubl
       throw new RuntimeException(e);
     }
     finally {
-      taskLockbox.releaseTransactionalReplaceLock(task);
+      taskLockbox.releaseCommitLock(task);
     }
   }
 
