@@ -66,11 +66,9 @@ import java.util.NavigableMap;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -89,9 +87,6 @@ import java.util.stream.Collectors;
 public class TaskLockbox
 {
   public static final long COMMIT_LOCK_TIMEOUT_MILLIS = 120_000L;
-
-  private final ConcurrentHashMap<String, ReentrantReadWriteLock>
-      datasourceToConcurrentLock = new ConcurrentHashMap<>();
 
   // Datasource -> startTime -> Interval -> list of (Tasks + TaskLock)
   // Multiple shared locks can be acquired for the same dataSource and interval.
