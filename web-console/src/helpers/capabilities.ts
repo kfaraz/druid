@@ -65,8 +65,8 @@ export class Capabilities {
         { timeout: Capabilities.STATUS_TIMEOUT },
       );
     } catch (e) {
-      const { response } = e;
-      if (response.status !== 405 && response.status !== 404) {
+      const status = e.response?.status;
+      if (status !== 405 && status !== 404) {
         return; // other failure
       }
       try {
@@ -87,7 +87,7 @@ export class Capabilities {
           { timeout: Capabilities.STATUS_TIMEOUT },
         );
       } catch (e) {
-        if (response.status !== 405 && response.status !== 404) {
+        if (status !== 405 && status !== 404) {
           return; // other failure
         }
 
@@ -102,11 +102,13 @@ export class Capabilities {
 
   static async detectManagementProxy(): Promise<boolean> {
     try {
-      await Api.instance.get(`/proxy/coordinator/status?capabilities`, {
+      await Api.instance.get(`/proxy/enabled?capabilities`, {
         timeout: Capabilities.STATUS_TIMEOUT,
       });
     } catch (e) {
-      return false;
+      const status = e.response?.status;
+      // If we detect error code 400 the management proxy is enabled but just does not know about the recently added /proxy/enabled route so treat this as a win.
+      return status === 400;
     }
 
     return true;

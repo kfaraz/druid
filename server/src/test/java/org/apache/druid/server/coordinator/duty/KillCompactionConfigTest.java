@@ -29,10 +29,11 @@ import org.apache.druid.metadata.MetadataStorageConnector;
 import org.apache.druid.metadata.MetadataStorageTablesConfig;
 import org.apache.druid.metadata.SqlSegmentsMetadataManager;
 import org.apache.druid.server.coordinator.CoordinatorCompactionConfig;
+import org.apache.druid.server.coordinator.CoordinatorConfigManager;
 import org.apache.druid.server.coordinator.DataSourceCompactionConfig;
 import org.apache.druid.server.coordinator.DruidCoordinatorRuntimeParams;
-import org.apache.druid.server.coordinator.TestDruidCoordinatorConfig;
 import org.apache.druid.server.coordinator.UserCompactionTaskGranularityConfig;
+import org.apache.druid.server.coordinator.config.MetadataCleanupConfig;
 import org.apache.druid.server.coordinator.stats.CoordinatorRunStats;
 import org.apache.druid.server.coordinator.stats.Stats;
 import org.joda.time.Duration;
@@ -65,6 +66,7 @@ public class KillCompactionConfigTest
   @Mock
   private MetadataStorageTablesConfig mockConnectorConfig;
 
+  private CoordinatorConfigManager coordinatorConfigManager;
   private KillCompactionConfig killCompactionConfig;
   private CoordinatorRunStats runStats;
 
@@ -74,57 +76,28 @@ public class KillCompactionConfigTest
     runStats = new CoordinatorRunStats();
     Mockito.when(mockConnectorConfig.getConfigTable()).thenReturn("druid_config");
     Mockito.when(mockDruidCoordinatorRuntimeParams.getCoordinatorStats()).thenReturn(runStats);
+    coordinatorConfigManager = new CoordinatorConfigManager(
+        mockJacksonConfigManager,
+        mockConnector,
+        mockConnectorConfig
+    );
   }
 
   @Test
   public void testRunSkipIfLastRunLessThanPeriod()
   {
-    TestDruidCoordinatorConfig druidCoordinatorConfig = new TestDruidCoordinatorConfig.Builder()
-        .withMetadataStoreManagementPeriod(new Duration("PT5S"))
-        .withCoordinatorCompactionKillPeriod(new Duration(Long.MAX_VALUE))
-        .withCoordinatorKillMaxSegments(10)
-        .withCoordinatorKillIgnoreDurationToRetain(false)
-        .build();
+    final MetadataCleanupConfig config
+        = new MetadataCleanupConfig(true, new Duration(Long.MAX_VALUE), null);
     killCompactionConfig = new KillCompactionConfig(
-        druidCoordinatorConfig,
+        config,
         mockSqlSegmentsMetadataManager,
-        mockJacksonConfigManager,
-        mockConnector,
-        mockConnectorConfig
+        coordinatorConfigManager
     );
     killCompactionConfig.run(mockDruidCoordinatorRuntimeParams);
     Mockito.verifyNoInteractions(mockSqlSegmentsMetadataManager);
     Mockito.verifyNoInteractions(mockJacksonConfigManager);
     Assert.assertEquals(0, runStats.rowCount());
   }
-
-  @Test
-  public void testConstructorFailIfInvalidPeriod()
-  {
-    TestDruidCoordinatorConfig druidCoordinatorConfig = new TestDruidCoordinatorConfig.Builder()
-        .withMetadataStoreManagementPeriod(new Duration("PT5S"))
-        .withCoordinatorCompactionKillPeriod(new Duration("PT3S"))
-        .withCoordinatorKillMaxSegments(10)
-        .withCoordinatorKillIgnoreDurationToRetain(false)
-        .build();
-
-    final IllegalArgumentException exception = Assert.assertThrows(
-        IllegalArgumentException.class,
-        () -> killCompactionConfig = new KillCompactionConfig(
-            druidCoordinatorConfig,
-            mockSqlSegmentsMetadataManager,
-            mockJacksonConfigManager,
-            mockConnector,
-            mockConnectorConfig
-        )
-    );
-    Assert.assertEquals(
-        "[druid.coordinator.kill.compaction.period] must be greater than"
-        + " [druid.coordinator.period.metadataStoreManagementPeriod]",
-        exception.getMessage()
-    );
-  }
-
 
   @Test
   public void testRunDoNothingIfCurrentConfigIsEmpty()
@@ -142,18 +115,12 @@ public class KillCompactionConfigTest
         ArgumentMatchers.eq(CoordinatorCompactionConfig.empty()))
     ).thenReturn(CoordinatorCompactionConfig.empty());
 
-    TestDruidCoordinatorConfig druidCoordinatorConfig = new TestDruidCoordinatorConfig.Builder()
-        .withMetadataStoreManagementPeriod(new Duration("PT5S"))
-        .withCoordinatorCompactionKillPeriod(new Duration("PT6S"))
-        .withCoordinatorKillMaxSegments(10)
-        .withCoordinatorKillIgnoreDurationToRetain(false)
-        .build();
+    final MetadataCleanupConfig config
+        = new MetadataCleanupConfig(true, new Duration("PT6S"), null);
     killCompactionConfig = new KillCompactionConfig(
-        druidCoordinatorConfig,
+        config,
         mockSqlSegmentsMetadataManager,
-        mockJacksonConfigManager,
-        mockConnector,
-        mockConnectorConfig
+        coordinatorConfigManager
     );
     killCompactionConfig.run(mockDruidCoordinatorRuntimeParams);
     Mockito.verifyNoInteractions(mockSqlSegmentsMetadataManager);
@@ -231,18 +198,12 @@ public class KillCompactionConfigTest
         ArgumentMatchers.any())
     ).thenReturn(ConfigManager.SetResult.ok());
 
-    TestDruidCoordinatorConfig druidCoordinatorConfig = new TestDruidCoordinatorConfig.Builder()
-        .withMetadataStoreManagementPeriod(new Duration("PT5S"))
-        .withCoordinatorCompactionKillPeriod(new Duration("PT6S"))
-        .withCoordinatorKillMaxSegments(10)
-        .withCoordinatorKillIgnoreDurationToRetain(false)
-        .build();
+    final MetadataCleanupConfig config
+        = new MetadataCleanupConfig(true, new Duration("PT6S"), null);
     killCompactionConfig = new KillCompactionConfig(
-        druidCoordinatorConfig,
+        config,
         mockSqlSegmentsMetadataManager,
-        mockJacksonConfigManager,
-        mockConnector,
-        mockConnectorConfig
+        coordinatorConfigManager
     );
     killCompactionConfig.run(mockDruidCoordinatorRuntimeParams);
 
@@ -318,25 +279,19 @@ public class KillCompactionConfigTest
         ArgumentMatchers.any())
     ).thenReturn(
         // Return fail result with RetryableException the first three calls to updated set
-        ConfigManager.SetResult.fail(new Exception(), true),
-        ConfigManager.SetResult.fail(new Exception(), true),
-        ConfigManager.SetResult.fail(new Exception(), true),
+        ConfigManager.SetResult.retryableFailure(new Exception()),
+        ConfigManager.SetResult.retryableFailure(new Exception()),
+        ConfigManager.SetResult.retryableFailure(new Exception()),
         // Return success ok on the fourth call to set updated config
         ConfigManager.SetResult.ok()
     );
 
-    TestDruidCoordinatorConfig druidCoordinatorConfig = new TestDruidCoordinatorConfig.Builder()
-        .withMetadataStoreManagementPeriod(new Duration("PT5S"))
-        .withCoordinatorCompactionKillPeriod(new Duration("PT6S"))
-        .withCoordinatorKillMaxSegments(10)
-        .withCoordinatorKillIgnoreDurationToRetain(false)
-        .build();
+    final MetadataCleanupConfig config
+        = new MetadataCleanupConfig(true, new Duration("PT6S"), null);
     killCompactionConfig = new KillCompactionConfig(
-        druidCoordinatorConfig,
+        config,
         mockSqlSegmentsMetadataManager,
-        mockJacksonConfigManager,
-        mockConnector,
-        mockConnectorConfig
+        coordinatorConfigManager
     );
     killCompactionConfig.run(mockDruidCoordinatorRuntimeParams);
 

@@ -36,7 +36,6 @@ import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.SettableFuture;
 import it.unimi.dsi.fastutil.bytes.ByteArrays;
 import org.apache.druid.common.guava.FutureUtils;
-import org.apache.druid.frame.FrameType;
 import org.apache.druid.frame.allocation.ArenaMemoryAllocator;
 import org.apache.druid.frame.allocation.ArenaMemoryAllocatorFactory;
 import org.apache.druid.frame.channel.BlockingQueueFrameChannel;
@@ -62,6 +61,8 @@ import org.apache.druid.frame.processor.OutputChannels;
 import org.apache.druid.frame.processor.PartitionedOutputChannel;
 import org.apache.druid.frame.processor.SuperSorter;
 import org.apache.druid.frame.processor.SuperSorterProgressTracker;
+import org.apache.druid.frame.processor.manager.ProcessorManager;
+import org.apache.druid.frame.processor.manager.ProcessorManagers;
 import org.apache.druid.frame.util.DurableStorageUtils;
 import org.apache.druid.frame.write.FrameWriters;
 import org.apache.druid.indexer.TaskStatus;
@@ -71,8 +72,6 @@ import org.apache.druid.java.util.common.Pair;
 import org.apache.druid.java.util.common.RE;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.UOE;
-import org.apache.druid.java.util.common.guava.Sequence;
-import org.apache.druid.java.util.common.guava.Sequences;
 import org.apache.druid.java.util.common.io.Closer;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.msq.counters.CounterNames;
@@ -184,6 +183,8 @@ public class WorkerImpl implements Worker
   private final ByteTracker intermediateSuperSorterLocalStorageTracker;
   private final boolean durableStageStorageEnabled;
   private final WorkerStorageParameters workerStorageParameters;
+  private final boolean isRemoveNullBytes;
+
   /**
    * Only set for select jobs.
    */
@@ -229,6 +230,7 @@ public class WorkerImpl implements Worker
     QueryContext queryContext = QueryContext.of(task.getContext());
     this.durableStageStorageEnabled = MultiStageQueryContext.isDurableStorageEnabled(queryContext);
     this.selectDestination = MultiStageQueryContext.getSelectDestinationOrNull(queryContext);
+    this.isRemoveNullBytes = MultiStageQueryContext.removeNullBytes(queryContext);
     this.workerStorageParameters = workerStorageParameters;
 
     long maxBytes = workerStorageParameters.isIntermediateStorageLimitConfigured()
@@ -295,6 +297,7 @@ public class WorkerImpl implements Worker
   {
     this.controllerClient = context.makeControllerClient(task.getControllerTaskId());
     closer.register(controllerClient::close);
+    closer.register(context.dataServerQueryHandlerFactory());
     context.registerWorker(this, closer); // Uses controllerClient, so must be called after that is initialized
 
     this.workerClient = new ExceptionWrappingWorkerClient(context.makeWorkerClient());
@@ -497,20 +500,16 @@ public class WorkerImpl implements Worker
   @Override
   public void stopGracefully()
   {
-    log.info("Stopping gracefully for taskId [%s]", task.getId());
-    kernelManipulationQueue.add(
-        kernel -> {
-          // stopGracefully() is called when the containing process is terminated, or when the task is canceled.
-          throw new MSQException(CanceledFault.INSTANCE);
-        }
-    );
+    // stopGracefully() is called when the containing process is terminated, or when the task is canceled.
+    log.info("Worker task[%s] canceled.", task.getId());
+    doCancel();
   }
 
   @Override
   public void controllerFailed()
   {
-    controllerAlive = false;
-    stopGracefully();
+    log.info("Controller task[%s] for worker task[%s] failed. Canceling.", task.getControllerTaskId(), task.getId());
+    doCancel();
   }
 
   @Override
@@ -909,6 +908,31 @@ public class WorkerImpl implements Worker
   }
 
   /**
+   * Called by {@link #stopGracefully()} (task canceled, or containing process shut down) and
+   * {@link #controllerFailed()}.
+   */
+  private void doCancel()
+  {
+    // Set controllerAlive = false so we don't try to contact the controller after being canceled. If it canceled us,
+    // it doesn't need to know that we were canceled. If we were canceled by something else, the controller will
+    // detect this as part of its monitoring of workers.
+    controllerAlive = false;
+
+    // Close controller client to cancel any currently in-flight calls to the controller.
+    if (controllerClient != null) {
+      controllerClient.close();
+    }
+
+    // Clear the main loop event queue, then throw a CanceledFault into the loop to exit it promptly.
+    kernelManipulationQueue.clear();
+    kernelManipulationQueue.add(
+        kernel -> {
+          throw new MSQException(CanceledFault.INSTANCE);
+        }
+    );
+  }
+
+  /**
    * Log (at DEBUG level) a string explaining the status of all work assigned to this worker.
    */
   private static void logKernelStatus(final Collection<WorkerStageKernel> kernels)
@@ -1090,7 +1114,8 @@ public class WorkerImpl implements Worker
               inputChannelFactory,
               () -> ArenaMemoryAllocator.createOnHeap(frameContext.memoryParameters().getStandardFrameSize()),
               exec,
-              cancellationId
+              cancellationId,
+              MultiStageQueryContext.removeNullBytes(QueryContext.of(task.getContext()))
           );
 
       inputSliceReader = new MapInputSliceReader(
@@ -1100,11 +1125,12 @@ public class WorkerImpl implements Worker
                       .put(ExternalInputSlice.class, new ExternalInputSliceReader(frameContext.tempDir()))
                       .put(InlineInputSlice.class, new InlineInputSliceReader(frameContext.segmentWrangler()))
                       .put(LookupInputSlice.class, new LookupInputSliceReader(frameContext.segmentWrangler()))
-                      .put(SegmentsInputSlice.class,
-                           new SegmentsInputSliceReader(
-                               frameContext.dataSegmentProvider(),
-                               MultiStageQueryContext.isReindex(QueryContext.of(task().getContext()))
-                           )
+                      .put(
+                          SegmentsInputSlice.class,
+                          new SegmentsInputSliceReader(
+                              frameContext,
+                              MultiStageQueryContext.isReindex(QueryContext.of(task().getContext()))
+                          )
                       )
                       .build()
       );
@@ -1152,7 +1178,16 @@ public class WorkerImpl implements Worker
           );
     }
 
-    private <FactoryType extends FrameProcessorFactory<I, WorkerClass, T, R>, I, WorkerClass extends FrameProcessor<T>, T, R> void makeAndRunWorkProcessors()
+    /**
+     * Use {@link FrameProcessorFactory#makeProcessors} to create {@link ProcessorsAndChannels}. Executes the
+     * processors using {@link #exec} and sets the output channels in {@link #workResultAndOutputChannels}.
+     *
+     * @param <FactoryType>         type of {@link StageDefinition#getProcessorFactory()}
+     * @param <ProcessorReturnType> return type of {@link FrameProcessor} created by the manager
+     * @param <ManagerReturnType>   result type of {@link ProcessorManager#result()}
+     * @param <ExtraInfoType>       type of {@link WorkOrder#getExtraInfo()}
+     */
+    private <FactoryType extends FrameProcessorFactory<ProcessorReturnType, ManagerReturnType, ExtraInfoType>, ProcessorReturnType, ManagerReturnType, ExtraInfoType> void makeAndRunWorkProcessors()
         throws IOException
     {
       if (workResultAndOutputChannels != null) {
@@ -1163,21 +1198,22 @@ public class WorkerImpl implements Worker
       final FactoryType processorFactory = (FactoryType) kernel.getStageDefinition().getProcessorFactory();
 
       @SuppressWarnings("unchecked")
-      final ProcessorsAndChannels<WorkerClass, T> processors =
+      final ProcessorsAndChannels<ProcessorReturnType, ManagerReturnType> processors =
           processorFactory.makeProcessors(
               kernel.getStageDefinition(),
               kernel.getWorkOrder().getWorkerNumber(),
               kernel.getWorkOrder().getInputs(),
               inputSliceReader,
-              (I) kernel.getWorkOrder().getExtraInfo(),
+              (ExtraInfoType) kernel.getWorkOrder().getExtraInfo(),
               workOutputChannelFactory,
               frameContext,
               parallelism,
               counterTracker,
-              e -> warningPublisher.publishException(kernel.getStageDefinition().getStageNumber(), e)
+              e -> warningPublisher.publishException(kernel.getStageDefinition().getStageNumber(), e),
+              isRemoveNullBytes
           );
 
-      final Sequence<WorkerClass> processorSequence = processors.processors();
+      final ProcessorManager<ProcessorReturnType, ManagerReturnType> processorManager = processors.getProcessorManager();
 
       final int maxOutstandingProcessors;
 
@@ -1190,10 +1226,8 @@ public class WorkerImpl implements Worker
             Math.max(1, Math.min(parallelism, processors.getOutputChannels().getAllChannels().size()));
       }
 
-      final ListenableFuture<R> workResultFuture = exec.runAllFully(
-          processorSequence,
-          processorFactory.newAccumulatedResult(),
-          processorFactory::accumulateResult,
+      final ListenableFuture<ManagerReturnType> workResultFuture = exec.runAllFully(
+          processorManager,
           maxOutstandingProcessors,
           processorBouncer,
           cancellationId
@@ -1513,7 +1547,8 @@ public class WorkerImpl implements Worker
                 memoryParameters.getSuperSorterMaxChannelsPerProcessor(),
                 -1,
                 cancellationId,
-                counterTracker.sortProgress()
+                counterTracker.sortProgress(),
+                isRemoveNullBytes
             );
 
             return FutureUtils.transform(
@@ -1545,11 +1580,11 @@ public class WorkerImpl implements Worker
                 outputChannels.stream().map(OutputChannel::getWritableChannel).collect(Collectors.toList()),
                 kernel.getStageDefinition().getFrameReader(),
                 kernel.getStageDefinition().getClusterBy().getColumns().size(),
-                FrameWriters.makeFrameWriterFactory(
-                    FrameType.ROW_BASED,
+                FrameWriters.makeRowBasedFrameWriterFactory(
                     new ArenaMemoryAllocatorFactory(frameContext.memoryParameters().getStandardFrameSize()),
                     kernel.getStageDefinition().getSignature(),
-                    kernel.getStageDefinition().getSortKey()
+                    kernel.getStageDefinition().getSortKey(),
+                    isRemoveNullBytes
                 )
             );
 
@@ -1642,7 +1677,8 @@ public class WorkerImpl implements Worker
                         // Tracker is not actually tracked, since it doesn't quite fit into the way we report counters.
                         // There's a single SuperSorterProgressTrackerCounter per worker, but workers that do local
                         // sorting have a SuperSorter per partition.
-                        new SuperSorterProgressTracker()
+                        new SuperSorterProgressTracker(),
+                        isRemoveNullBytes
                     );
 
                     return FutureUtils.transform(sorter.run(), r -> Iterables.getOnlyElement(r.getAllChannels()));
@@ -1716,11 +1752,13 @@ public class WorkerImpl implements Worker
 
       final ListenableFuture<ClusterByStatisticsCollector> clusterByStatisticsCollectorFuture =
           exec.runAllFully(
-              Sequences.simple(processors),
-              stageDefinition.createResultKeyStatisticsCollector(
-                  frameContext.memoryParameters().getPartitionStatisticsMaxRetainedBytes()
-              ),
-              ClusterByStatisticsCollector::addAll,
+              ProcessorManagers.of(processors)
+                               .withAccumulation(
+                                   stageDefinition.createResultKeyStatisticsCollector(
+                                       frameContext.memoryParameters().getPartitionStatisticsMaxRetainedBytes()
+                                   ),
+                                   ClusterByStatisticsCollector::addAll
+                               ),
               // Run all processors simultaneously. They are lightweight and this keeps things moving.
               processors.size(),
               Bouncer.unlimited(),

@@ -43,6 +43,7 @@ import org.apache.druid.java.util.common.jackson.JacksonUtils;
 import org.apache.druid.java.util.emitter.EmittingLogger;
 import org.apache.druid.java.util.http.client.response.BytesFullResponseHandler;
 import org.apache.druid.java.util.http.client.response.HttpResponseHandler;
+import org.apache.druid.metadata.PendingSegmentRecord;
 import org.apache.druid.rpc.HttpResponseException;
 import org.apache.druid.rpc.IgnoreHttpResponseHandler;
 import org.apache.druid.rpc.RequestBuilder;
@@ -190,6 +191,22 @@ public abstract class SeekableStreamIndexTaskClientAsyncImpl<PartitionIdType, Se
         .handler(new BytesFullResponseHandler())
         .onSuccess(r -> deserializeOffsetsMap(r.getContent()))
         .onNotAvailable(e -> Either.value(Collections.emptyMap()))
+        .go();
+  }
+
+  @Override
+  public ListenableFuture<Boolean> registerNewVersionOfPendingSegmentAsync(
+      String taskId,
+      PendingSegmentRecord pendingSegmentRecord
+  )
+  {
+    final RequestBuilder requestBuilder
+        = new RequestBuilder(HttpMethod.POST, "/pendingSegmentVersion")
+        .jsonContent(jsonMapper, pendingSegmentRecord);
+
+    return makeRequest(taskId, requestBuilder)
+        .handler(IgnoreHttpResponseHandler.INSTANCE)
+        .onSuccess(r -> true)
         .go();
   }
 

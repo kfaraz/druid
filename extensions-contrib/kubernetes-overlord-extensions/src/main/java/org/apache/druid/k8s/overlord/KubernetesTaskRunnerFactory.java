@@ -20,6 +20,7 @@
 package org.apache.druid.k8s.overlord;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.base.Supplier;
 import com.google.inject.Inject;
 import org.apache.druid.guice.IndexingServiceModuleHelper;
 import org.apache.druid.guice.annotations.EscalatedGlobal;
@@ -32,6 +33,7 @@ import org.apache.druid.java.util.emitter.service.ServiceEmitter;
 import org.apache.druid.java.util.http.client.HttpClient;
 import org.apache.druid.k8s.overlord.common.DruidKubernetesClient;
 import org.apache.druid.k8s.overlord.common.KubernetesPeonClient;
+import org.apache.druid.k8s.overlord.execution.KubernetesTaskRunnerDynamicConfig;
 import org.apache.druid.k8s.overlord.taskadapter.MultiContainerTaskAdapter;
 import org.apache.druid.k8s.overlord.taskadapter.PodTemplateTaskAdapter;
 import org.apache.druid.k8s.overlord.taskadapter.SingleContainerTaskAdapter;
@@ -56,8 +58,8 @@ public class KubernetesTaskRunnerFactory implements TaskRunnerFactory<Kubernetes
   private final Properties properties;
   private final DruidKubernetesClient druidKubernetesClient;
   private final ServiceEmitter emitter;
+  private final Supplier<KubernetesTaskRunnerDynamicConfig> dynamicConfigRef;
   private KubernetesTaskRunner runner;
-
 
   @Inject
   public KubernetesTaskRunnerFactory(
@@ -70,7 +72,8 @@ public class KubernetesTaskRunnerFactory implements TaskRunnerFactory<Kubernetes
       TaskConfig taskConfig,
       Properties properties,
       DruidKubernetesClient druidKubernetesClient,
-      ServiceEmitter emitter
+      ServiceEmitter emitter,
+      Supplier<KubernetesTaskRunnerDynamicConfig> dynamicConfigRef
   )
   {
     this.smileMapper = smileMapper;
@@ -83,6 +86,7 @@ public class KubernetesTaskRunnerFactory implements TaskRunnerFactory<Kubernetes
     this.properties = properties;
     this.druidKubernetesClient = druidKubernetesClient;
     this.emitter = emitter;
+    this.dynamicConfigRef = dynamicConfigRef;
   }
 
   @Override
@@ -137,7 +141,8 @@ public class KubernetesTaskRunnerFactory implements TaskRunnerFactory<Kubernetes
           taskConfig,
           startupLoggingConfig,
           druidNode,
-          smileMapper
+          smileMapper,
+          taskLogs
       );
     } else if (PodTemplateTaskAdapter.TYPE.equals(adapter)) {
       return new PodTemplateTaskAdapter(
@@ -145,7 +150,9 @@ public class KubernetesTaskRunnerFactory implements TaskRunnerFactory<Kubernetes
           taskConfig,
           druidNode,
           smileMapper,
-          properties
+          properties,
+          taskLogs,
+          dynamicConfigRef
       );
     } else {
       return new SingleContainerTaskAdapter(
@@ -154,7 +161,8 @@ public class KubernetesTaskRunnerFactory implements TaskRunnerFactory<Kubernetes
           taskConfig,
           startupLoggingConfig,
           druidNode,
-          smileMapper
+          smileMapper,
+          taskLogs
       );
     }
   }

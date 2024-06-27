@@ -19,14 +19,13 @@
 
 package org.apache.druid.segment;
 
-import com.google.common.base.Predicate;
 import org.apache.druid.query.BaseQuery;
 import org.apache.druid.query.dimension.DefaultDimensionSpec;
 import org.apache.druid.query.dimension.DimensionSpec;
+import org.apache.druid.query.filter.DruidPredicateFactory;
 import org.apache.druid.query.filter.ValueMatcher;
 import org.apache.druid.query.monomorphicprocessing.RuntimeShapeInspector;
 import org.apache.druid.segment.column.ColumnCapabilities;
-import org.apache.druid.segment.column.ColumnCapabilitiesImpl;
 import org.apache.druid.segment.data.IndexedInts;
 import org.joda.time.DateTime;
 
@@ -124,15 +123,23 @@ public class UnnestDimensionCursor implements Cursor
               return new ValueMatcher()
               {
                 @Override
-                public boolean matches()
+                public boolean matches(boolean includeUnknown)
                 {
+                  // don't match anything, except for null values when includeUnknown is true
+                  if (includeUnknown) {
+                    if (indexedIntsForCurrentRow == null || indexedIntsForCurrentRow.size() <= 0) {
+                      return true;
+                    }
+                    final int rowId = indexedIntsForCurrentRow.get(index);
+                    return lookupName(rowId) == null;
+                  }
                   return false;
                 }
 
                 @Override
                 public void inspectRuntimeShape(RuntimeShapeInspector inspector)
                 {
-
+                  inspector.visit("selector", dimSelector);
                 }
               };
             }
@@ -140,29 +147,30 @@ public class UnnestDimensionCursor implements Cursor
             return new ValueMatcher()
             {
               @Override
-              public boolean matches()
+              public boolean matches(boolean includeUnknown)
               {
                 if (indexedIntsForCurrentRow == null) {
-                  return false;
+                  return includeUnknown;
                 }
                 if (indexedIntsForCurrentRow.size() <= 0) {
-                  return false;
+                  return includeUnknown;
                 }
-                return idForLookup == indexedIntsForCurrentRow.get(index);
+                final int rowId = indexedIntsForCurrentRow.get(index);
+                return (includeUnknown && lookupName(rowId) == null) || idForLookup == rowId;
               }
 
               @Override
               public void inspectRuntimeShape(RuntimeShapeInspector inspector)
               {
-                dimSelector.inspectRuntimeShape(inspector);
+                inspector.visit("selector", dimSelector);
               }
             };
           }
 
           @Override
-          public ValueMatcher makeValueMatcher(Predicate<String> predicate)
+          public ValueMatcher makeValueMatcher(DruidPredicateFactory predicateFactory)
           {
-            return DimensionSelectorUtils.makeValueMatcherGeneric(this, predicate);
+            return DimensionSelectorUtils.makeValueMatcherGeneric(this, predicateFactory);
           }
 
           @Override
@@ -231,25 +239,11 @@ public class UnnestDimensionCursor implements Cursor
       @Override
       public ColumnCapabilities getColumnCapabilities(String column)
       {
-        if (!outputName.equals(column)) {
-          return baseColumnSelectorFactory.getColumnCapabilities(column);
+        if (outputName.equals(column)) {
+          return UnnestStorageAdapter.computeOutputColumnCapabilities(baseColumnSelectorFactory, unnestColumn);
         }
-        // This currently returns the same type as of the column to be unnested
-        // This is fine for STRING types
-        // But going forward if the dimension to be unnested is of type ARRAY,
-        // this should strip down to the base type of the array
-        final ColumnCapabilities capabilities = unnestColumn.capabilities(
-            baseColumnSelectorFactory,
-            unnestColumn.getOutputName()
-        );
 
-        if (capabilities.isArray()) {
-          return ColumnCapabilitiesImpl.copyOf(capabilities).setType(capabilities.getElementType());
-        }
-        if (capabilities.hasMultipleValues().isTrue()) {
-          return ColumnCapabilitiesImpl.copyOf(capabilities).setHasMultipleValues(false);
-        }
-        return capabilities;
+        return baseColumnSelectorFactory.getColumnCapabilities(column);
       }
     };
   }

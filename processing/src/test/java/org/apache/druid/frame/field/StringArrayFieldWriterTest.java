@@ -59,7 +59,7 @@ public class StringArrayFieldWriterTest extends InitializedNullHandlingTest
   public void setUp()
   {
     memory = WritableMemory.allocate(1000);
-    fieldWriter = new StringArrayFieldWriter(selector);
+    fieldWriter = new StringArrayFieldWriter(selector, false);
   }
 
   @After
@@ -140,7 +140,7 @@ public class StringArrayFieldWriterTest extends InitializedNullHandlingTest
 
     final FieldReader fieldReader = FieldReaders.create("columnNameDoesntMatterHere", ColumnType.STRING_ARRAY);
     final ColumnValueSelector<?> selector =
-        fieldReader.makeColumnValueSelector(memory, new ConstantFieldPointer(MEMORY_POSITION));
+        fieldReader.makeColumnValueSelector(memory, new ConstantFieldPointer(MEMORY_POSITION, -1));
 
     final Object o = selector.getObject();
     //noinspection rawtypes,unchecked

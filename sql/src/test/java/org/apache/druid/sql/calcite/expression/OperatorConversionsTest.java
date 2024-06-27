@@ -20,7 +20,6 @@
 package org.apache.druid.sql.calcite.expression;
 
 import com.google.common.collect.ImmutableList;
-import it.unimi.dsi.fastutil.ints.IntSets;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.runtime.CalciteContextException;
 import org.apache.calcite.runtime.Resources.ExInst;
@@ -38,23 +37,18 @@ import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.validate.SqlValidator;
 import org.apache.calcite.sql.validate.SqlValidatorScope;
 import org.apache.druid.java.util.common.StringUtils;
-import org.apache.druid.sql.calcite.expression.OperatorConversions.DefaultOperandTypeChecker;
 import org.apache.druid.sql.calcite.planner.DruidTypeSystem;
 import org.junit.Assert;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.experimental.runners.Enclosed;
 import org.junit.rules.ExpectedException;
-import org.junit.runner.RunWith;
 import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
 import org.mockito.stubbing.Answer;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
-@RunWith(Enclosed.class)
 public class OperatorConversionsTest
 {
   public static class DefaultOperandTypeCheckerTest
@@ -65,13 +59,13 @@ public class OperatorConversionsTest
     @Test
     public void testGetOperandCountRange()
     {
-      SqlOperandTypeChecker typeChecker = new DefaultOperandTypeChecker(
-          Collections.emptyList(),
-          ImmutableList.of(SqlTypeFamily.INTEGER, SqlTypeFamily.INTEGER, SqlTypeFamily.INTEGER),
-          2,
-          IntSets.EMPTY_SET,
-          null
-      );
+      SqlOperandTypeChecker typeChecker = DefaultOperandTypeChecker
+          .builder()
+          .operandNames()
+          .operandTypes(SqlTypeFamily.INTEGER, SqlTypeFamily.INTEGER, SqlTypeFamily.INTEGER)
+          .requiredOperandCount(2)
+          .literalOperands()
+          .build();
       SqlOperandCountRange countRange = typeChecker.getOperandCountRange();
       Assert.assertEquals(2, countRange.getMin());
       Assert.assertEquals(3, countRange.getMax());
@@ -80,13 +74,13 @@ public class OperatorConversionsTest
     @Test
     public void testIsOptional()
     {
-      SqlOperandTypeChecker typeChecker = new DefaultOperandTypeChecker(
-          Collections.emptyList(),
-          ImmutableList.of(SqlTypeFamily.INTEGER, SqlTypeFamily.INTEGER, SqlTypeFamily.INTEGER),
-          2,
-          IntSets.EMPTY_SET,
-          null
-      );
+      SqlOperandTypeChecker typeChecker = DefaultOperandTypeChecker
+          .builder()
+          .operandNames()
+          .operandTypes(SqlTypeFamily.INTEGER, SqlTypeFamily.INTEGER, SqlTypeFamily.INTEGER)
+          .requiredOperandCount(2)
+          .literalOperands()
+          .build();
       Assert.assertFalse(typeChecker.isOptional(0));
       Assert.assertFalse(typeChecker.isOptional(1));
       Assert.assertTrue(typeChecker.isOptional(2));
@@ -121,7 +115,7 @@ public class OperatorConversionsTest
     {
       SqlFunction function = OperatorConversions
           .operatorBuilder("testRequiredOperandsOnly")
-          .operandTypeChecker(BasicOperandTypeChecker.builder().operandTypes(SqlTypeFamily.INTEGER, SqlTypeFamily.DATE).requiredOperandCount(1).build())
+          .operandTypeChecker(DefaultOperandTypeChecker.builder().operandTypes(SqlTypeFamily.INTEGER, SqlTypeFamily.DATE).requiredOperandCount(1).build())
           .returnTypeNonNull(SqlTypeName.CHAR)
           .build();
       SqlOperandTypeChecker typeChecker = function.getOperandTypeChecker();

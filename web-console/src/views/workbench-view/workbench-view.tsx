@@ -20,6 +20,7 @@ import { Button, ButtonGroup, Intent, Menu, MenuDivider, MenuItem } from '@bluep
 import { IconNames } from '@blueprintjs/icons';
 import { Popover2 } from '@blueprintjs/popover2';
 import type { SqlQuery } from '@druid-toolkit/query';
+import { SqlExpression } from '@druid-toolkit/query';
 import classNames from 'classnames';
 import copy from 'copy-to-clipboard';
 import React from 'react';
@@ -62,6 +63,8 @@ import { TabRenameDialog } from './tab-rename-dialog/tab-rename-dialog';
 import { WorkbenchHistoryDialog } from './workbench-history-dialog/workbench-history-dialog';
 
 import './workbench-view.scss';
+
+const LAST_DAY = SqlExpression.parse(`__time >= CURRENT_TIMESTAMP - INTERVAL '1' DAY`);
 
 function cleanupTabEntry(tabEntry: TabEntry): void {
   const discardedId = tabEntry.id;
@@ -320,13 +323,13 @@ export class WorkbenchView extends React.PureComponent<WorkbenchViewProps, Workb
 
     return (
       <ConnectExternalDataDialog
-        onSetExternalConfig={(externalConfig, isArrays, timeExpression, partitionedByHint) => {
+        onSetExternalConfig={(externalConfig, timeExpression, partitionedByHint, arrayMode) => {
           this.handleNewTab(
             WorkbenchQuery.fromInitExternalConfig(
               externalConfig,
-              isArrays,
               timeExpression,
               partitionedByHint,
+              arrayMode,
             ),
             'Ext ' + guessDataSourceNameFromInputSource(externalConfig.inputSource),
           );
@@ -496,7 +499,7 @@ export class WorkbenchView extends React.PureComponent<WorkbenchViewProps, Workb
                           const newTabEntry: TabEntry = {
                             id,
                             tabName: tabEntry.tabName + ' (copy)',
-                            query: tabEntry.query,
+                            query: tabEntry.query.changeLastExecution(undefined),
                           };
                           this.handleQueriesChange(
                             tabEntries.slice(0, i + 1).concat(newTabEntry, tabEntries.slice(i + 1)),
@@ -629,6 +632,7 @@ export class WorkbenchView extends React.PureComponent<WorkbenchViewProps, Workb
       this.props;
     const { columnMetadataState } = this.state;
     const currentTabEntry = this.getCurrentTabEntry();
+    const effectiveEngine = currentTabEntry.query.getEffectiveEngine();
 
     return (
       <div className="center-panel">
@@ -650,14 +654,15 @@ export class WorkbenchView extends React.PureComponent<WorkbenchViewProps, Workb
           goToTask={goToTask}
           runMoreMenu={
             <Menu>
-              {allowExplain && (
-                <MenuItem
-                  icon={IconNames.CLEAN}
-                  text="Explain SQL query"
-                  onClick={this.openExplainDialog}
-                />
-              )}
-              {currentTabEntry.query.getEffectiveEngine() !== 'sql-msq-task' && (
+              {allowExplain &&
+                (effectiveEngine === 'sql-native' || effectiveEngine === 'sql-msq-task') && (
+                  <MenuItem
+                    icon={IconNames.CLEAN}
+                    text="Explain SQL query"
+                    onClick={this.openExplainDialog}
+                  />
+                )}
+              {effectiveEngine !== 'sql-msq-task' && (
                 <MenuItem
                   icon={IconNames.HISTORY}
                   text="Query history"
@@ -784,6 +789,7 @@ export class WorkbenchView extends React.PureComponent<WorkbenchViewProps, Workb
             columnMetadata={columnMetadataState.data}
             onQueryChange={this.handleSqlQueryChange}
             defaultSchema={defaultSchema ? defaultSchema : 'druid'}
+            defaultWhere={LAST_DAY}
             defaultTable={defaultTable}
             highlightTable={undefined}
           />
