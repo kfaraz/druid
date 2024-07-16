@@ -31,6 +31,7 @@ import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.errorprone.annotations.concurrent.GuardedBy;
+import com.google.inject.Inject;
 import org.apache.druid.annotations.SuppressFBWarnings;
 import org.apache.druid.common.utils.IdUtils;
 import org.apache.druid.error.DruidException;
@@ -121,12 +122,13 @@ public class TaskQueue
   private final TaskQueueConfig config;
   private final DefaultTaskConfig defaultTaskConfig;
   private final TaskStorage taskStorage;
-  private final TaskRunner taskRunner;
+  private volatile TaskRunner taskRunner;
   private final TaskActionClientFactory taskActionClientFactory;
   private final TaskLockbox taskLockbox;
   private final ServiceEmitter emitter;
   private final ObjectMapper passwordRedactingMapper;
   private final TaskContextEnricher taskContextEnricher;
+  private final TaskRunnerFactory taskRunnerFactory;
 
   private final ReentrantLock giant = new ReentrantLock(true);
   @SuppressWarnings("MismatchedQueryAndUpdateOfCollection")
@@ -162,12 +164,13 @@ public class TaskQueue
   private final AtomicInteger statusUpdatesInQueue = new AtomicInteger();
   private final AtomicInteger handledStatusUpdates = new AtomicInteger();
 
+  @Inject
   public TaskQueue(
       TaskLockConfig lockConfig,
       TaskQueueConfig config,
       DefaultTaskConfig defaultTaskConfig,
       TaskStorage taskStorage,
-      TaskRunner taskRunner,
+      TaskRunnerFactory taskRunnerFactory,
       TaskActionClientFactory taskActionClientFactory,
       TaskLockbox taskLockbox,
       ServiceEmitter emitter,
@@ -179,7 +182,7 @@ public class TaskQueue
     this.config = Preconditions.checkNotNull(config, "config");
     this.defaultTaskConfig = Preconditions.checkNotNull(defaultTaskConfig, "defaultTaskContextConfig");
     this.taskStorage = Preconditions.checkNotNull(taskStorage, "taskStorage");
-    this.taskRunner = Preconditions.checkNotNull(taskRunner, "taskRunner");
+    this.taskRunnerFactory = Preconditions.checkNotNull(taskRunnerFactory, "taskRunnerFactory");
     this.taskActionClientFactory = Preconditions.checkNotNull(taskActionClientFactory, "taskActionClientFactory");
     this.taskLockbox = Preconditions.checkNotNull(taskLockbox, "taskLockbox");
     this.emitter = Preconditions.checkNotNull(emitter, "emitter");
@@ -196,6 +199,7 @@ public class TaskQueue
   void setActive()
   {
     this.active = true;
+    this.taskRunner = taskRunnerFactory.get();
   }
 
   /**
@@ -208,6 +212,7 @@ public class TaskQueue
 
     try {
       Preconditions.checkState(!active, "queue must be stopped");
+      taskRunner = Preconditions.checkNotNull(taskRunnerFactory.get(), "taskRunner is null");
       active = true;
       syncFromStorage();
       // Mark these tasks as failed as they could not reacuire the lock
@@ -290,6 +295,7 @@ public class TaskQueue
       managerExec.shutdownNow();
       storageSyncExec.shutdownNow();
       requestManagement();
+      taskRunner = null;
     }
     finally {
       giant.unlock();

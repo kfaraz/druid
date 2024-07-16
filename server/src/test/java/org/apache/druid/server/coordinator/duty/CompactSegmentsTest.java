@@ -1839,6 +1839,7 @@ public class CompactSegmentsTest
                 numCompactionTaskSlots == null ? null : 1.0, // 100% when numCompactionTaskSlots is not null
                 numCompactionTaskSlots,
                 useAutoScaleSlots,
+                null,
                 null
             )
         )

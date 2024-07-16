@@ -21,11 +21,13 @@ package org.apache.druid.timeline;
 
 import org.apache.druid.java.util.common.Intervals;
 import org.apache.druid.timeline.partition.NumberedShardSpec;
+import org.apache.druid.timeline.partition.PartitionChunk;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 
 public class SegmentTimelineTest
 {
@@ -62,6 +64,56 @@ public class SegmentTimelineTest
     Assert.assertTrue(
         timeline.isOvershadowed(createSegment("2022-01-02/2022-01-03", "v1", 0, 1))
     );
+  }
+
+  @Test
+  public void testDayOvershadowsMonth()
+  {
+    final DataSegment doubleDaySegment = createSegment("2024-01-01/P2D", "v1", 0, 1);
+    final DataSegment day1Segment = createSegment("2024-01-01/P1D", "v2", 0, 1);
+    final DataSegment day2Segment = createSegment("2024-01-02/P1D", "v3", 0, 1);
+
+    final SegmentTimeline timeline = SegmentTimeline.forSegments(
+        Arrays.asList(doubleDaySegment, day1Segment, day2Segment)
+    );
+
+    Assert.assertFalse(timeline.isOvershadowed(day1Segment));
+    // Assert.assertTrue(timeline.isOvershadowed(monthSegment));
+
+    List<TimelineObjectHolder<String, DataSegment>> timelineEntries = timeline.lookup(day1Segment.getInterval());
+    for (TimelineObjectHolder<String, DataSegment> entry : timelineEntries) {
+      for (PartitionChunk<DataSegment> segment : entry.getObject()) {
+        System.out.println("Day 1 has segment: " + segment.getObject().getId());
+      }
+    }
+
+    timelineEntries = timeline.lookup(doubleDaySegment.getInterval());
+    for (TimelineObjectHolder<String, DataSegment> entry : timelineEntries) {
+      for (PartitionChunk<DataSegment> segment : entry.getObject()) {
+        System.out.println("Double day has segment: " + segment.getObject().getId());
+      }
+    }
+
+    timeline.remove(
+        day2Segment.getInterval(),
+        day2Segment.getVersion(),
+        day2Segment.getShardSpec().createChunk(day2Segment)
+    );
+    System.out.println("Removed segment for Day 2");
+
+    timelineEntries = timeline.lookup(day1Segment.getInterval());
+    for (TimelineObjectHolder<String, DataSegment> entry : timelineEntries) {
+      for (PartitionChunk<DataSegment> segment : entry.getObject()) {
+        System.out.println("Day 1 has segment: " + segment.getObject().getId());
+      }
+    }
+
+    timelineEntries = timeline.lookup(doubleDaySegment.getInterval());
+    for (TimelineObjectHolder<String, DataSegment> entry : timelineEntries) {
+      for (PartitionChunk<DataSegment> segment : entry.getObject()) {
+        System.out.println("Double day has segment: " + segment.getObject().getId());
+      }
+    }
   }
 
   private DataSegment createSegment(String interval, String version, int partitionNum, int totalNumPartitions)

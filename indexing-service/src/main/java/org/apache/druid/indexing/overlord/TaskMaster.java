@@ -32,6 +32,8 @@ import org.apache.druid.indexing.common.actions.TaskActionClient;
 import org.apache.druid.indexing.common.actions.TaskActionClientFactory;
 import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.indexing.common.task.TaskContextEnricher;
+import org.apache.druid.indexing.compact.CompactionScheduler;
+import org.apache.druid.indexing.compact.CompactionSchedulerImpl;
 import org.apache.druid.indexing.overlord.autoscaling.ScalingStats;
 import org.apache.druid.indexing.overlord.config.DefaultTaskConfig;
 import org.apache.druid.indexing.overlord.config.TaskLockConfig;
@@ -82,23 +84,17 @@ public class TaskMaster implements TaskCountStatsProvider, TaskSlotCountStatsPro
 
   @Inject
   public TaskMaster(
-      final TaskLockConfig taskLockConfig,
-      final TaskQueueConfig taskQueueConfig,
-      final DefaultTaskConfig defaultTaskConfig,
-      final TaskLockbox taskLockbox,
-      final TaskStorage taskStorage,
+      final TaskQueue taskQueue,
       final TaskActionClientFactory taskActionClientFactory,
       @Self final DruidNode selfNode,
       final TaskRunnerFactory runnerFactory,
       final ServiceAnnouncer serviceAnnouncer,
       final CoordinatorOverlordServiceConfig coordinatorOverlordServiceConfig,
-      final ServiceEmitter emitter,
       final SupervisorManager supervisorManager,
       final OverlordDutyExecutor overlordDutyExecutor,
       @IndexingService final DruidLeaderSelector overlordLeaderSelector,
       final SegmentAllocationQueue segmentAllocationQueue,
-      final ObjectMapper mapper,
-      final TaskContextEnricher taskContextEnricher
+      final CompactionScheduler compactionScheduler
   )
   {
     this.supervisorManager = supervisorManager;
@@ -121,18 +117,7 @@ public class TaskMaster implements TaskCountStatsProvider, TaskSlotCountStatsPro
 
         try {
           taskRunner = runnerFactory.build();
-          taskQueue = new TaskQueue(
-              taskLockConfig,
-              taskQueueConfig,
-              defaultTaskConfig,
-              taskStorage,
-              taskRunner,
-              taskActionClientFactory,
-              taskLockbox,
-              emitter,
-              mapper,
-              taskContextEnricher
-          );
+          TaskMaster.this.taskQueue = taskQueue;
 
           // Sensible order to start stuff:
           final Lifecycle leaderLifecycle = new Lifecycle("task-master");
@@ -145,6 +130,7 @@ public class TaskMaster implements TaskCountStatsProvider, TaskSlotCountStatsPro
           leaderLifecycle.addManagedInstance(taskQueue);
           leaderLifecycle.addManagedInstance(supervisorManager);
           leaderLifecycle.addManagedInstance(overlordDutyExecutor);
+          leaderLifecycle.addManagedInstance(compactionScheduler);
           leaderLifecycle.addHandler(
               new Lifecycle.Handler()
               {

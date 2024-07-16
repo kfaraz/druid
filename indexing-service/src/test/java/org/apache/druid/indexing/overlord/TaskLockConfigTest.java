@@ -119,7 +119,7 @@ public class TaskLockConfigTest
         queueConfig,
         new DefaultTaskConfig(),
         taskStorage,
-        taskRunner,
+        RunnerFactory.of(taskRunner),
         actionClientFactory,
         lockbox,
         emitter,

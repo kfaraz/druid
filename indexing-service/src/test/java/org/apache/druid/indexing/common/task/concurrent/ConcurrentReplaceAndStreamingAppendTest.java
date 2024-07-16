@@ -39,6 +39,7 @@ import org.apache.druid.indexing.common.task.NoopTask;
 import org.apache.druid.indexing.common.task.NoopTaskContextEnricher;
 import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.indexing.common.task.TestAppenderatorsManager;
+import org.apache.druid.indexing.overlord.RunnerFactory;
 import org.apache.druid.indexing.overlord.SegmentPublishResult;
 import org.apache.druid.indexing.overlord.Segments;
 import org.apache.druid.indexing.overlord.TaskQueue;
@@ -154,7 +155,7 @@ public class ConcurrentReplaceAndStreamingAppendTest extends IngestionTestBase
         new TaskQueueConfig(null, new Period(0L), null, null, null, null),
         new DefaultTaskConfig(),
         getTaskStorage(),
-        taskRunner,
+        RunnerFactory.of(taskRunner),
         taskActionClientFactory,
         getLockbox(),
         new NoopServiceEmitter(),

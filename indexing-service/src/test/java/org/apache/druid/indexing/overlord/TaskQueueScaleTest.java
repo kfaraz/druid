@@ -125,7 +125,7 @@ public class TaskQueueScaleTest
         new TaskQueueConfig(null, Period.millis(1), null, null, null, null),
         new DefaultTaskConfig(),
         taskStorage,
-        taskRunner,
+        RunnerFactory.of(taskRunner),
         unsupportedTaskActionFactory, // Not used for anything serious
         new TaskLockbox(taskStorage, storageCoordinator),
         new NoopServiceEmitter(),
