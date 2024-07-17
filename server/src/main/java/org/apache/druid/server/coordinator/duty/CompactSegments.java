@@ -118,6 +118,10 @@ public class CompactSegments implements CoordinatorCustomDuty
   @Override
   public DruidCoordinatorRuntimeParams run(DruidCoordinatorRuntimeParams params)
   {
+    if (params.getCoordinatorCompactionConfig().getSchedulerConfig().isEnabled()) {
+      LOG.info("Not running compaction duty as Compaction Scheduler is running on Overlord.");
+    }
+
     run(
         params.getCoordinatorCompactionConfig(),
         params.getUsedSegmentsTimelinesPerDataSource(),

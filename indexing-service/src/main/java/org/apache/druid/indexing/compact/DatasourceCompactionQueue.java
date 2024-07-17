@@ -21,8 +21,6 @@ package org.apache.druid.indexing.compact;
 
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.server.coordinator.DataSourceCompactionConfig;
-import org.apache.druid.server.coordinator.compact.DatasourceCompactibleSegmentIterator;
-import org.checkerframework.checker.units.qual.A;
 
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -32,7 +30,6 @@ public class DatasourceCompactionQueue
 
   private final String datasource;
   private final AtomicReference<DataSourceCompactionConfig> config = new AtomicReference<>();
-  private final AtomicReference<DatasourceCompactibleSegmentIterator> segmentIterator = new AtomicReference<>();
 
   public DatasourceCompactionQueue(String datasource)
   {
@@ -44,23 +41,6 @@ public class DatasourceCompactionQueue
     final DataSourceCompactionConfig previousConfig = config.getAndSet(latestConfig);
 
     // TODO: check if anything has changed, then reset the corresponding stuff
-  }
-
-  public void getSegmentsToCompact()
-  {
-
-  }
-
-  public void onCompactionStarted()
-  {
-    // move the submitted item to a different list
-  }
-
-  public void onCompactionFinished()
-  {
-    // take some action based on success or failure
-    // failure: track number of retries, after N retries move to second list
-    // success: move item to second list
   }
 
   public void stop()

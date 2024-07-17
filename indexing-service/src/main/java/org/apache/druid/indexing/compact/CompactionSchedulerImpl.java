@@ -29,7 +29,6 @@ import org.apache.druid.client.indexing.TaskPayloadResponse;
 import org.apache.druid.common.config.JacksonConfigManager;
 import org.apache.druid.error.DruidException;
 import org.apache.druid.error.ErrorResponse;
-import org.apache.druid.indexer.TaskStatus;
 import org.apache.druid.indexer.TaskStatusPlus;
 import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.indexing.overlord.TaskMaster;
@@ -45,6 +44,7 @@ import org.apache.druid.java.util.common.parsers.CloseableIterator;
 import org.apache.druid.metadata.LockFilterPolicy;
 import org.apache.druid.metadata.SegmentsMetadataManager;
 import org.apache.druid.server.coordinator.CoordinatorCompactionConfig;
+import org.apache.druid.server.coordinator.CoordinatorOverlordServiceConfig;
 import org.apache.druid.server.coordinator.DataSourceCompactionConfig;
 import org.apache.druid.server.coordinator.compact.CompactionSegmentIterator;
 import org.apache.druid.server.coordinator.compact.CompactionSegmentSearchPolicy;
@@ -62,8 +62,20 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
+/**
+ * TODO: pending items
+ *  - callback on taskqueue
+ *  - handle success and failure inside DatasourceQueue
+ *  - make policy serializable
+ *  - add another policy
+ *  - [x] enable segments polling if overlord is standalone
+ *  - test on cluster - standalone, coordinator-overlord
+ *  - unit tests
+ *  - integration tests
+ */
 public class CompactionSchedulerImpl
 {
   private static final Logger log = new Logger(CompactionSchedulerImpl.class);
@@ -76,9 +88,11 @@ public class CompactionSchedulerImpl
   /**
    * Single-threaded executor to process the compaction queue.
    */
-  private volatile ScheduledExecutorService executor;
-  private final ScheduledExecutorFactory executorFactory;
+  private final ScheduledExecutorService executor;
+
+  private final AtomicBoolean isLeader = new AtomicBoolean(false);
   private final CompactSegments duty;
+  private final boolean shouldPollSegments;
 
   private final Map<String, DatasourceCompactionQueue> datasourceQueues = new HashMap<>();
 
@@ -91,6 +105,7 @@ public class CompactionSchedulerImpl
       OverlordResource overlordResource,
       SegmentsMetadataManager segmentManager,
       JacksonConfigManager configManager,
+      CoordinatorOverlordServiceConfig coordinatorOverlordServiceConfig,
       ScheduledExecutorFactory executorFactory
   )
   {
@@ -98,51 +113,51 @@ public class CompactionSchedulerImpl
     this.configManager = configManager;
     this.overlordResource = overlordResource;
     this.segmentManager = segmentManager;
-    this.executorFactory = executorFactory;
 
-    // TODO: Setup polling if standalone
-
+    this.executor = executorFactory.create(1, "CompactionScheduler-%s");
+    this.shouldPollSegments = coordinatorOverlordServiceConfig.isEnabled() && segmentManager != null;
     this.duty = new CompactSegments(new WrapperPolicy(), new LocalOverlordClient());
     taskMaster.registerToLeaderLifecycle(this);
   }
 
   @LifecycleStart
-  public void start()
+  public void becomeLeader()
   {
-    if (isEnabled()) {
-      log.info("Starting scheduler as we are now the leader.");
-      initExecutor();
+    if (isLeader.compareAndSet(false, true)) {
       executor.submit(this::checkSchedulingStatus);
-
-      // TODO: setup callbacks
-      getValidTaskQueue();
     }
   }
 
   @LifecycleStop
-  public void stop()
+  public void stopBeingLeader()
   {
-    if (isEnabled()) {
-      log.info("Pausing scheduler as we are not the leader anymore.");
-
-      Optional<TaskQueue> taskQueue = taskMaster.getTaskQueue();
-      if (taskQueue.isPresent()) {
-        // TODO: remove callbacks
-      } else {
-        log.warn("No TaskQueue. Unable to de-register callbacks.");
-      }
-    }
-    if (executor != null) {
-      executor.shutdownNow();
-      executor = null;
-    }
-    cleanupState();
+    isLeader.set(false);
   }
 
-  private void initExecutor()
+  private synchronized void initState()
   {
-    if (executor == null) {
-      executor = executorFactory.create(1, "CompactionScheduler-%s");
+    // TODO: remove the task state listener
+    log.info("Initializing scheduler state");
+    if (shouldPollSegments) {
+      segmentManager.startPollingDatabasePeriodically();
+    }
+  }
+
+  private synchronized void cleanupState()
+  {
+    log.info("Cleaning up scheduler state");
+    datasourceQueues.forEach((datasource, queue) -> queue.stop());
+    datasourceQueues.clear();
+
+    Optional<TaskQueue> taskQueue = taskMaster.getTaskQueue();
+    if (taskQueue.isPresent()) {
+      // TODO: attach task state listener
+    } else {
+      log.warn("No TaskQueue. Unable to de-register callbacks.");
+    }
+
+    if (shouldPollSegments) {
+      segmentManager.stopPollingDatabasePeriodically();
     }
   }
 
@@ -156,57 +171,37 @@ public class CompactionSchedulerImpl
     }
   }
 
-  /*
-  TODO: TASKS
-  For tasks, we need to know the following:
-  all items are the same as CompactSegments
-  - available number of slots - can be determined in a way similar to how CompactSegments does it
-  - whether there is already a task for the chosen datasource + interval - do it the same way CompactSegments does it
-  - locked intervals (we need to support it for now)
-
-   Do we need to know which tasks are currently running?
-   */
-  public void onTaskStatusChanged(TaskStatus taskStatus)
-  {
-    // Update the datasource queue with this info
-    // What if we never got notified for the completion of a certain task?
-    // We should be able to recover from that situation.
-
-    // If failed, put that job back in the queue upto a max number of retries.
-    // If succeeded or retry exhausted, put that job in a different waiting queue
-
-    // Also trigger a check
-  }
-
   public boolean isEnabled()
   {
     return currentConfig.get().getSchedulerConfig().isEnabled();
   }
 
-  private synchronized void cleanupState()
-  {
-    datasourceQueues.forEach((datasource, queue) -> queue.stop());
-    datasourceQueues.clear();
-  }
-
   private synchronized void checkSchedulingStatus()
   {
+    log.info("Checking schedule");
     final CoordinatorCompactionConfig latestConfig = getLatestConfig();
     currentConfig.set(latestConfig);
 
-    if (isEnabled()) {
-      processCompactionQueue(latestConfig);
+    if (isLeader.get()) {
+      if (isEnabled()) {
+        initState();
+        processCompactionQueue(latestConfig);
+      } else {
+        cleanupState();
+      }
+
+      // Continue the schedule as long as we are the leader
+      executor.schedule(this::checkSchedulingStatus, 60, TimeUnit.SECONDS);
     } else {
-      // Do not process but continue the schedule
       cleanupState();
     }
-    executor.schedule(this::checkSchedulingStatus, 60, TimeUnit.SECONDS);
   }
 
   private synchronized void processCompactionQueue(
       CoordinatorCompactionConfig currentConfig
   )
   {
+    log.info("Processing compaction queue");
     final Set<String> compactionEnabledDatasources = new HashSet<>();
     if (currentConfig.getCompactionConfigs() != null) {
       currentConfig.getCompactionConfigs().forEach(config -> compactionEnabledDatasources.add(config.getDataSource()));
