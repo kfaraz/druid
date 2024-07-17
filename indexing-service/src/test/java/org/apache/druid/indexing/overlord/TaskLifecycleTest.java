@@ -693,7 +693,7 @@ public class TaskLifecycleTest extends InitializedNullHandlingTest
         tqc,
         new DefaultTaskConfig(),
         ts,
-        RunnerFactory.of(tr),
+        tr,
         tac,
         taskLockbox,
         emitter,
