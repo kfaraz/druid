@@ -269,6 +269,17 @@ public class TaskMaster implements TaskCountStatsProvider, TaskSlotCountStatsPro
     }
   }
 
+  public void registerToLeaderLifecycle(Object module)
+  {
+    giant.lock();
+    try {
+      leaderLifecycleRef.get().addManagedInstance(module);
+    }
+    finally {
+      giant.unlock();
+    }
+  }
+
   public Optional<TaskRunner> getTaskRunner()
   {
     if (isLeader()) {

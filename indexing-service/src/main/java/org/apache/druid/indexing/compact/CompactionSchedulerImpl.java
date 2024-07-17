@@ -19,35 +19,38 @@
 
 package org.apache.druid.indexing.compact;
 
+import com.google.common.base.Optional;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.inject.Inject;
+import org.apache.druid.client.DataSourcesSnapshot;
 import org.apache.druid.client.indexing.IndexingTotalWorkerCapacityInfo;
 import org.apache.druid.client.indexing.TaskPayloadResponse;
 import org.apache.druid.common.config.JacksonConfigManager;
+import org.apache.druid.error.DruidException;
+import org.apache.druid.error.ErrorResponse;
 import org.apache.druid.indexer.TaskStatus;
 import org.apache.druid.indexer.TaskStatusPlus;
 import org.apache.druid.indexing.common.task.Task;
-import org.apache.druid.indexing.overlord.TaskLockbox;
 import org.apache.druid.indexing.overlord.TaskMaster;
 import org.apache.druid.indexing.overlord.TaskQueue;
 import org.apache.druid.indexing.overlord.http.OverlordResource;
-import org.apache.druid.java.util.common.DateTimes;
+import org.apache.druid.java.util.common.CloseableIterators;
+import org.apache.druid.java.util.common.concurrent.Execs;
 import org.apache.druid.java.util.common.concurrent.ScheduledExecutorFactory;
 import org.apache.druid.java.util.common.lifecycle.LifecycleStart;
 import org.apache.druid.java.util.common.lifecycle.LifecycleStop;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.java.util.common.parsers.CloseableIterator;
 import org.apache.druid.metadata.LockFilterPolicy;
+import org.apache.druid.metadata.SegmentsMetadataManager;
 import org.apache.druid.server.coordinator.CoordinatorCompactionConfig;
 import org.apache.druid.server.coordinator.DataSourceCompactionConfig;
-import org.apache.druid.server.coordinator.DruidCoordinatorRuntimeParams;
 import org.apache.druid.server.coordinator.compact.CompactionSegmentIterator;
 import org.apache.druid.server.coordinator.compact.CompactionSegmentSearchPolicy;
 import org.apache.druid.server.coordinator.duty.CompactSegments;
 import org.apache.druid.server.coordinator.stats.CoordinatorRunStats;
 import org.apache.druid.timeline.SegmentTimeline;
-import org.checkerframework.checker.units.qual.C;
 import org.joda.time.Interval;
 
 import javax.annotation.Nullable;
@@ -65,9 +68,10 @@ public class CompactionSchedulerImpl
 {
   private static final Logger log = new Logger(CompactionSchedulerImpl.class);
 
-  private final TaskQueue taskQueue;
+  private final TaskMaster taskMaster;
+  private final OverlordResource overlordResource;
   private final JacksonConfigManager configManager;
-  private final MetadataSegmentsWatcher segmentsWatcher;
+  private final SegmentsMetadataManager segmentManager;
 
   /**
    * Single-threaded executor to process the compaction queue.
@@ -76,31 +80,29 @@ public class CompactionSchedulerImpl
   private final ScheduledExecutorFactory executorFactory;
   private final CompactSegments duty;
 
-
   private final Map<String, DatasourceCompactionQueue> datasourceQueues = new HashMap<>();
 
-  private final AtomicReference<CoordinatorCompactionConfig> currentConfig
-      = new AtomicReference<>(CoordinatorCompactionConfig.empty());
+  private final AtomicReference<CoordinatorCompactionConfig> currentConfig = new AtomicReference<>(
+      CoordinatorCompactionConfig.empty());
 
   @Inject
   public CompactionSchedulerImpl(
-      TaskQueue taskQueue,
       TaskMaster taskMaster,
       OverlordResource overlordResource,
+      SegmentsMetadataManager segmentManager,
       JacksonConfigManager configManager,
       ScheduledExecutorFactory executorFactory
   )
   {
-    this.taskQueue = taskQueue;
+    this.taskMaster = taskMaster;
     this.configManager = configManager;
-    this.segmentsWatcher = null;
+    this.overlordResource = overlordResource;
+    this.segmentManager = segmentManager;
     this.executorFactory = executorFactory;
 
-    // TODO: setup some callbacks on TaskQueue and the SegmentsWatcher
-    this.duty = new CompactSegments(
-        new WrapperPolicy(),
-        new LocalOverlordClient(taskQueue, overlordResource)
-    );
+    // TODO: Setup polling if standalone
+
+    this.duty = new CompactSegments(new WrapperPolicy(), new LocalOverlordClient());
     taskMaster.registerToLeaderLifecycle(this);
   }
 
@@ -111,6 +113,9 @@ public class CompactionSchedulerImpl
       log.info("Starting scheduler as we are now the leader.");
       initExecutor();
       executor.submit(this::checkSchedulingStatus);
+
+      // TODO: setup callbacks
+      getValidTaskQueue();
     }
   }
 
@@ -119,6 +124,13 @@ public class CompactionSchedulerImpl
   {
     if (isEnabled()) {
       log.info("Pausing scheduler as we are not the leader anymore.");
+
+      Optional<TaskQueue> taskQueue = taskMaster.getTaskQueue();
+      if (taskQueue.isPresent()) {
+        // TODO: remove callbacks
+      } else {
+        log.warn("No TaskQueue. Unable to de-register callbacks.");
+      }
     }
     if (executor != null) {
       executor.shutdownNow();
@@ -131,6 +143,16 @@ public class CompactionSchedulerImpl
   {
     if (executor == null) {
       executor = executorFactory.create(1, "CompactionScheduler-%s");
+    }
+  }
+
+  private TaskQueue getValidTaskQueue()
+  {
+    Optional<TaskQueue> taskQueue = taskMaster.getTaskQueue();
+    if (taskQueue.isPresent()) {
+      return taskQueue.get();
+    } else {
+      throw DruidException.defensive("No TaskQueue. Cannot proceed.");
     }
   }
 
@@ -154,23 +176,6 @@ public class CompactionSchedulerImpl
     // If succeeded or retry exhausted, put that job in a different waiting queue
 
     // Also trigger a check
-  }
-
-  /*
-  TODO: SEGMENTS
-   - easiest way is to just do it with SegmentTimeline.lookup
-  - whatever segments you add or remove to an interval
-  - just check if a lookup on the respective intervals has changed, right?
-  - can anything else happen?
-
-  - if some segments have been removed, an older set of segments might become re-visible.
-  - how can we check this??
-
-  - a lookup of that interval will reveal some other set.
-   */
-  public void onSegmentsUpdated()
-  {
-
   }
 
   public boolean isEnabled()
@@ -204,16 +209,13 @@ public class CompactionSchedulerImpl
   {
     final Set<String> compactionEnabledDatasources = new HashSet<>();
     if (currentConfig.getCompactionConfigs() != null) {
-      currentConfig.getCompactionConfigs().forEach(
-          config -> compactionEnabledDatasources.add(config.getDataSource())
-      );
+      currentConfig.getCompactionConfigs().forEach(config -> compactionEnabledDatasources.add(config.getDataSource()));
 
       // Create queues for datasources where compaction has been freshly enabled
-      currentConfig.getCompactionConfigs().forEach(
-          datasourceConfig -> datasourceQueues
-              .computeIfAbsent(datasourceConfig.getDataSource(), DatasourceCompactionQueue::new)
-              .updateConfig(datasourceConfig)
-      );
+      currentConfig.getCompactionConfigs().forEach(datasourceConfig -> datasourceQueues.computeIfAbsent(
+          datasourceConfig.getDataSource(),
+          DatasourceCompactionQueue::new
+      ).updateConfig(datasourceConfig));
     }
 
     // Stop queues for datasources where compaction has been freshly disabled
@@ -224,8 +226,10 @@ public class CompactionSchedulerImpl
       }
     }
 
+    DataSourcesSnapshot dataSourcesSnapshot
+        = segmentManager.getSnapshotOfDataSourcesWithAllUsedSegments();
     final CoordinatorRunStats stats = new CoordinatorRunStats();
-    duty.run(currentConfig, timelines, stats);
+    duty.run(currentConfig, dataSourcesSnapshot.getUsedSegmentsTimelinesPerDataSource(), stats);
 
     // Now check the task slots and stuff and submit the highest priority tasks one by one
     // 1. Compute maximum compaction task slots
@@ -250,26 +254,6 @@ public class CompactionSchedulerImpl
     ).get();
   }
 
-  /*
-  What if we decide to do everything on the coordinator?
-
-  What changes?
-  - keep track of everything that you have submitted
-  - keep polling for the statuses
-  - feels super weird for the coordinator to do this
-
-  Biggest problem now is the status.
-  We can just redirect.
-
-  Overlord pros:
-  - natural place for ingestion stuff to happen
-  - easy to keep track of running tasks and get task complete callbacks
-
-  Coordinator pros:
-  - compaction status APIs
-  - already has a segment timeline that we can use
-
-*/
   private static class WrapperPolicy implements CompactionSegmentSearchPolicy
   {
 
@@ -284,76 +268,76 @@ public class CompactionSchedulerImpl
     }
   }
 
-  private static class LocalOverlordClient extends NoopOverlordClient
+  private class LocalOverlordClient extends NoopOverlordClient
   {
-    final TaskQueue taskQueue;
-    final OverlordResource overlordResource;
-
-    LocalOverlordClient(TaskQueue taskQueue, OverlordResource overlordResource)
-    {
-      this.taskQueue = taskQueue;
-      this.overlordResource = overlordResource;
-    }
-
     @Override
     public ListenableFuture<Void> runTask(String taskId, Object taskObject)
     {
-      taskQueue.add((Task) taskObject);
-      return Futures.immediateVoidFuture();
+      try {
+        getValidTaskQueue().add((Task) taskObject);
+        return Futures.immediateVoidFuture();
+      }
+      catch (Throwable t) {
+        return Futures.immediateFailedFuture(t);
+      }
     }
 
     @Override
     public ListenableFuture<Void> cancelTask(String taskId)
     {
-      taskQueue.shutdown(taskId, "just coz!");
-      return Futures.immediateVoidFuture();
+      try {
+        getValidTaskQueue().shutdown(taskId, "just coz!");
+        return Futures.immediateVoidFuture();
+      }
+      catch (Throwable t) {
+        return Futures.immediateFailedFuture(t);
+      }
     }
 
     @Override
     public ListenableFuture<TaskPayloadResponse> taskPayload(String taskId)
     {
-      return futureOf(
-          overlordResource.getTaskPayload(taskId)
-      );
+      return futureOf(overlordResource.getTaskPayload(taskId));
     }
 
     @Override
     public ListenableFuture<CloseableIterator<TaskStatusPlus>> taskStatuses(
-        @Nullable String state,
-        @Nullable String dataSource,
-        @Nullable Integer maxCompletedTasks
+        @Nullable String state, @Nullable String dataSource, @Nullable Integer maxCompletedTasks
     )
     {
-      // TODO: convert list to closeable iterator
-      return futureOf(
-          overlordResource.getTasks()
+      final ListenableFuture<List<TaskStatusPlus>> tasksFuture
+          = futureOf(overlordResource.getAllActiveTasks());
+      return Futures.transform(
+          tasksFuture,
+          taskList -> CloseableIterators.withEmptyBaggage(taskList.iterator()),
+          Execs.directExecutor()
       );
     }
 
     @Override
     public ListenableFuture<Map<String, List<Interval>>> findLockedIntervals(List<LockFilterPolicy> lockFilterPolicies)
     {
-      return futureOf(
-          overlordResource.getDatasourceLockedIntervalsV2(lockFilterPolicies)
-      );
+      return futureOf(overlordResource.getDatasourceLockedIntervalsV2(lockFilterPolicies));
     }
 
     @Override
     public ListenableFuture<IndexingTotalWorkerCapacityInfo> getTotalWorkerCapacity()
     {
-      return futureOf(
-          overlordResource.getTotalWorkerCapacity()
-      );
+      return futureOf(overlordResource.getTotalWorkerCapacity());
     }
 
     @SuppressWarnings("unchecked")
-    private static <T> ListenableFuture<T> futureOf(Response response)
+    private <T> ListenableFuture<T> futureOf(Response response)
     {
       final int responseCode = response.getStatus();
       if (responseCode >= 200 && responseCode < 300) {
         return Futures.immediateFuture((T) response.getEntity());
+      } else if (response.getEntity() instanceof ErrorResponse) {
+        ErrorResponse error = (ErrorResponse) response.getEntity();
+        return Futures.immediateFailedFuture(error.getUnderlyingException());
       } else {
-        return Futures.immediateFailedFuture();
+        log.warn("Error while invoking overlord method: [%s]", response.getEntity());
+        return Futures.immediateFailedFuture(DruidException.defensive("Unknown error"));
       }
     }
   }

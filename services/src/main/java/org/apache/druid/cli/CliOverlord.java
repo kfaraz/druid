@@ -104,6 +104,8 @@ import org.apache.druid.indexing.worker.shuffle.DeepStorageIntermediaryDataManag
 import org.apache.druid.indexing.worker.shuffle.IntermediaryDataManager;
 import org.apache.druid.indexing.worker.shuffle.LocalIntermediaryDataManager;
 import org.apache.druid.java.util.common.logger.Logger;
+import org.apache.druid.metadata.SegmentsMetadataManager;
+import org.apache.druid.metadata.SegmentsMetadataManagerProvider;
 import org.apache.druid.metadata.input.InputSourceModule;
 import org.apache.druid.query.lookup.LookupSerdeModule;
 import org.apache.druid.segment.incremental.RowIngestionMetersFactory;
@@ -201,7 +203,15 @@ public class CliOverlord extends ServerRunnable
               binder.bindConstant().annotatedWith(Names.named("servicePort")).to(8090);
               binder.bindConstant().annotatedWith(Names.named("tlsServicePort")).to(8290);
 
-              JsonConfigProvider.bind(binder, CentralizedDatasourceSchemaConfig.PROPERTY_PREFIX, CentralizedDatasourceSchemaConfig.class);
+              JsonConfigProvider.bind(
+                  binder,
+                  CentralizedDatasourceSchemaConfig.PROPERTY_PREFIX,
+                  CentralizedDatasourceSchemaConfig.class
+              );
+
+              binder.bind(SegmentsMetadataManager.class)
+                    .toProvider(SegmentsMetadataManagerProvider.class)
+                    .in(ManageLifecycle.class);
             }
 
             JsonConfigProvider.bind(binder, "druid.coordinator.asOverlord", CoordinatorOverlordServiceConfig.class);
