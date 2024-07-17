@@ -24,6 +24,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableList;
 import org.apache.druid.common.config.Configs;
 import org.apache.druid.indexer.CompactionEngine;
+import org.apache.druid.server.http.CompactionConfigUpdateRequest;
 
 import javax.annotation.Nullable;
 import java.util.List;
@@ -62,6 +63,21 @@ public class CoordinatorCompactionConfig
 
   public static CoordinatorCompactionConfig from(
       CoordinatorCompactionConfig baseConfig,
+      CompactionConfigUpdateRequest update
+  )
+  {
+    return new CoordinatorCompactionConfig(
+        baseConfig.compactionConfigs,
+        Configs.valueOrDefault(update.getCompactionTaskSlotRatio(), baseConfig.compactionTaskSlotRatio),
+        Configs.valueOrDefault(update.getMaxCompactionTaskSlots(), baseConfig.maxCompactionTaskSlots),
+        Configs.valueOrDefault(update.getUseAutoScaleSlots(), baseConfig.useAutoScaleSlots),
+        Configs.valueOrDefault(update.getSchedulerConfig(), baseConfig.schedulerConfig),
+        Configs.valueOrDefault(update.getCompactionEngine(), baseConfig.compactionEngine)
+    );
+  }
+
+  public static CoordinatorCompactionConfig from(
+      CoordinatorCompactionConfig baseConfig,
       @Nullable Double compactionTaskSlotRatio,
       @Nullable Integer maxCompactionTaskSlots,
       @Nullable Boolean useAutoScaleSlots
@@ -93,7 +109,7 @@ public class CoordinatorCompactionConfig
       @JsonProperty("compactionTaskSlotRatio") @Nullable Double compactionTaskSlotRatio,
       @JsonProperty("maxCompactionTaskSlots") @Nullable Integer maxCompactionTaskSlots,
       @JsonProperty("useAutoScaleSlots") @Nullable Boolean useAutoScaleSlots,
-      @JsonProperty("scheduler") @Nullable CompactionSchedulerConfig schedulerConfig,
+      @JsonProperty("schedulerConfig") @Nullable CompactionSchedulerConfig schedulerConfig,
       @JsonProperty("compactionEngine") @Nullable CompactionEngine compactionEngine
   )
   {

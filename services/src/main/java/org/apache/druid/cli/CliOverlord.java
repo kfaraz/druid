@@ -69,6 +69,7 @@ import org.apache.druid.indexing.common.task.batch.parallel.ShuffleClient;
 import org.apache.druid.indexing.common.tasklogs.SwitchingTaskLogStreamer;
 import org.apache.druid.indexing.common.tasklogs.TaskRunnerTaskLogStreamer;
 import org.apache.druid.indexing.compact.CompactionScheduler;
+import org.apache.druid.indexing.compact.CompactionSchedulerImpl;
 import org.apache.druid.indexing.overlord.ForkingTaskRunnerFactory;
 import org.apache.druid.indexing.overlord.HeapMemoryTaskStorage;
 import org.apache.druid.indexing.overlord.IndexerMetadataStorageAdapter;
@@ -93,6 +94,7 @@ import org.apache.druid.indexing.overlord.duty.TaskLogAutoCleaner;
 import org.apache.druid.indexing.overlord.duty.TaskLogAutoCleanerConfig;
 import org.apache.druid.indexing.overlord.hrtr.HttpRemoteTaskRunnerFactory;
 import org.apache.druid.indexing.overlord.hrtr.HttpRemoteTaskRunnerResource;
+import org.apache.druid.indexing.overlord.http.OverlordCompactionResource;
 import org.apache.druid.indexing.overlord.http.OverlordRedirectInfo;
 import org.apache.druid.indexing.overlord.http.OverlordResource;
 import org.apache.druid.indexing.overlord.sampler.SamplerModule;
@@ -245,7 +247,7 @@ public class CliOverlord extends ServerRunnable
             binder.bind(TaskStorageQueryAdapter.class).in(LazySingleton.class);
             binder.bind(IndexerMetadataStorageAdapter.class).in(LazySingleton.class);
             binder.bind(SupervisorManager.class).in(LazySingleton.class);
-            binder.bind(CompactionScheduler.class).in(LazySingleton.class);
+            binder.bind(CompactionScheduler.class).to(CompactionSchedulerImpl.class).in(LazySingleton.class);
 
             binder.bind(ParallelIndexSupervisorTaskClientProvider.class).toProvider(Providers.of(null));
             binder.bind(ShuffleClient.class).toProvider(Providers.of(null));
@@ -294,6 +296,7 @@ public class CliOverlord extends ServerRunnable
             Jerseys.addResource(binder, OverlordResource.class);
             Jerseys.addResource(binder, SupervisorResource.class);
             Jerseys.addResource(binder, HttpRemoteTaskRunnerResource.class);
+            Jerseys.addResource(binder, OverlordCompactionResource.class);
 
 
             binder.bind(AppenderatorsManager.class)

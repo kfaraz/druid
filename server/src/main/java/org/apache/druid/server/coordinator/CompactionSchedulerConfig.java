@@ -45,6 +45,7 @@ public class CompactionSchedulerConfig
     this.enabled = Configs.valueOrDefault(enabled, false);
   }
 
+  @JsonProperty
   public boolean isEnabled()
   {
     return enabled;

@@ -17,24 +17,24 @@
  * under the License.
  */
 
-package org.apache.druid.indexing.compact;
+package org.apache.druid.server.coordinator;
 
-import org.apache.druid.server.coordinator.AutoCompactionSnapshot;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.druid.jackson.DefaultObjectMapper;
+import org.junit.Assert;
+import org.junit.Test;
 
-import java.util.Map;
-
-public interface CompactionScheduler
+public class CoordinatorCompactionConfigTest
 {
-  Map<Object, AutoCompactionSnapshot> getAutoCompactionSnapshot();
+  private static final ObjectMapper MAPPER = new DefaultObjectMapper();
 
-  AutoCompactionSnapshot getAutoCompactionSnapshotForDataSource(String dataSource);
+  @Test
+  public void testSerdeDefaultConfig() throws Exception
+  {
+    final CoordinatorCompactionConfig defaultConfig = CoordinatorCompactionConfig.empty();
+    final String json = MAPPER.writeValueAsString(defaultConfig);
 
-  Long getTotalSizeOfSegmentsAwaitingCompaction(String dataSource);
-  /*
-   * Handle changes to
-   * - segments
-   * - compaction configs
-   * - task status
-   * - leadership
-   */
+    CoordinatorCompactionConfig deserialized = MAPPER.readValue(json, CoordinatorCompactionConfig.class);
+    Assert.assertEquals(defaultConfig, deserialized);
+  }
 }

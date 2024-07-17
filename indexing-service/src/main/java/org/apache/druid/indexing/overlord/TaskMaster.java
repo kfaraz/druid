@@ -50,6 +50,8 @@ import org.apache.druid.server.metrics.TaskCountStatsProvider;
 import org.apache.druid.server.metrics.TaskSlotCountStatsProvider;
 
 import javax.annotation.Nullable;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
@@ -69,6 +71,7 @@ public class TaskMaster implements TaskCountStatsProvider, TaskSlotCountStatsPro
   private final SupervisorManager supervisorManager;
 
   private final AtomicReference<Lifecycle> leaderLifecycleRef = new AtomicReference<>(null);
+  private final List<Object> lifecycleManagedObjects = new ArrayList<>();
 
   private volatile TaskRunner taskRunner;
   private volatile TaskQueue taskQueue;
@@ -145,6 +148,8 @@ public class TaskMaster implements TaskCountStatsProvider, TaskSlotCountStatsPro
           leaderLifecycle.addManagedInstance(taskQueue);
           leaderLifecycle.addManagedInstance(supervisorManager);
           leaderLifecycle.addManagedInstance(overlordDutyExecutor);
+          lifecycleManagedObjects.forEach(leaderLifecycle::addManagedInstance);
+
           leaderLifecycle.addHandler(
               new Lifecycle.Handler()
               {
@@ -273,7 +278,7 @@ public class TaskMaster implements TaskCountStatsProvider, TaskSlotCountStatsPro
   {
     giant.lock();
     try {
-      leaderLifecycleRef.get().addManagedInstance(module);
+      lifecycleManagedObjects.add(module);
     }
     finally {
       giant.unlock();

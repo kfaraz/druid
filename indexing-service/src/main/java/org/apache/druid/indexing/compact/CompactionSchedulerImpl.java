@@ -43,6 +43,7 @@ import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.java.util.common.parsers.CloseableIterator;
 import org.apache.druid.metadata.LockFilterPolicy;
 import org.apache.druid.metadata.SegmentsMetadataManager;
+import org.apache.druid.server.coordinator.AutoCompactionSnapshot;
 import org.apache.druid.server.coordinator.CoordinatorCompactionConfig;
 import org.apache.druid.server.coordinator.CoordinatorOverlordServiceConfig;
 import org.apache.druid.server.coordinator.DataSourceCompactionConfig;
@@ -55,6 +56,7 @@ import org.joda.time.Interval;
 
 import javax.annotation.Nullable;
 import javax.ws.rs.core.Response;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -76,7 +78,7 @@ import java.util.concurrent.atomic.AtomicReference;
  *  - unit tests
  *  - integration tests
  */
-public class CompactionSchedulerImpl
+public class CompactionSchedulerImpl implements CompactionScheduler
 {
   private static final Logger log = new Logger(CompactionSchedulerImpl.class);
 
@@ -109,6 +111,8 @@ public class CompactionSchedulerImpl
       ScheduledExecutorFactory executorFactory
   )
   {
+    log.info("Creating compaction scheduler");
+
     this.taskMaster = taskMaster;
     this.configManager = configManager;
     this.overlordResource = overlordResource;
@@ -123,6 +127,7 @@ public class CompactionSchedulerImpl
   @LifecycleStart
   public void becomeLeader()
   {
+    log.info("Becoming leader");
     if (isLeader.compareAndSet(false, true)) {
       executor.submit(this::checkSchedulingStatus);
     }
@@ -131,6 +136,7 @@ public class CompactionSchedulerImpl
   @LifecycleStop
   public void stopBeingLeader()
   {
+    log.info("not leader anymore");
     isLeader.set(false);
   }
 
@@ -247,6 +253,24 @@ public class CompactionSchedulerImpl
         CoordinatorCompactionConfig.class,
         CoordinatorCompactionConfig.empty()
     ).get();
+  }
+
+  @Override
+  public AutoCompactionSnapshot getAutoCompactionSnapshotForDataSource(String dataSource)
+  {
+    return AutoCompactionSnapshot.builder("wiki").build();
+  }
+
+  @Override
+  public Long getTotalSizeOfSegmentsAwaitingCompaction(String dataSource)
+  {
+    return 0L;
+  }
+
+  @Override
+  public Map<Object, AutoCompactionSnapshot> getAutoCompactionSnapshot()
+  {
+    return Collections.emptyMap();
   }
 
   private static class WrapperPolicy implements CompactionSegmentSearchPolicy
