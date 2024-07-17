@@ -104,6 +104,8 @@ public class TaskMaster implements TaskCountStatsProvider, TaskSlotCountStatsPro
       final TaskContextEnricher taskContextEnricher
   )
   {
+    System.out.println("Creating the task master");
+    log.info("and logging about creating the task master");
     this.supervisorManager = supervisorManager;
     this.taskActionClientFactory = taskActionClientFactory;
 

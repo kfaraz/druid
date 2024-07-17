@@ -111,6 +111,7 @@ public class CompactionSchedulerImpl implements CompactionScheduler
       ScheduledExecutorFactory executorFactory
   )
   {
+    System.out.println("Trying to create a compaction scheduler");
     log.info("Creating compaction scheduler");
 
     this.taskMaster = taskMaster;
@@ -121,7 +122,15 @@ public class CompactionSchedulerImpl implements CompactionScheduler
     this.executor = executorFactory.create(1, "CompactionScheduler-%s");
     this.shouldPollSegments = coordinatorOverlordServiceConfig.isEnabled() && segmentManager != null;
     this.duty = new CompactSegments(new WrapperPolicy(), new LocalOverlordClient());
+
     taskMaster.registerToLeaderLifecycle(this);
+    if (taskMaster.isLeader()) {
+      log.info("We are already the leader");
+      becomeLeader();
+    }
+
+    System.out.println("Successfully created a compaction scheduler");
+    log.info("Created it reasonably well");
   }
 
   @LifecycleStart
