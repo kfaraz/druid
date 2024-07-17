@@ -19,18 +19,42 @@
 
 package org.apache.druid.indexing.compact;
 
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
 import com.google.inject.Inject;
+import org.apache.druid.client.indexing.IndexingTotalWorkerCapacityInfo;
+import org.apache.druid.client.indexing.TaskPayloadResponse;
 import org.apache.druid.common.config.JacksonConfigManager;
 import org.apache.druid.indexer.TaskStatus;
+import org.apache.druid.indexer.TaskStatusPlus;
+import org.apache.druid.indexing.common.task.Task;
+import org.apache.druid.indexing.overlord.TaskLockbox;
+import org.apache.druid.indexing.overlord.TaskMaster;
 import org.apache.druid.indexing.overlord.TaskQueue;
+import org.apache.druid.indexing.overlord.http.OverlordResource;
+import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.common.concurrent.ScheduledExecutorFactory;
 import org.apache.druid.java.util.common.lifecycle.LifecycleStart;
 import org.apache.druid.java.util.common.lifecycle.LifecycleStop;
 import org.apache.druid.java.util.common.logger.Logger;
+import org.apache.druid.java.util.common.parsers.CloseableIterator;
+import org.apache.druid.metadata.LockFilterPolicy;
 import org.apache.druid.server.coordinator.CoordinatorCompactionConfig;
+import org.apache.druid.server.coordinator.DataSourceCompactionConfig;
+import org.apache.druid.server.coordinator.DruidCoordinatorRuntimeParams;
+import org.apache.druid.server.coordinator.compact.CompactionSegmentIterator;
+import org.apache.druid.server.coordinator.compact.CompactionSegmentSearchPolicy;
+import org.apache.druid.server.coordinator.duty.CompactSegments;
+import org.apache.druid.server.coordinator.stats.CoordinatorRunStats;
+import org.apache.druid.timeline.SegmentTimeline;
+import org.checkerframework.checker.units.qual.C;
+import org.joda.time.Interval;
 
+import javax.annotation.Nullable;
+import javax.ws.rs.core.Response;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ScheduledExecutorService;
@@ -50,6 +74,8 @@ public class CompactionSchedulerImpl
    */
   private volatile ScheduledExecutorService executor;
   private final ScheduledExecutorFactory executorFactory;
+  private final CompactSegments duty;
+
 
   private final Map<String, DatasourceCompactionQueue> datasourceQueues = new HashMap<>();
 
@@ -59,6 +85,8 @@ public class CompactionSchedulerImpl
   @Inject
   public CompactionSchedulerImpl(
       TaskQueue taskQueue,
+      TaskMaster taskMaster,
+      OverlordResource overlordResource,
       JacksonConfigManager configManager,
       ScheduledExecutorFactory executorFactory
   )
@@ -69,6 +97,11 @@ public class CompactionSchedulerImpl
     this.executorFactory = executorFactory;
 
     // TODO: setup some callbacks on TaskQueue and the SegmentsWatcher
+    this.duty = new CompactSegments(
+        new WrapperPolicy(),
+        new LocalOverlordClient(taskQueue, overlordResource)
+    );
+    taskMaster.registerToLeaderLifecycle(this);
   }
 
   @LifecycleStart
@@ -191,6 +224,9 @@ public class CompactionSchedulerImpl
       }
     }
 
+    final CoordinatorRunStats stats = new CoordinatorRunStats();
+    duty.run(currentConfig, timelines, stats);
+
     // Now check the task slots and stuff and submit the highest priority tasks one by one
     // 1. Compute maximum compaction task slots
     // 2. Compute currently available task slots
@@ -199,7 +235,7 @@ public class CompactionSchedulerImpl
     //    b) Pick the highest priority job out of those (if there is no prioritized datasource)
     //    c) Check if there is already a task running for that datasource-interval??
     //    d) If not, then submit the job
-    //    e) Whether submitted or ignored, tell the datasource queue what you did
+    //    e) TODO: Whether submitted or ignored, tell the datasource queue what you did
     //    f) Track jobs that have just been submitted to ensure that you do not resubmit those, see if the TaskQueue can
     //    somehow help perform the deduplication without us having to maintain a separate data structure - yes TaskQueue
     //    can do that. We just get all active tasks.
@@ -234,5 +270,92 @@ public class CompactionSchedulerImpl
   - already has a segment timeline that we can use
 
 */
+  private static class WrapperPolicy implements CompactionSegmentSearchPolicy
+  {
+
+    @Override
+    public CompactionSegmentIterator createIterator(
+        Map<String, DataSourceCompactionConfig> compactionConfigs,
+        Map<String, SegmentTimeline> dataSources,
+        Map<String, List<Interval>> skipIntervals
+    )
+    {
+      return null;
+    }
+  }
+
+  private static class LocalOverlordClient extends NoopOverlordClient
+  {
+    final TaskQueue taskQueue;
+    final OverlordResource overlordResource;
+
+    LocalOverlordClient(TaskQueue taskQueue, OverlordResource overlordResource)
+    {
+      this.taskQueue = taskQueue;
+      this.overlordResource = overlordResource;
+    }
+
+    @Override
+    public ListenableFuture<Void> runTask(String taskId, Object taskObject)
+    {
+      taskQueue.add((Task) taskObject);
+      return Futures.immediateVoidFuture();
+    }
+
+    @Override
+    public ListenableFuture<Void> cancelTask(String taskId)
+    {
+      taskQueue.shutdown(taskId, "just coz!");
+      return Futures.immediateVoidFuture();
+    }
+
+    @Override
+    public ListenableFuture<TaskPayloadResponse> taskPayload(String taskId)
+    {
+      return futureOf(
+          overlordResource.getTaskPayload(taskId)
+      );
+    }
+
+    @Override
+    public ListenableFuture<CloseableIterator<TaskStatusPlus>> taskStatuses(
+        @Nullable String state,
+        @Nullable String dataSource,
+        @Nullable Integer maxCompletedTasks
+    )
+    {
+      // TODO: convert list to closeable iterator
+      return futureOf(
+          overlordResource.getTasks()
+      );
+    }
+
+    @Override
+    public ListenableFuture<Map<String, List<Interval>>> findLockedIntervals(List<LockFilterPolicy> lockFilterPolicies)
+    {
+      return futureOf(
+          overlordResource.getDatasourceLockedIntervalsV2(lockFilterPolicies)
+      );
+    }
+
+    @Override
+    public ListenableFuture<IndexingTotalWorkerCapacityInfo> getTotalWorkerCapacity()
+    {
+      return futureOf(
+          overlordResource.getTotalWorkerCapacity()
+      );
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> ListenableFuture<T> futureOf(Response response)
+    {
+      final int responseCode = response.getStatus();
+      if (responseCode >= 200 && responseCode < 300) {
+        return Futures.immediateFuture((T) response.getEntity());
+      } else {
+        return Futures.immediateFailedFuture();
+      }
+    }
+  }
 
 }

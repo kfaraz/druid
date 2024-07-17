@@ -118,21 +118,34 @@ public class CompactSegments implements CoordinatorCustomDuty
   @Override
   public DruidCoordinatorRuntimeParams run(DruidCoordinatorRuntimeParams params)
   {
+    run(
+        params.getCoordinatorCompactionConfig(),
+        params.getUsedSegmentsTimelinesPerDataSource(),
+        params.getCoordinatorStats()
+    );
+    return params;
+  }
+
+  public void run(
+      CoordinatorCompactionConfig dynamicConfig,
+      Map<String, SegmentTimeline> dataSources,
+      CoordinatorRunStats stats
+  )
+  {
     LOG.info("Running CompactSegments duty");
 
-    final CoordinatorCompactionConfig dynamicConfig = params.getCoordinatorCompactionConfig();
     final int maxCompactionTaskSlots = dynamicConfig.getMaxCompactionTaskSlots();
     if (maxCompactionTaskSlots <= 0) {
       LOG.info("Skipping compaction as maxCompactionTaskSlots is [%d].", maxCompactionTaskSlots);
       resetCompactionSnapshot();
-      return params;
+      return;
     }
 
     List<DataSourceCompactionConfig> compactionConfigList = dynamicConfig.getCompactionConfigs();
     if (compactionConfigList == null || compactionConfigList.isEmpty()) {
       LOG.info("Skipping compaction as compaction config list is empty.");
       resetCompactionSnapshot();
-      return params;
+      return;
     }
 
     Map<String, DataSourceCompactionConfig> compactionConfigs = compactionConfigList
@@ -194,7 +207,6 @@ public class CompactSegments implements CoordinatorCustomDuty
     );
 
     // Get iterator over segments to compact and submit compaction tasks
-    Map<String, SegmentTimeline> dataSources = params.getUsedSegmentsTimelinesPerDataSource();
     final CompactionSegmentIterator iterator =
         policy.createIterator(compactionConfigs, dataSources, intervalsToSkipCompaction);
 
@@ -211,13 +223,10 @@ public class CompactSegments implements CoordinatorCustomDuty
         dynamicConfig.getEngine()
     );
 
-    final CoordinatorRunStats stats = params.getCoordinatorStats();
     stats.add(Stats.Compaction.MAX_SLOTS, compactionTaskCapacity);
     stats.add(Stats.Compaction.AVAILABLE_SLOTS, availableCompactionTaskSlots);
     stats.add(Stats.Compaction.SUBMITTED_TASKS, numSubmittedCompactionTasks);
     updateCompactionSnapshotStats(currentRunAutoCompactionSnapshotBuilders, iterator, stats);
-
-    return params;
   }
 
   private void resetCompactionSnapshot()
