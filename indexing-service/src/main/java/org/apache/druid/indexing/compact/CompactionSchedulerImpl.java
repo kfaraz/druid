@@ -19,11 +19,13 @@
 
 package org.apache.druid.indexing.compact;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Optional;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.inject.Inject;
 import org.apache.druid.client.DataSourcesSnapshot;
+import org.apache.druid.client.indexing.ClientTaskQuery;
 import org.apache.druid.client.indexing.IndexingTotalWorkerCapacityInfo;
 import org.apache.druid.client.indexing.TaskPayloadResponse;
 import org.apache.druid.common.config.JacksonConfigManager;
@@ -37,6 +39,7 @@ import org.apache.druid.indexing.overlord.TaskQueryTool;
 import org.apache.druid.indexing.overlord.TaskQueue;
 import org.apache.druid.indexing.overlord.TaskRunner;
 import org.apache.druid.indexing.overlord.TaskRunnerListener;
+import org.apache.druid.indexing.overlord.http.TotalWorkerCapacityResponse;
 import org.apache.druid.java.util.common.CloseableIterators;
 import org.apache.druid.java.util.common.concurrent.Execs;
 import org.apache.druid.java.util.common.concurrent.ScheduledExecutorFactory;
@@ -52,12 +55,14 @@ import org.apache.druid.server.coordinator.CoordinatorOverlordServiceConfig;
 import org.apache.druid.server.coordinator.DataSourceCompactionConfig;
 import org.apache.druid.server.coordinator.compact.CompactionSegmentIterator;
 import org.apache.druid.server.coordinator.compact.CompactionSegmentSearchPolicy;
+import org.apache.druid.server.coordinator.compact.PriorityBasedCompactionSegmentIterator;
 import org.apache.druid.server.coordinator.duty.CompactSegments;
 import org.apache.druid.server.coordinator.stats.CoordinatorRunStats;
 import org.apache.druid.timeline.SegmentTimeline;
 import org.joda.time.Interval;
 
 import javax.annotation.Nullable;
+import java.io.IOException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -91,6 +96,7 @@ public class CompactionSchedulerImpl implements CompactionScheduler
   private final TaskQueryTool taskQueryTool;
   private final JacksonConfigManager configManager;
   private final SegmentsMetadataManager segmentManager;
+  private final ObjectMapper objectMapper;
 
   /**
    * Single-threaded executor to process the compaction queue.
@@ -114,13 +120,15 @@ public class CompactionSchedulerImpl implements CompactionScheduler
       SegmentsMetadataManager segmentManager,
       JacksonConfigManager configManager,
       CoordinatorOverlordServiceConfig coordinatorOverlordServiceConfig,
-      ScheduledExecutorFactory executorFactory
+      ScheduledExecutorFactory executorFactory,
+      ObjectMapper objectMapper
   )
   {
     this.taskMaster = taskMaster;
     this.taskQueryTool = taskQueryTool;
     this.configManager = configManager;
     this.segmentManager = segmentManager;
+    this.objectMapper = objectMapper;
     this.executor = executorFactory.create(1, "CompactionScheduler-%s");
     this.shouldPollSegments = coordinatorOverlordServiceConfig.isEnabled() && segmentManager != null;
     this.duty = new CompactSegments(new WrapperPolicy(), new LocalOverlordClient());
@@ -302,7 +310,7 @@ public class CompactionSchedulerImpl implements CompactionScheduler
     return Collections.emptyMap();
   }
 
-  private static class WrapperPolicy implements CompactionSegmentSearchPolicy
+  private class WrapperPolicy implements CompactionSegmentSearchPolicy
   {
 
     @Override
@@ -312,7 +320,13 @@ public class CompactionSchedulerImpl implements CompactionScheduler
         Map<String, List<Interval>> skipIntervals
     )
     {
-      return null;
+      return new PriorityBasedCompactionSegmentIterator(
+          compactionConfigs,
+          dataSources,
+          skipIntervals,
+          null,
+          objectMapper
+      );
     }
   }
 
@@ -325,32 +339,29 @@ public class CompactionSchedulerImpl implements CompactionScheduler
     @Override
     public ListenableFuture<Void> runTask(String taskId, Object taskObject)
     {
-      try {
+      return futureOf(() -> {
         getValidTaskQueue().add((Task) taskObject);
-        return Futures.immediateVoidFuture();
-      }
-      catch (Throwable t) {
-        return Futures.immediateFailedFuture(t);
-      }
+        return null;
+      });
     }
 
     @Override
     public ListenableFuture<Void> cancelTask(String taskId)
     {
-      try {
-        getValidTaskQueue().shutdown(taskId, "just coz!");
-        return Futures.immediateVoidFuture();
-      }
-      catch (Throwable t) {
-        return Futures.immediateFailedFuture(t);
-      }
+      return futureOf(() -> {
+        getValidTaskQueue().shutdown(taskId, "Shutdown by Compaction Scheduler");
+        return null;
+      });
     }
 
     @Override
     public ListenableFuture<TaskPayloadResponse> taskPayload(String taskId)
     {
       return futureOf(
-          () -> new TaskPayloadResponse(taskId, taskQueryTool.getTask(taskId).transform().orNull())
+          () -> new TaskPayloadResponse(
+              taskId,
+              taskQueryTool.getTask(taskId).transform(this::dutyCompatible).orNull()
+          )
       );
     }
 
@@ -362,7 +373,7 @@ public class CompactionSchedulerImpl implements CompactionScheduler
     )
     {
       final ListenableFuture<List<TaskStatusPlus>> tasksFuture
-          = futureOf(taskQueryTool.get);
+          = futureOf(taskQueryTool::getAllActiveTasks);
       return Futures.transform(
           tasksFuture,
           taskList -> CloseableIterators.withEmptyBaggage(taskList.iterator()),
@@ -379,10 +390,9 @@ public class CompactionSchedulerImpl implements CompactionScheduler
     @Override
     public ListenableFuture<IndexingTotalWorkerCapacityInfo> getTotalWorkerCapacity()
     {
-      return futureOf(() -> taskQueryTool.getTotalWorkerCapacity());
+      return futureOf(() -> dutyCompatible(taskQueryTool.getTotalWorkerCapacity()));
     }
 
-    @SuppressWarnings("unchecked")
     private <T> ListenableFuture<T> futureOf(Supplier<T> supplier)
     {
       try {
@@ -390,6 +400,38 @@ public class CompactionSchedulerImpl implements CompactionScheduler
       }
       catch (Exception e) {
         return Futures.immediateFailedFuture(e);
+      }
+    }
+
+    private IndexingTotalWorkerCapacityInfo dutyCompatible(TotalWorkerCapacityResponse capacity)
+    {
+      if (capacity == null) {
+        return null;
+      } else {
+        return new IndexingTotalWorkerCapacityInfo(
+            capacity.getCurrentClusterCapacity(),
+            capacity.getMaximumCapacityWithAutoScale()
+        );
+      }
+    }
+
+    private ClientTaskQuery dutyCompatible(Task task)
+    {
+      if (task == null) {
+        return null;
+      } else if (!"compact".equals(task.getType())) {
+        throw DruidException.defensive(
+            "Unknown type[%s] of task ID[%s] for compaction.",
+            task.getType(), task.getId()
+        );
+      }
+
+      try {
+        return objectMapper.readValue(objectMapper.writeValueAsBytes(task), ClientTaskQuery.class);
+      }
+      catch (IOException e) {
+        log.warn(e, "Could not convert task[%s] to client compatible object", task.getId());
+        throw DruidException.defensive("Could not convert task[%s] to compatible object.", task.getId());
       }
     }
   }
