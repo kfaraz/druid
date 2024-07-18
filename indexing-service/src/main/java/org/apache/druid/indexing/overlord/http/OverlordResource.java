@@ -741,20 +741,6 @@ public class OverlordResource
     );
   }
 
-  /**
-   * Fetches active tasks of all types. Currently used only by the compaction
-   * scheduler for convenience.
-   */
-  public Response getAllActiveTasks()
-  {
-    return asLeaderWith(
-        taskMaster.getTaskRunner(),
-        taskRunner -> Response.ok(
-            getTaskStatusPlusList(taskRunner, TaskStateLookup.ALL, null, null, 0, null)
-        ).build()
-    );
-  }
-
   private List<TaskStatusPlus> getTaskStatusPlusList(
       TaskRunner taskRunner,
       TaskStateLookup state,

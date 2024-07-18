@@ -32,7 +32,6 @@ import org.apache.druid.indexing.common.actions.TaskActionClient;
 import org.apache.druid.indexing.common.actions.TaskActionClientFactory;
 import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.indexing.common.task.TaskContextEnricher;
-import org.apache.druid.indexing.compact.CompactionScheduler;
 import org.apache.druid.indexing.overlord.autoscaling.ScalingStats;
 import org.apache.druid.indexing.overlord.config.DefaultTaskConfig;
 import org.apache.druid.indexing.overlord.config.TaskLockConfig;
@@ -99,9 +98,8 @@ public class TaskMaster implements TaskCountStatsProvider, TaskSlotCountStatsPro
       @IndexingService final DruidLeaderSelector overlordLeaderSelector,
       final SegmentAllocationQueue segmentAllocationQueue,
       final ObjectMapper mapper,
-      final TaskContextEnricher taskContextEnricher,
-      final CompactionScheduler compactionScheduler
-      )
+      final TaskContextEnricher taskContextEnricher
+  )
   {
     this.supervisorManager = supervisorManager;
     this.taskActionClientFactory = taskActionClientFactory;
@@ -147,8 +145,6 @@ public class TaskMaster implements TaskCountStatsProvider, TaskSlotCountStatsPro
           leaderLifecycle.addManagedInstance(taskQueue);
           leaderLifecycle.addManagedInstance(supervisorManager);
           leaderLifecycle.addManagedInstance(overlordDutyExecutor);
-          leaderLifecycle.addManagedInstance(compactionScheduler);
-
           leaderLifecycle.addHandler(
               new Lifecycle.Handler()
               {
