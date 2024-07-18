@@ -32,6 +32,7 @@ import org.apache.druid.indexing.common.actions.TaskActionClient;
 import org.apache.druid.indexing.common.actions.TaskActionClientFactory;
 import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.indexing.common.task.TaskContextEnricher;
+import org.apache.druid.indexing.compact.CompactionScheduler;
 import org.apache.druid.indexing.overlord.autoscaling.ScalingStats;
 import org.apache.druid.indexing.overlord.config.DefaultTaskConfig;
 import org.apache.druid.indexing.overlord.config.TaskLockConfig;
@@ -50,8 +51,6 @@ import org.apache.druid.server.metrics.TaskCountStatsProvider;
 import org.apache.druid.server.metrics.TaskSlotCountStatsProvider;
 
 import javax.annotation.Nullable;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
@@ -71,7 +70,6 @@ public class TaskMaster implements TaskCountStatsProvider, TaskSlotCountStatsPro
   private final SupervisorManager supervisorManager;
 
   private final AtomicReference<Lifecycle> leaderLifecycleRef = new AtomicReference<>(null);
-  private final List<Object> lifecycleManagedObjects = new ArrayList<>();
 
   private volatile TaskRunner taskRunner;
   private volatile TaskQueue taskQueue;
@@ -101,11 +99,10 @@ public class TaskMaster implements TaskCountStatsProvider, TaskSlotCountStatsPro
       @IndexingService final DruidLeaderSelector overlordLeaderSelector,
       final SegmentAllocationQueue segmentAllocationQueue,
       final ObjectMapper mapper,
-      final TaskContextEnricher taskContextEnricher
-  )
+      final TaskContextEnricher taskContextEnricher,
+      final CompactionScheduler compactionScheduler
+      )
   {
-    System.out.println("Creating the task master");
-    log.info("and logging about creating the task master");
     this.supervisorManager = supervisorManager;
     this.taskActionClientFactory = taskActionClientFactory;
 
@@ -150,7 +147,7 @@ public class TaskMaster implements TaskCountStatsProvider, TaskSlotCountStatsPro
           leaderLifecycle.addManagedInstance(taskQueue);
           leaderLifecycle.addManagedInstance(supervisorManager);
           leaderLifecycle.addManagedInstance(overlordDutyExecutor);
-          lifecycleManagedObjects.forEach(leaderLifecycle::addManagedInstance);
+          leaderLifecycle.addManagedInstance(compactionScheduler);
 
           leaderLifecycle.addHandler(
               new Lifecycle.Handler()
@@ -273,17 +270,6 @@ public class TaskMaster implements TaskCountStatsProvider, TaskSlotCountStatsPro
       return Optional.absent();
     } else {
       return Optional.of(leader);
-    }
-  }
-
-  public void registerToLeaderLifecycle(Object module)
-  {
-    giant.lock();
-    try {
-      lifecycleManagedObjects.add(module);
-    }
-    finally {
-      giant.unlock();
     }
   }
 

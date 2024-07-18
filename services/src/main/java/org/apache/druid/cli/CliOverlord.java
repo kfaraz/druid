@@ -196,10 +196,8 @@ public class CliOverlord extends ServerRunnable
           @Override
           public void configure(Binder binder)
           {
-            log.info("Running CliOverlord with standalone[%s] pre-validation.", standalone);
             validateCentralizedDatasourceSchemaConfig(properties);
 
-            log.info("Running CliOverlord with standalone[%s].", standalone);
             if (standalone) {
               binder.bindConstant()
                     .annotatedWith(Names.named("serviceName"))
@@ -247,10 +245,7 @@ public class CliOverlord extends ServerRunnable
             binder.bind(TaskQueryTool.class).in(LazySingleton.class);
             binder.bind(IndexerMetadataStorageAdapter.class).in(LazySingleton.class);
             binder.bind(SupervisorManager.class).in(LazySingleton.class);
-
-            log.info("Going to bind CompactionScheduler");
             binder.bind(CompactionScheduler.class).to(CompactionSchedulerImpl.class);
-            log.info("Bound it");
 
             binder.bind(ParallelIndexSupervisorTaskClientProvider.class).toProvider(Providers.of(null));
             binder.bind(ShuffleClient.class).toProvider(Providers.of(null));

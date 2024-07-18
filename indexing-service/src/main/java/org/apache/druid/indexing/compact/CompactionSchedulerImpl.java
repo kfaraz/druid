@@ -29,10 +29,14 @@ import org.apache.druid.client.indexing.TaskPayloadResponse;
 import org.apache.druid.common.config.JacksonConfigManager;
 import org.apache.druid.error.DruidException;
 import org.apache.druid.error.ErrorResponse;
+import org.apache.druid.indexer.TaskLocation;
+import org.apache.druid.indexer.TaskStatus;
 import org.apache.druid.indexer.TaskStatusPlus;
 import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.indexing.overlord.TaskMaster;
 import org.apache.druid.indexing.overlord.TaskQueue;
+import org.apache.druid.indexing.overlord.TaskRunner;
+import org.apache.druid.indexing.overlord.TaskRunnerListener;
 import org.apache.druid.indexing.overlord.http.OverlordResource;
 import org.apache.druid.java.util.common.CloseableIterators;
 import org.apache.druid.java.util.common.concurrent.Execs;
@@ -69,21 +73,23 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * TODO: pending items
- *  - callback on taskqueue
- *  - handle success and failure inside DatasourceQueue
- *  - make policy serializable
- *  - add another policy
+ *  - [ ] should scheduler config be runtime or dynamic. Runtime might create
+ *  trouble during rolling upgrades if coordinator and overlord leaders are different.
+ *  - [ ] callback on taskrunner
+ *  - [ ] handle success and failure inside DatasourceQueue
+ *  - [ ] make policy serializable
+ *  - [ ] add another policy
  *  - [x] enable segments polling if overlord is standalone
- *  - test on cluster - standalone, coordinator-overlord
- *  - unit tests
- *  - integration tests
+ *  - [ ] test on cluster - standalone, coordinator-overlord
+ *  - [ ] unit tests
+ *  - [ ] integration tests
  */
 public class CompactionSchedulerImpl implements CompactionScheduler
 {
   private static final Logger log = new Logger(CompactionSchedulerImpl.class);
 
-  private final TaskMaster taskMaster;
-  private final OverlordResource overlordResource;
+  private volatile TaskMaster taskMaster;
+  private volatile OverlordResource overlordResource;
   private final JacksonConfigManager configManager;
   private final SegmentsMetadataManager segmentManager;
 
@@ -92,45 +98,62 @@ public class CompactionSchedulerImpl implements CompactionScheduler
    */
   private final ScheduledExecutorService executor;
 
+  private final TaskRunnerListener taskStateListener;
   private final AtomicBoolean isLeader = new AtomicBoolean(false);
   private final CompactSegments duty;
   private final boolean shouldPollSegments;
 
   private final Map<String, DatasourceCompactionQueue> datasourceQueues = new HashMap<>();
 
-  private final AtomicReference<CoordinatorCompactionConfig> currentConfig = new AtomicReference<>(
-      CoordinatorCompactionConfig.empty());
+  private final AtomicReference<CoordinatorCompactionConfig> currentConfig
+      = new AtomicReference<>(CoordinatorCompactionConfig.empty());
 
   @Inject
   public CompactionSchedulerImpl(
-      TaskMaster taskMaster,
-      OverlordResource overlordResource,
       SegmentsMetadataManager segmentManager,
       JacksonConfigManager configManager,
       CoordinatorOverlordServiceConfig coordinatorOverlordServiceConfig,
       ScheduledExecutorFactory executorFactory
   )
   {
-    System.out.println("Trying to create a compaction scheduler");
-    log.info("Creating compaction scheduler");
-
-    this.taskMaster = taskMaster;
     this.configManager = configManager;
-    this.overlordResource = overlordResource;
     this.segmentManager = segmentManager;
-
     this.executor = executorFactory.create(1, "CompactionScheduler-%s");
     this.shouldPollSegments = coordinatorOverlordServiceConfig.isEnabled() && segmentManager != null;
     this.duty = new CompactSegments(new WrapperPolicy(), new LocalOverlordClient());
+    this.taskStateListener = new TaskRunnerListener()
+    {
 
-    taskMaster.registerToLeaderLifecycle(this);
-    if (taskMaster.isLeader()) {
-      log.info("We are already the leader");
-      becomeLeader();
-    }
+      @Override
+      public String getListenerId()
+      {
+        return "CompactionScheduler";
+      }
 
-    System.out.println("Successfully created a compaction scheduler");
-    log.info("Created it reasonably well");
+      @Override
+      public void locationChanged(String taskId, TaskLocation newLocation)
+      {
+        // Do nothing
+      }
+
+      @Override
+      public void statusChanged(String taskId, TaskStatus status)
+      {
+
+      }
+    };
+  }
+
+  /**
+   * Injects required dependencies after instantiation. This is needed to avoid
+   * circular guice dependencies since TaskMaster already depends on
+   * CompactionScheduler to register it for leadership lifecycle.
+   */
+  @Inject(optional = true)
+  public void injectDependencies(TaskMaster taskMaster, OverlordResource overlordResource)
+  {
+    this.taskMaster = taskMaster;
+    this.overlordResource = overlordResource;
   }
 
   @LifecycleStart
@@ -151,8 +174,14 @@ public class CompactionSchedulerImpl implements CompactionScheduler
 
   private synchronized void initState()
   {
-    // TODO: remove the task state listener
-    log.info("Initializing scheduler state");
+    // TODO: add the task state listener
+    Optional<TaskRunner> taskRunner = taskMaster.getTaskRunner();
+    if (taskRunner.isPresent()) {
+      taskRunner.get().unregisterListener(taskStateListener.getListenerId());
+    } else {
+      log.warn("No TaskRunner. Unable to register callbacks.");
+    }
+
     if (shouldPollSegments) {
       segmentManager.startPollingDatabasePeriodically();
     }
@@ -164,11 +193,11 @@ public class CompactionSchedulerImpl implements CompactionScheduler
     datasourceQueues.forEach((datasource, queue) -> queue.stop());
     datasourceQueues.clear();
 
-    Optional<TaskQueue> taskQueue = taskMaster.getTaskQueue();
-    if (taskQueue.isPresent()) {
-      // TODO: attach task state listener
+    Optional<TaskRunner> taskRunner = taskMaster.getTaskRunner();
+    if (taskRunner.isPresent()) {
+      taskRunner.get().registerListener(taskStateListener, executor);
     } else {
-      log.warn("No TaskQueue. Unable to de-register callbacks.");
+      log.warn("No TaskRunner. Unable to de-register callbacks.");
     }
 
     if (shouldPollSegments) {
