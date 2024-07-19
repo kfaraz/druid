@@ -33,6 +33,7 @@ import org.apache.druid.error.DruidException;
 import org.apache.druid.indexer.TaskLocation;
 import org.apache.druid.indexer.TaskStatus;
 import org.apache.druid.indexer.TaskStatusPlus;
+import org.apache.druid.indexing.common.task.CompactionTask;
 import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.indexing.overlord.TaskMaster;
 import org.apache.druid.indexing.overlord.TaskQueryTool;
@@ -79,7 +80,9 @@ import java.util.function.Supplier;
 /**
  * TODO: pending items
  *  - [x] make config static.
- *  - [ ] bind scheduler only when enabled
+ *  - [ ] bind scheduler only when enabled?
+ *  - [ ] wire up coordinator compaction status API to redirect to Overlord or
+ *  have the coordinator only collect stats but nothing else?
  *  - [x] skip run on coordinator if scheduler is enabled
  *  - [x] callback on taskrunner or taskqueue?
  *  - [ ] handle success and failure inside DatasourceQueue
@@ -279,7 +282,13 @@ public class CompactionSchedulerImpl implements CompactionScheduler
     DataSourcesSnapshot dataSourcesSnapshot
         = segmentManager.getSnapshotOfDataSourcesWithAllUsedSegments();
     final CoordinatorRunStats stats = new CoordinatorRunStats();
-    duty.run(currentConfig, dataSourcesSnapshot.getUsedSegmentsTimelinesPerDataSource(), stats);
+
+    try {
+      duty.run(currentConfig, dataSourcesSnapshot.getUsedSegmentsTimelinesPerDataSource(), stats);
+    }
+    catch (Exception e) {
+      log.error(e, "Error running compaction duty");
+    }
 
     // Now check the task slots and stuff and submit the highest priority tasks one by one
     // 1. Compute maximum compaction task slots
@@ -358,10 +367,10 @@ public class CompactionSchedulerImpl implements CompactionScheduler
   private class LocalOverlordClient extends NoopOverlordClient
   {
     @Override
-    public ListenableFuture<Void> runTask(String taskId, Object taskObject)
+    public ListenableFuture<Void> runTask(String taskId, Object clientTaskQuery)
     {
       return futureOf(() -> {
-        getValidTaskQueue().add((Task) taskObject);
+        getValidTaskQueue().add(toTask((ClientTaskQuery) clientTaskQuery));
         return null;
       });
     }
@@ -453,6 +462,29 @@ public class CompactionSchedulerImpl implements CompactionScheduler
       catch (IOException e) {
         log.warn(e, "Could not convert task[%s] to client compatible object", task.getId());
         throw DruidException.defensive("Could not convert task[%s] to compatible object.", task.getId());
+      }
+    }
+
+    private Task toTask(ClientTaskQuery clientTaskQuery)
+    {
+      if (clientTaskQuery == null) {
+        return null;
+      } else if (!"compact".equals(clientTaskQuery.getType())) {
+        throw DruidException.defensive(
+            "Unknown type[%s] of task ID[%s] for compaction.",
+            clientTaskQuery.getType(), clientTaskQuery.getId()
+        );
+      }
+
+      try {
+        return objectMapper.readValue(objectMapper.writeValueAsBytes(clientTaskQuery), CompactionTask.class);
+      }
+      catch (IOException e) {
+        log.warn(e, "Could not convert task[%s] to client compatible object", clientTaskQuery.getId());
+        throw DruidException.defensive(
+            "Could not convert task[%s] to compatible object.",
+            clientTaskQuery.getId()
+        );
       }
     }
   }

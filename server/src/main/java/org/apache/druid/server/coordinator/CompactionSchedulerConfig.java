@@ -30,6 +30,7 @@ public class CompactionSchedulerConfig
 {
   private static final CompactionSchedulerConfig DEFAULT = new CompactionSchedulerConfig(null);
 
+  @JsonProperty
   private final boolean enabled;
 
   public static CompactionSchedulerConfig defaultConfig()
@@ -45,7 +46,6 @@ public class CompactionSchedulerConfig
     this.enabled = Configs.valueOrDefault(enabled, false);
   }
 
-  @JsonProperty
   public boolean isEnabled()
   {
     return enabled;
