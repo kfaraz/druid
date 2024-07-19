@@ -42,12 +42,13 @@ import org.apache.druid.indexing.overlord.TaskRunner;
 import org.apache.druid.indexing.overlord.TaskRunnerListener;
 import org.apache.druid.indexing.overlord.http.TotalWorkerCapacityResponse;
 import org.apache.druid.java.util.common.CloseableIterators;
+import org.apache.druid.java.util.common.Stopwatch;
 import org.apache.druid.java.util.common.concurrent.Execs;
 import org.apache.druid.java.util.common.concurrent.ScheduledExecutorFactory;
-import org.apache.druid.java.util.common.lifecycle.LifecycleStart;
-import org.apache.druid.java.util.common.lifecycle.LifecycleStop;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.java.util.common.parsers.CloseableIterator;
+import org.apache.druid.java.util.emitter.service.ServiceEmitter;
+import org.apache.druid.java.util.emitter.service.ServiceMetricEvent;
 import org.apache.druid.metadata.LockFilterPolicy;
 import org.apache.druid.metadata.SegmentsMetadataManager;
 import org.apache.druid.server.coordinator.AutoCompactionSnapshot;
@@ -60,12 +61,14 @@ import org.apache.druid.server.coordinator.compact.CompactionSegmentSearchPolicy
 import org.apache.druid.server.coordinator.compact.PriorityBasedCompactionSegmentIterator;
 import org.apache.druid.server.coordinator.duty.CompactSegments;
 import org.apache.druid.server.coordinator.stats.CoordinatorRunStats;
+import org.apache.druid.server.coordinator.stats.CoordinatorStat;
+import org.apache.druid.server.coordinator.stats.Dimension;
 import org.apache.druid.timeline.SegmentTimeline;
+import org.joda.time.Duration;
 import org.joda.time.Interval;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -74,17 +77,17 @@ import java.util.Set;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 /**
  * TODO: pending items
  *  - [x] make config static.
- *  - [ ] bind scheduler only when enabled?
- *  - [ ] wire up coordinator compaction status API to redirect to Overlord or
- *  have the coordinator only collect stats but nothing else?
+ *  - [?] bind scheduler only when enabled
+ *  - [x] route compaction status API to overlord if scheduler is enabled
  *  - [x] skip run on coordinator if scheduler is enabled
- *  - [x] callback on taskrunner or taskqueue?
+ *  - [ ] callback on taskqueue because we need the task type, datasource and payload
+ *  to be able to handle it correctly. The TaskRunnerListener is called from places
+ *  where this info is not available and difficult to add
  *  - [ ] handle success and failure inside DatasourceQueue
  *  - [ ] make policy serializable
  *  - [ ] add another policy
@@ -101,6 +104,7 @@ public class CompactionSchedulerImpl implements CompactionScheduler
   private final TaskQueryTool taskQueryTool;
   private final JacksonConfigManager configManager;
   private final SegmentsMetadataManager segmentManager;
+  private final ServiceEmitter emitter;
   private final ObjectMapper objectMapper;
 
   /**
@@ -119,10 +123,10 @@ public class CompactionSchedulerImpl implements CompactionScheduler
    */
   private final boolean shouldPollSegments;
 
+  private final Stopwatch sinceStatsEmitted = Stopwatch.createStarted();
+
   private final Map<String, DatasourceCompactionQueue> datasourceQueues = new HashMap<>();
 
-  private final AtomicReference<CoordinatorCompactionConfig> currentConfig
-      = new AtomicReference<>(CoordinatorCompactionConfig.empty());
   private final CompactionSchedulerConfig schedulerConfig;
 
   @Inject
@@ -134,6 +138,7 @@ public class CompactionSchedulerImpl implements CompactionScheduler
       CompactionSchedulerConfig schedulerConfig,
       CoordinatorOverlordServiceConfig coordinatorOverlordServiceConfig,
       ScheduledExecutorFactory executorFactory,
+      ServiceEmitter emitter,
       ObjectMapper objectMapper
   )
   {
@@ -142,6 +147,7 @@ public class CompactionSchedulerImpl implements CompactionScheduler
     this.configManager = configManager;
     this.segmentManager = segmentManager;
     this.objectMapper = objectMapper;
+    this.emitter = emitter;
     this.schedulerConfig = schedulerConfig;
     this.executor = executorFactory.create(1, "CompactionScheduler-%s");
     this.shouldPollSegments = segmentManager != null
@@ -170,20 +176,25 @@ public class CompactionSchedulerImpl implements CompactionScheduler
     };
   }
 
-  @LifecycleStart
+  @Override
   public void becomeLeader()
   {
-    log.info("Becoming leader");
-    if (isLeader.compareAndSet(false, true)) {
-      executor.submit(this::checkSchedulingStatus);
+    if (isEnabled() && isLeader.compareAndSet(false, true)) {
+      log.info("Starting compaction scheduler as we are now the leader.");
+      executor.submit(() -> {
+        initState();
+        checkSchedulingStatus();
+      });
     }
   }
 
-  @LifecycleStop
+  @Override
   public void stopBeingLeader()
   {
-    log.info("not leader anymore");
-    isLeader.set(false);
+    if (isEnabled() && isLeader.compareAndSet(true, false)) {
+      log.info("Stopping compaction scheduler as we are not the leader anymore.");
+      executor.submit(this::cleanupState);
+    }
   }
 
   private synchronized void initState()
@@ -191,7 +202,7 @@ public class CompactionSchedulerImpl implements CompactionScheduler
     // TODO: add the task state listener
     Optional<TaskRunner> taskRunner = taskMaster.getTaskRunner();
     if (taskRunner.isPresent()) {
-      taskRunner.get().unregisterListener(taskStateListener.getListenerId());
+      taskRunner.get().registerListener(taskStateListener, executor);
     } else {
       log.warn("No TaskRunner. Unable to register callbacks.");
     }
@@ -203,15 +214,13 @@ public class CompactionSchedulerImpl implements CompactionScheduler
 
   private synchronized void cleanupState()
   {
-    log.info("Cleaning up scheduler state");
+    // Stop all datasource queues
     datasourceQueues.forEach((datasource, queue) -> queue.stop());
     datasourceQueues.clear();
 
     Optional<TaskRunner> taskRunner = taskMaster.getTaskRunner();
     if (taskRunner.isPresent()) {
-      taskRunner.get().registerListener(taskStateListener, executor);
-    } else {
-      log.warn("No TaskRunner. Unable to de-register callbacks.");
+      taskRunner.get().unregisterListener(taskStateListener.getListenerId());
     }
 
     if (shouldPollSegments) {
@@ -236,20 +245,14 @@ public class CompactionSchedulerImpl implements CompactionScheduler
 
   private synchronized void checkSchedulingStatus()
   {
-    log.info("Checking schedule");
-    final CoordinatorCompactionConfig latestConfig = getLatestConfig();
-    currentConfig.set(latestConfig);
-
-    if (isLeader.get()) {
-      if (isEnabled()) {
-        initState();
-        processCompactionQueue(latestConfig);
-      } else {
-        cleanupState();
+    if (isLeader.get() && isEnabled()) {
+      try {
+        processCompactionQueue(getLatestConfig());
       }
-
-      // Continue the schedule as long as we are the leader
-      executor.schedule(this::checkSchedulingStatus, 60, TimeUnit.SECONDS);
+      catch (Exception e) {
+        log.error(e, "Error processing compaction queue. Continuing schedule.");
+      }
+      executor.schedule(this::checkSchedulingStatus, 5, TimeUnit.SECONDS);
     } else {
       cleanupState();
     }
@@ -259,7 +262,6 @@ public class CompactionSchedulerImpl implements CompactionScheduler
       CoordinatorCompactionConfig currentConfig
   )
   {
-    log.info("Processing compaction queue");
     final Set<String> compactionEnabledDatasources = new HashSet<>();
     if (currentConfig.getCompactionConfigs() != null) {
       currentConfig.getCompactionConfigs().forEach(config -> compactionEnabledDatasources.add(config.getDataSource()));
@@ -283,12 +285,7 @@ public class CompactionSchedulerImpl implements CompactionScheduler
         = segmentManager.getSnapshotOfDataSourcesWithAllUsedSegments();
     final CoordinatorRunStats stats = new CoordinatorRunStats();
 
-    try {
-      duty.run(currentConfig, dataSourcesSnapshot.getUsedSegmentsTimelinesPerDataSource(), stats);
-    }
-    catch (Exception e) {
-      log.error(e, "Error running compaction duty");
-    }
+    duty.run(currentConfig, dataSourcesSnapshot.getUsedSegmentsTimelinesPerDataSource(), stats);
 
     // Now check the task slots and stuff and submit the highest priority tasks one by one
     // 1. Compute maximum compaction task slots
@@ -302,6 +299,27 @@ public class CompactionSchedulerImpl implements CompactionScheduler
     //    f) Track jobs that have just been submitted to ensure that you do not resubmit those, see if the TaskQueue can
     //    somehow help perform the deduplication without us having to maintain a separate data structure - yes TaskQueue
     //    can do that. We just get all active tasks.
+
+    // Emit stats only every 5 minutes
+    if (sinceStatsEmitted.hasElapsed(Duration.standardMinutes(5))) {
+      stats.forEachStat(
+          (stat, dimensions, value) -> {
+            if (stat.shouldEmit()) {
+              emitStat(stat, dimensions.getValues(), value);
+            }
+          }
+      );
+      sinceStatsEmitted.restart();
+    }
+  }
+
+  private void emitStat(CoordinatorStat stat, Map<Dimension, String> dimensionValues, long value)
+  {
+    ServiceMetricEvent.Builder eventBuilder = new ServiceMetricEvent.Builder();
+    dimensionValues.forEach(
+        (dim, dimValue) -> eventBuilder.setDimension(dim.reportedName(), dimValue)
+    );
+    emitter.emit(eventBuilder.setMetric(stat.getMetricName(), value));
   }
 
   private CoordinatorCompactionConfig getLatestConfig()
@@ -316,19 +334,19 @@ public class CompactionSchedulerImpl implements CompactionScheduler
   @Override
   public AutoCompactionSnapshot getCompactionSnapshot(String dataSource)
   {
-    return AutoCompactionSnapshot.builder("wiki").build();
+    return duty.getAutoCompactionSnapshot(dataSource);
   }
 
   @Override
   public Long getSegmentBytesYetToBeCompacted(String dataSource)
   {
-    return 0L;
+    return duty.getTotalSizeOfSegmentsAwaitingCompaction(dataSource);
   }
 
   @Override
   public Map<String, AutoCompactionSnapshot> getAllCompactionSnapshots()
   {
-    return Collections.emptyMap();
+    return duty.getAutoCompactionSnapshot();
   }
 
   private class WrapperPolicy implements CompactionSegmentSearchPolicy

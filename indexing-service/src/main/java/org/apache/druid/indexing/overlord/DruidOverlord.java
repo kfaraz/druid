@@ -143,6 +143,7 @@ public class DruidOverlord
                 {
                   segmentAllocationQueue.becomeLeader();
                   taskMaster.becomeLeader(taskRunner, taskQueue);
+                  compactionScheduler.becomeLeader();
 
                   // Announce the node only after all the services have been initialized
                   initialized = true;
@@ -153,6 +154,7 @@ public class DruidOverlord
                 public void stop()
                 {
                   serviceAnnouncer.unannounce(node);
+                  compactionScheduler.stopBeingLeader();
                   taskMaster.stopBeingLeader();
                   segmentAllocationQueue.stopBeingLeader();
                 }

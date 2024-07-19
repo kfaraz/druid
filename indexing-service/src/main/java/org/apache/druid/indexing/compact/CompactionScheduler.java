@@ -25,6 +25,10 @@ import java.util.Map;
 
 public interface CompactionScheduler
 {
+  void becomeLeader();
+
+  void stopBeingLeader();
+
   Map<String, AutoCompactionSnapshot> getAllCompactionSnapshots();
 
   AutoCompactionSnapshot getCompactionSnapshot(String dataSource);
