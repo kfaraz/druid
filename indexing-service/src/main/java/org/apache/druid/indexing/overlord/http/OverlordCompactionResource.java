@@ -19,8 +19,6 @@
 
 package org.apache.druid.indexing.overlord.http;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.sun.jersey.spi.container.ResourceFilters;
 import org.apache.druid.indexing.compact.CompactionScheduler;
@@ -35,6 +33,7 @@ import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import java.util.Collection;
+import java.util.Collections;
 
 @Path("/druid/indexer/v1/compaction")
 public class OverlordCompactionResource
@@ -60,11 +59,14 @@ public class OverlordCompactionResource
       @QueryParam("dataSource") String dataSource
   )
   {
-    final Long notCompactedSegmentSizeBytes = scheduler.getTotalSizeOfSegmentsAwaitingCompaction(dataSource);
+    final Long notCompactedSegmentSizeBytes = scheduler.getSegmentBytesYetToBeCompacted(dataSource);
     if (notCompactedSegmentSizeBytes == null) {
-      return Response.status(Response.Status.NOT_FOUND).entity(ImmutableMap.of("error", "unknown dataSource")).build();
+      return Response.status(Response.Status.NOT_FOUND)
+                     .entity(Collections.singletonMap("error", "Unknown DataSource"))
+                     .build();
     } else {
-      return Response.ok(ImmutableMap.of("remainingSegmentSize", notCompactedSegmentSizeBytes)).build();
+      return Response.ok(Collections.singletonMap("remainingSegmentSize", notCompactedSegmentSizeBytes))
+                     .build();
     }
   }
 
@@ -78,14 +80,16 @@ public class OverlordCompactionResource
   {
     final Collection<AutoCompactionSnapshot> snapshots;
     if (dataSource == null || dataSource.isEmpty()) {
-      snapshots = scheduler.getAutoCompactionSnapshot().values();
+      snapshots = scheduler.getAllCompactionSnapshots().values();
     } else {
-      AutoCompactionSnapshot autoCompactionSnapshot = scheduler.getAutoCompactionSnapshotForDataSource(dataSource);
+      AutoCompactionSnapshot autoCompactionSnapshot = scheduler.getCompactionSnapshot(dataSource);
       if (autoCompactionSnapshot == null) {
-        return Response.status(Response.Status.NOT_FOUND).entity(ImmutableMap.of("error", "unknown dataSource")).build();
+        return Response.status(Response.Status.NOT_FOUND)
+                       .entity(Collections.singletonMap("error", "Unknown DataSource"))
+                       .build();
       }
-      snapshots = ImmutableList.of(autoCompactionSnapshot);
+      snapshots = Collections.singleton(autoCompactionSnapshot);
     }
-    return Response.ok(ImmutableMap.of("latestStatus", snapshots)).build();
+    return Response.ok(Collections.singletonMap("latestStatus", snapshots)).build();
   }
 }

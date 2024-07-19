@@ -50,6 +50,7 @@ import org.apache.druid.java.util.common.parsers.CloseableIterator;
 import org.apache.druid.metadata.LockFilterPolicy;
 import org.apache.druid.metadata.SegmentsMetadataManager;
 import org.apache.druid.server.coordinator.AutoCompactionSnapshot;
+import org.apache.druid.server.coordinator.CompactionSchedulerConfig;
 import org.apache.druid.server.coordinator.CoordinatorCompactionConfig;
 import org.apache.druid.server.coordinator.CoordinatorOverlordServiceConfig;
 import org.apache.druid.server.coordinator.DataSourceCompactionConfig;
@@ -77,9 +78,10 @@ import java.util.function.Supplier;
 
 /**
  * TODO: pending items
- *  - [ ] should scheduler config be runtime or dynamic. Runtime might create
- *  trouble during rolling upgrades if coordinator and overlord leaders are different.
- *  - [ ] callback on taskrunner
+ *  - [x] make config static.
+ *  - [ ] bind scheduler only when enabled
+ *  - [x] skip run on coordinator if scheduler is enabled
+ *  - [x] callback on taskrunner or taskqueue?
  *  - [ ] handle success and failure inside DatasourceQueue
  *  - [ ] make policy serializable
  *  - [ ] add another policy
@@ -106,12 +108,19 @@ public class CompactionSchedulerImpl implements CompactionScheduler
   private final TaskRunnerListener taskStateListener;
   private final AtomicBoolean isLeader = new AtomicBoolean(false);
   private final CompactSegments duty;
+
+  /**
+   * The scheduler should enable/disable polling of segments only if the Overlord
+   * is running in standalone mode, otherwise this is handled by the DruidCoordinator
+   * class itself.
+   */
   private final boolean shouldPollSegments;
 
   private final Map<String, DatasourceCompactionQueue> datasourceQueues = new HashMap<>();
 
   private final AtomicReference<CoordinatorCompactionConfig> currentConfig
       = new AtomicReference<>(CoordinatorCompactionConfig.empty());
+  private final CompactionSchedulerConfig schedulerConfig;
 
   @Inject
   public CompactionSchedulerImpl(
@@ -119,6 +128,7 @@ public class CompactionSchedulerImpl implements CompactionScheduler
       TaskQueryTool taskQueryTool,
       SegmentsMetadataManager segmentManager,
       JacksonConfigManager configManager,
+      CompactionSchedulerConfig schedulerConfig,
       CoordinatorOverlordServiceConfig coordinatorOverlordServiceConfig,
       ScheduledExecutorFactory executorFactory,
       ObjectMapper objectMapper
@@ -129,8 +139,10 @@ public class CompactionSchedulerImpl implements CompactionScheduler
     this.configManager = configManager;
     this.segmentManager = segmentManager;
     this.objectMapper = objectMapper;
+    this.schedulerConfig = schedulerConfig;
     this.executor = executorFactory.create(1, "CompactionScheduler-%s");
-    this.shouldPollSegments = coordinatorOverlordServiceConfig.isEnabled() && segmentManager != null;
+    this.shouldPollSegments = segmentManager != null
+                              && !coordinatorOverlordServiceConfig.isEnabled();
     this.duty = new CompactSegments(new WrapperPolicy(), new LocalOverlordClient());
     this.taskStateListener = new TaskRunnerListener()
     {
@@ -150,7 +162,7 @@ public class CompactionSchedulerImpl implements CompactionScheduler
       @Override
       public void statusChanged(String taskId, TaskStatus status)
       {
-
+        log.info("Task[%s] has new status[%s].", taskId, status);
       }
     };
   }
@@ -216,7 +228,7 @@ public class CompactionSchedulerImpl implements CompactionScheduler
 
   public boolean isEnabled()
   {
-    return currentConfig.get().getSchedulerConfig().isEnabled();
+    return schedulerConfig.isEnabled();
   }
 
   private synchronized void checkSchedulingStatus()
@@ -293,25 +305,34 @@ public class CompactionSchedulerImpl implements CompactionScheduler
   }
 
   @Override
-  public AutoCompactionSnapshot getAutoCompactionSnapshotForDataSource(String dataSource)
+  public AutoCompactionSnapshot getCompactionSnapshot(String dataSource)
   {
     return AutoCompactionSnapshot.builder("wiki").build();
   }
 
   @Override
-  public Long getTotalSizeOfSegmentsAwaitingCompaction(String dataSource)
+  public Long getSegmentBytesYetToBeCompacted(String dataSource)
   {
     return 0L;
   }
 
   @Override
-  public Map<Object, AutoCompactionSnapshot> getAutoCompactionSnapshot()
+  public Map<String, AutoCompactionSnapshot> getAllCompactionSnapshots()
   {
     return Collections.emptyMap();
   }
 
   private class WrapperPolicy implements CompactionSegmentSearchPolicy
   {
+
+    // TODO
+    //  - this policy has to plug into the datasource queues somehow
+    //  - it has to know the success failure rate and if an interval has been sidelined
+    //  - what about the actual user-specified policy, what to do with that?
+    //  - know what whatever policy is being added might be used by the coordinator too?
+    //  - so we can't just put everything inside the policy
+    //  - some stuff has to be here
+
 
     @Override
     public CompactionSegmentIterator createIterator(

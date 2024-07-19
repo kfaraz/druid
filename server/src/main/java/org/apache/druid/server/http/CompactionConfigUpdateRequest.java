@@ -22,7 +22,6 @@ package org.apache.druid.server.http;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.apache.druid.indexer.CompactionEngine;
-import org.apache.druid.server.coordinator.CompactionSchedulerConfig;
 
 import javax.annotation.Nullable;
 
@@ -31,7 +30,6 @@ public class CompactionConfigUpdateRequest
   private final Double compactionTaskSlotRatio;
   private final Integer maxCompactionTaskSlots;
   private final Boolean useAutoScaleSlots;
-  private final CompactionSchedulerConfig schedulerConfig;
   private final CompactionEngine compactionEngine;
 
   @JsonCreator
@@ -39,7 +37,6 @@ public class CompactionConfigUpdateRequest
       @JsonProperty("compactionTaskSlotRatio") @Nullable Double compactionTaskSlotRatio,
       @JsonProperty("maxCompactionTaskSlots") @Nullable Integer maxCompactionTaskSlots,
       @JsonProperty("useAutoScaleSlots") @Nullable Boolean useAutoScaleSlots,
-      @JsonProperty("schedulerConfig") @Nullable CompactionSchedulerConfig schedulerConfig,
       @JsonProperty("compactionEngine") @Nullable CompactionEngine compactionEngine
   )
   {
@@ -47,7 +44,6 @@ public class CompactionConfigUpdateRequest
     this.maxCompactionTaskSlots = maxCompactionTaskSlots;
     this.useAutoScaleSlots = useAutoScaleSlots;
     this.compactionEngine = compactionEngine;
-    this.schedulerConfig = schedulerConfig;
   }
 
   @JsonProperty
@@ -66,12 +62,6 @@ public class CompactionConfigUpdateRequest
   public Boolean getUseAutoScaleSlots()
   {
     return useAutoScaleSlots;
-  }
-
-  @JsonProperty
-  public CompactionSchedulerConfig getSchedulerConfig()
-  {
-    return schedulerConfig;
   }
 
   @JsonProperty

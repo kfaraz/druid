@@ -25,16 +25,10 @@ import java.util.Map;
 
 public interface CompactionScheduler
 {
-  Map<Object, AutoCompactionSnapshot> getAutoCompactionSnapshot();
+  Map<String, AutoCompactionSnapshot> getAllCompactionSnapshots();
 
-  AutoCompactionSnapshot getAutoCompactionSnapshotForDataSource(String dataSource);
+  AutoCompactionSnapshot getCompactionSnapshot(String dataSource);
 
-  Long getTotalSizeOfSegmentsAwaitingCompaction(String dataSource);
-  /*
-   * Handle changes to
-   * - segments
-   * - compaction configs
-   * - task status
-   * - leadership
-   */
+  Long getSegmentBytesYetToBeCompacted(String dataSource);
+
 }

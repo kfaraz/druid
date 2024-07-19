@@ -157,6 +157,7 @@ public class DruidCoordinator
   @Nullable
   private final CoordinatorSegmentMetadataCache coordinatorSegmentMetadataCache;
   private final CentralizedDatasourceSchemaConfig centralizedDatasourceSchemaConfig;
+  private final CompactionSchedulerConfig compactionSchedulerConfig;
 
 
   private volatile boolean started = false;
@@ -202,7 +203,8 @@ public class DruidCoordinator
       @Coordinator DruidLeaderSelector coordLeaderSelector,
       CompactionSegmentSearchPolicy compactionSegmentSearchPolicy,
       @Nullable CoordinatorSegmentMetadataCache coordinatorSegmentMetadataCache,
-      CentralizedDatasourceSchemaConfig centralizedDatasourceSchemaConfig
+      CentralizedDatasourceSchemaConfig centralizedDatasourceSchemaConfig,
+      CompactionSchedulerConfig compactionSchedulerConfig
   )
   {
     this.config = config;
@@ -224,6 +226,7 @@ public class DruidCoordinator
     this.loadQueueManager = loadQueueManager;
     this.coordinatorSegmentMetadataCache = coordinatorSegmentMetadataCache;
     this.centralizedDatasourceSchemaConfig = centralizedDatasourceSchemaConfig;
+    this.compactionSchedulerConfig = compactionSchedulerConfig;
   }
 
   public boolean isLeader()
@@ -590,8 +593,7 @@ public class DruidCoordinator
       duties.add(new KillStalePendingSegments(overlordClient));
     }
 
-    // CompactSegmentsDuty should be the last duty as it can take a long time to complete
-    // We do not have to add compactSegments if it is already enabled in the custom duty group
+    // Do not add compactSegments if it is already included in the custom duty groups
     if (getCompactSegmentsDutyFromCustomGroups().isEmpty()) {
       duties.add(compactSegments);
     }
@@ -735,6 +737,10 @@ public class DruidCoordinator
               && coordLeaderSelector.isLeader()
               && startingLeaderCounter == coordLeaderSelector.localTerm()) {
 
+            if (shouldSkipAutoCompactDuty(duty)) {
+              continue;
+            }
+
             dutyRunTime.restart();
             params = duty.run(params);
             dutyRunTime.stop();
@@ -779,6 +785,26 @@ public class DruidCoordinator
       catch (Exception e) {
         log.makeAlert(e, "Caught exception, ignoring so that schedule keeps going.").emit();
       }
+    }
+
+    /**
+     * @return true if this is an auto-compact CompactSegments duty and should
+     * not be run in case Compaction Scheduler is already running on Overlord.
+     * Manually triggered compaction should always be run.
+     */
+    private boolean shouldSkipAutoCompactDuty(CoordinatorDuty duty)
+    {
+      final boolean shouldSkipDuty = compactionSchedulerConfig.isEnabled()
+                                     && duty instanceof CompactSegments
+                                     && !COMPACT_SEGMENTS_DUTIES_DUTY_GROUP.equals(dutyGroupName);
+      if (shouldSkipDuty) {
+        log.warn(
+            "Skipping Compact Segments duty in group[%s] since compaction"
+            + " scheduler is already running on Overlord.",
+            dutyGroupName
+        );
+      }
+      return shouldSkipDuty;
     }
 
     private void emitStat(CoordinatorStat stat, Map<Dimension, String> dimensionValues, long value)
