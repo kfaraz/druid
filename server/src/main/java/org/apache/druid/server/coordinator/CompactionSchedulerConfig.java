@@ -19,19 +19,26 @@
 
 package org.apache.druid.server.coordinator;
 
+import com.fasterxml.jackson.annotation.JacksonInject;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.druid.common.config.Configs;
+import org.apache.druid.server.coordinator.compact.CompactionSegmentSearchPolicy;
+import org.apache.druid.server.coordinator.compact.NewestSegmentFirstPolicy;
 
 import javax.annotation.Nullable;
 import java.util.Objects;
 
 public class CompactionSchedulerConfig
 {
-  private static final CompactionSchedulerConfig DEFAULT = new CompactionSchedulerConfig(null);
+  private static final CompactionSchedulerConfig DEFAULT = new CompactionSchedulerConfig(null, null);
 
   @JsonProperty
   private final boolean enabled;
+
+  @JsonProperty
+  private final CompactionSegmentSearchPolicy compactionPolicy;
 
   public static CompactionSchedulerConfig defaultConfig()
   {
@@ -40,15 +47,22 @@ public class CompactionSchedulerConfig
 
   @JsonCreator
   public CompactionSchedulerConfig(
-      @JsonProperty("enabled") @Nullable Boolean enabled
+      @JsonProperty("enabled") @Nullable Boolean enabled,
+      @JacksonInject ObjectMapper objectMapper
   )
   {
     this.enabled = Configs.valueOrDefault(enabled, false);
+    this.compactionPolicy = new NewestSegmentFirstPolicy(objectMapper);
   }
 
   public boolean isEnabled()
   {
     return enabled;
+  }
+
+  public CompactionSegmentSearchPolicy getDefaultCompactionPolicy()
+  {
+    return compactionPolicy;
   }
 
   @Override

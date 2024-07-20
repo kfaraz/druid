@@ -19,8 +19,9 @@
 
 package org.apache.druid.server.coordinator.compact;
 
+import com.fasterxml.jackson.annotation.JacksonInject;
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.inject.Inject;
 import org.apache.druid.java.util.common.guava.Comparators;
 import org.apache.druid.server.coordinator.DataSourceCompactionConfig;
 import org.apache.druid.timeline.SegmentTimeline;
@@ -32,14 +33,12 @@ import java.util.Map;
 /**
  * This policy searches segments for compaction from newest to oldest.
  */
-public class NewestSegmentFirstPolicy implements CompactionSegmentSearchPolicy
+public class NewestSegmentFirstPolicy extends BaseSegmentSearchPolicy
 {
-  private final ObjectMapper objectMapper;
-
-  @Inject
-  public NewestSegmentFirstPolicy(ObjectMapper objectMapper)
+  @JsonCreator
+  public NewestSegmentFirstPolicy(@JacksonInject ObjectMapper objectMapper)
   {
-    this.objectMapper = objectMapper;
+    super(null, objectMapper);
   }
 
   @Override
@@ -55,8 +54,7 @@ public class NewestSegmentFirstPolicy implements CompactionSegmentSearchPolicy
         skipIntervals,
         (o1, o2) -> Comparators.intervalsByStartThenEnd()
                                .compare(o2.getUmbrellaInterval(), o1.getUmbrellaInterval()),
-        objectMapper
+        getObjectMapper()
     );
   }
-
 }

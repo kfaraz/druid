@@ -285,7 +285,11 @@ public class CompactionSchedulerImpl implements CompactionScheduler
         = segmentManager.getSnapshotOfDataSourcesWithAllUsedSegments();
     final CoordinatorRunStats stats = new CoordinatorRunStats();
 
-    duty.run(currentConfig, dataSourcesSnapshot.getUsedSegmentsTimelinesPerDataSource(), stats);
+    duty.run(
+        currentConfig,
+        dataSourcesSnapshot.getUsedSegmentsTimelinesPerDataSource(),
+        stats
+    );
 
     // Now check the task slots and stuff and submit the highest priority tasks one by one
     // 1. Compute maximum compaction task slots

@@ -213,10 +213,9 @@ public class CoordinatorSimulationBuilder
         new CoordinatorCustomDutyGroups(Collections.emptySet()),
         env.lookupCoordinatorManager,
         env.leaderSelector,
-        COMPACTION_SEGMENT_SEARCH_POLICY,
         null,
         CentralizedDatasourceSchemaConfig.create(),
-        new CompactionSchedulerConfig(false)
+        CompactionSchedulerConfig.defaultConfig()
     );
 
     return new SimulationImpl(coordinator, env);

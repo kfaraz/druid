@@ -201,7 +201,6 @@ public class DruidCoordinator
       CoordinatorCustomDutyGroups customDutyGroups,
       LookupCoordinatorManager lookupCoordinatorManager,
       @Coordinator DruidLeaderSelector coordLeaderSelector,
-      CompactionSegmentSearchPolicy compactionSegmentSearchPolicy,
       @Nullable CoordinatorSegmentMetadataCache coordinatorSegmentMetadataCache,
       CentralizedDatasourceSchemaConfig centralizedDatasourceSchemaConfig,
       CompactionSchedulerConfig compactionSchedulerConfig
@@ -222,7 +221,7 @@ public class DruidCoordinator
     this.balancerStrategyFactory = config.getBalancerStrategyFactory();
     this.lookupCoordinatorManager = lookupCoordinatorManager;
     this.coordLeaderSelector = coordLeaderSelector;
-    this.compactSegments = initializeCompactSegmentsDuty(compactionSegmentSearchPolicy);
+    this.compactSegments = initializeCompactSegmentsDuty(compactionSchedulerConfig.getDefaultCompactionPolicy());
     this.loadQueueManager = loadQueueManager;
     this.coordinatorSegmentMetadataCache = coordinatorSegmentMetadataCache;
     this.centralizedDatasourceSchemaConfig = centralizedDatasourceSchemaConfig;

@@ -24,7 +24,6 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Predicate;
-import com.google.inject.Inject;
 import org.apache.druid.client.indexing.ClientCompactionIOConfig;
 import org.apache.druid.client.indexing.ClientCompactionIntervalSpec;
 import org.apache.druid.client.indexing.ClientCompactionRunnerInfo;
@@ -36,6 +35,7 @@ import org.apache.druid.client.indexing.ClientCompactionTaskTransformSpec;
 import org.apache.druid.client.indexing.ClientMSQContext;
 import org.apache.druid.client.indexing.ClientTaskQuery;
 import org.apache.druid.client.indexing.TaskPayloadResponse;
+import org.apache.druid.common.config.Configs;
 import org.apache.druid.common.guava.FutureUtils;
 import org.apache.druid.common.utils.IdUtils;
 import org.apache.druid.indexer.CompactionEngine;
@@ -90,21 +90,20 @@ public class CompactSegments implements CoordinatorCustomDuty
   private static final Predicate<TaskStatusPlus> IS_COMPACTION_TASK =
       status -> null != status && COMPACTION_TASK_TYPE.equals(status.getType());
 
-  private final CompactionSegmentSearchPolicy policy;
+  private final CompactionSegmentSearchPolicy defaultPolicy;
   private final OverlordClient overlordClient;
 
   // This variable is updated by the Coordinator thread executing duties and
   // read by HTTP threads processing Coordinator API calls.
   private final AtomicReference<Map<String, AutoCompactionSnapshot>> autoCompactionSnapshotPerDataSource = new AtomicReference<>();
 
-  @Inject
   @JsonCreator
   public CompactSegments(
-      @JacksonInject CompactionSegmentSearchPolicy policy,
+      @JacksonInject CompactionSegmentSearchPolicy defaultPolicy,
       @JacksonInject OverlordClient overlordClient
   )
   {
-    this.policy = policy;
+    this.defaultPolicy = defaultPolicy;
     this.overlordClient = overlordClient;
     resetCompactionSnapshot();
   }
@@ -207,6 +206,10 @@ public class CompactSegments implements CoordinatorCustomDuty
     );
 
     // Get iterator over segments to compact and submit compaction tasks
+    final CompactionSegmentSearchPolicy policy = Configs.valueOrDefault(
+        dynamicConfig.getCompactionPolicy(),
+        defaultPolicy
+    );
     final CompactionSegmentIterator iterator =
         policy.createIterator(compactionConfigs, dataSources, intervalsToSkipCompaction);
 

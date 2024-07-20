@@ -540,7 +540,7 @@ public class AsyncManagementForwardingServletTest extends BaseJettyTest
               injector.getInstance(DruidHttpClientConfig.class),
               coordinatorLeaderSelector,
               overlordLeaderSelector,
-              new CompactionSchedulerConfig(false) {
+              new CompactionSchedulerConfig(false, null) {
                 @Override
                 public boolean isEnabled()
                 {

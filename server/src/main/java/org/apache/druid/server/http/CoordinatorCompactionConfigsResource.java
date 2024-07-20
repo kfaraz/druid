@@ -114,14 +114,16 @@ public class CoordinatorCompactionConfigsResource
       @Context HttpServletRequest req
   )
   {
-    UnaryOperator<CoordinatorCompactionConfig> operator =
-        current -> CoordinatorCompactionConfig.from(
-            current,
+    return updateCompactionDynamicConfig(
+        new CompactionConfigUpdateRequest(
             compactionTaskSlotRatio,
             maxCompactionTaskSlots,
-            useAutoScaleSlots
-        );
-    return updateConfigHelper(operator, AuthorizationUtils.buildAuditInfo(req));
+            useAutoScaleSlots,
+            null,
+            null
+        ),
+        req
+    );
   }
 
   @POST
