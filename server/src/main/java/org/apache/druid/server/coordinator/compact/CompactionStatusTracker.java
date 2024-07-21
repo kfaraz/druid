@@ -28,7 +28,6 @@ import org.apache.druid.server.coordinator.CoordinatorCompactionConfig;
 import org.apache.druid.server.coordinator.DataSourceCompactionConfig;
 import org.joda.time.Interval;
 
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -44,7 +43,8 @@ public class CompactionStatusTracker
   private static final Logger log = new Logger(CompactionStatusTracker.class);
 
   private final ObjectMapper objectMapper;
-  private final Map<String, Set<Interval>> datasourceToRecentlySubmittedIntervals = new HashMap<>();
+  private final Map<String, DatasourceStatus> datasourceStatuses = new HashMap<>();
+  private final Map<String, ClientCompactionTaskQuery> submittedTaskIdToPayload = new HashMap<>();
 
   @Inject
   public CompactionStatusTracker(
@@ -59,9 +59,9 @@ public class CompactionStatusTracker
       DataSourceCompactionConfig config
   )
   {
-    final CompactionStatus status = CompactionStatus.compute(candidate, config, objectMapper);
-    if (status.isComplete()) {
-      return status;
+    final CompactionStatus compactionStatus = CompactionStatus.compute(candidate, config, objectMapper);
+    if (compactionStatus.isComplete()) {
+      return compactionStatus;
     }
 
     final long inputSegmentSize = config.getInputSegmentSizeBytes();
@@ -72,16 +72,30 @@ public class CompactionStatusTracker
       );
     }
 
-    final Set<Interval> recentlySubmittedIntervals
-        = datasourceToRecentlySubmittedIntervals.getOrDefault(config.getDataSource(), Collections.emptySet());
-    if (recentlySubmittedIntervals.contains(candidate.getUmbrellaInterval())) {
-      return CompactionStatus.skipped(
-          "Interval[%s] has been recently submitted for compaction",
-          candidate.getUmbrellaInterval()
-      );
+    final Interval compactionInterval = candidate.getUmbrellaInterval();
+
+    final IntervalStatus intervalStatus
+        = datasourceStatuses.getOrDefault(config.getDataSource(), DatasourceStatus.EMPTY)
+                            .getIntervalStatuses()
+                            .get(compactionInterval);
+
+    if (intervalStatus == null) {
+      return compactionStatus;
     }
 
-    return status;
+    switch (intervalStatus.state) {
+      case TASK_SUBMITTED:
+      case COMPACTED:
+      case FAILED_ALL_RETRIES:
+        return CompactionStatus.skipped(
+            "Interval[%s] was recently submitted for compaction and has state[%s].",
+            compactionInterval, intervalStatus.state
+        );
+      default:
+        break;
+    }
+
+    return compactionStatus;
   }
 
   public void onCompactionConfigUpdated(CoordinatorCompactionConfig compactionConfig)
@@ -94,10 +108,10 @@ public class CompactionStatusTracker
     }
 
     // Clean up state for datasources where compaction has been freshly disabled
-    final Set<String> allDatasources = new HashSet<>(datasourceToRecentlySubmittedIntervals.keySet());
+    final Set<String> allDatasources = new HashSet<>(datasourceStatuses.keySet());
     allDatasources.forEach(datasource -> {
       if (!compactionEnabledDatasources.contains(datasource)) {
-        datasourceToRecentlySubmittedIntervals.remove(datasource);
+        datasourceStatuses.remove(datasource);
       }
     });
   }
@@ -107,27 +121,97 @@ public class CompactionStatusTracker
       SegmentsToCompact candidateSegments
   )
   {
-    datasourceToRecentlySubmittedIntervals
-        .computeIfAbsent(taskPayload.getDataSource(), ds -> new HashSet<>())
-        .add(candidateSegments.getUmbrellaInterval());
+    final DatasourceStatus datasourceStatus = getOrComputeDatasourceStatus(taskPayload.getDataSource());
+
+    datasourceStatus.getIntervalStatuses().computeIfAbsent(
+        candidateSegments.getUmbrellaInterval(),
+        i -> new IntervalStatus(IntervalState.TASK_SUBMITTED, 0)
+    );
+
+    submittedTaskIdToPayload.put(taskPayload.getId(), taskPayload);
   }
 
   public void onTaskFinished(String taskId, TaskStatus taskStatus)
   {
-    log.info("Task[%s] has new status[%s].", taskId, taskStatus);
-
-    if (taskStatus.isFailure()) {
-      // TODO: retry logic and other stuff
+    if (!taskStatus.isComplete()) {
+      return;
     }
 
-    // Do not remove the interval of this task from recently submitted intervals
-    // as there might be some delay before the segments of this task are published
-    // and updated in the timeline. If compaction duty runs before the segments
-    // are published, it might re-submit the same task.
+    final ClientCompactionTaskQuery taskPayload = submittedTaskIdToPayload.remove(taskId);
+    if (taskPayload == null) {
+      // Nothing to do since we don't know the corresponding datasource or interval
+      return;
+    }
+
+    final DatasourceStatus datasourceStatus
+        = getOrComputeDatasourceStatus(taskPayload.getDataSource());
+    final Interval compactionInterval = taskPayload.getIoConfig().getInputSpec().getInterval();
+
+    final IntervalStatus lastKnownStatus = datasourceStatus.getIntervalStatuses().get(compactionInterval);
+
+    if (taskStatus.isSuccess()) {
+      datasourceStatus.intervalStatus.put(
+          compactionInterval,
+          new IntervalStatus(IntervalState.COMPACTED, 10)
+      );
+    } else if (lastKnownStatus == null) {
+      // This is the first failure
+      datasourceStatus.intervalStatus.put(
+          compactionInterval,
+          new IntervalStatus(IntervalState.FAILED, 0)
+      );
+    } else if (lastKnownStatus.state == IntervalState.FAILED
+               && ++lastKnownStatus.retryCount > 10) {
+      // Failure retries have been exhausted
+      datasourceStatus.intervalStatus.put(
+          compactionInterval,
+          new IntervalStatus(IntervalState.FAILED_ALL_RETRIES, 10)
+      );
+    }
   }
 
   public void reset()
   {
-    datasourceToRecentlySubmittedIntervals.clear();
+    datasourceStatuses.clear();
+  }
+
+  private DatasourceStatus getOrComputeDatasourceStatus(String datasource)
+  {
+    return datasourceStatuses.computeIfAbsent(datasource, ds -> new DatasourceStatus());
+  }
+
+  private static class DatasourceStatus
+  {
+    static final DatasourceStatus EMPTY = new DatasourceStatus();
+
+    final Map<Interval, IntervalStatus> intervalStatus = new HashMap<>();
+
+    Map<Interval, IntervalStatus> getIntervalStatuses()
+    {
+      return intervalStatus;
+    }
+  }
+
+  private static class IntervalStatus
+  {
+    final IntervalState state;
+    int turnsToSkip;
+    int retryCount;
+
+    IntervalStatus(IntervalState state, int turnsToSkip)
+    {
+      this.state = state;
+      this.turnsToSkip = turnsToSkip;
+    }
+
+    void markSkipped()
+    {
+      this.turnsToSkip--;
+    }
+  }
+
+  private enum IntervalState
+  {
+    TASK_SUBMITTED, COMPACTED, FAILED, FAILED_ALL_RETRIES
   }
 }

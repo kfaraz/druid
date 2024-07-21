@@ -78,7 +78,7 @@ import java.util.function.Supplier;
  *  - [x] route compaction status API to overlord if scheduler is enabled
  *  - [x] skip run on coordinator if scheduler is enabled
  *  - [x] task state listener
- *  - [ ] handle success and failure inside DatasourceQueue
+ *  - [x] handle success and failure inside CompactionStatusTracker
  *  - [x] make policy serializable
  *  - [ ] handle priority datasource in policy
  *  - [ ] add another policy
@@ -261,8 +261,6 @@ public class CompactionSchedulerImpl implements CompactionScheduler
       CoordinatorCompactionConfig currentConfig
   )
   {
-    statusTracker.onCompactionConfigUpdated(currentConfig);
-
     DataSourcesSnapshot dataSourcesSnapshot
         = segmentManager.getSnapshotOfDataSourcesWithAllUsedSegments();
     final CoordinatorRunStats stats = new CoordinatorRunStats();

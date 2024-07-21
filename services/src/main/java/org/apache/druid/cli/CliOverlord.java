@@ -207,11 +207,7 @@ public class CliOverlord extends ServerRunnable
               binder.bindConstant().annotatedWith(Names.named("servicePort")).to(8090);
               binder.bindConstant().annotatedWith(Names.named("tlsServicePort")).to(8290);
 
-              JsonConfigProvider.bind(
-                  binder,
-                  CentralizedDatasourceSchemaConfig.PROPERTY_PREFIX,
-                  CentralizedDatasourceSchemaConfig.class
-              );
+              JsonConfigProvider.bind(binder, CentralizedDatasourceSchemaConfig.PROPERTY_PREFIX, CentralizedDatasourceSchemaConfig.class);
 
               binder.bind(SegmentsMetadataManager.class)
                     .toProvider(SegmentsMetadataManagerProvider.class)

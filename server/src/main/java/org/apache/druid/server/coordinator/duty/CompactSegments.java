@@ -116,6 +116,7 @@ public class CompactSegments implements CoordinatorCustomDuty
   @Override
   public DruidCoordinatorRuntimeParams run(DruidCoordinatorRuntimeParams params)
   {
+    statusTracker.reset();
     run(
         params.getCoordinatorCompactionConfig(),
         params.getUsedSegmentsTimelinesPerDataSource(),

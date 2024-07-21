@@ -50,30 +50,35 @@ public class CompactionConfigUpdateRequest
     this.compactionPolicy = compactionPolicy;
   }
 
+  @Nullable
   @JsonProperty
   public Double getCompactionTaskSlotRatio()
   {
     return compactionTaskSlotRatio;
   }
 
+  @Nullable
   @JsonProperty
   public Integer getMaxCompactionTaskSlots()
   {
     return maxCompactionTaskSlots;
   }
 
+  @Nullable
   @JsonProperty
   public Boolean getUseAutoScaleSlots()
   {
     return useAutoScaleSlots;
   }
 
+  @Nullable
   @JsonProperty
   public CompactionEngine getCompactionEngine()
   {
     return compactionEngine;
   }
 
+  @Nullable
   @JsonProperty
   public CompactionSegmentSearchPolicy getCompactionPolicy()
   {
