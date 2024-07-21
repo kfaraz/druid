@@ -134,7 +134,6 @@ public class DruidOverlord
           leaderLifecycle.addManagedInstance(taskQueue);
           leaderLifecycle.addManagedInstance(supervisorManager);
           leaderLifecycle.addManagedInstance(overlordDutyExecutor);
-          leaderLifecycle.addManagedInstance(compactionScheduler);
           leaderLifecycle.addHandler(
               new Lifecycle.Handler()
               {
