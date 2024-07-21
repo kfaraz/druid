@@ -59,6 +59,11 @@ public class CompactionStatusTracker
       DataSourceCompactionConfig config
   )
   {
+    final CompactionStatus status = CompactionStatus.compute(candidate, config, objectMapper);
+    if (status.isComplete()) {
+      return status;
+    }
+
     final long inputSegmentSize = config.getInputSegmentSizeBytes();
     if (candidate.getTotalBytes() > inputSegmentSize) {
       return CompactionStatus.skipped(
@@ -76,7 +81,7 @@ public class CompactionStatusTracker
       );
     }
 
-    return CompactionStatus.compute(candidate, config, objectMapper);
+    return status;
   }
 
   public void onCompactionConfigUpdated(CoordinatorCompactionConfig compactionConfig)
@@ -88,7 +93,13 @@ public class CompactionStatusTracker
       );
     }
 
-    // TODO: Clean up state for datasources where compaction has been freshly disabled
+    // Clean up state for datasources where compaction has been freshly disabled
+    final Set<String> allDatasources = new HashSet<>(datasourceToRecentlySubmittedIntervals.keySet());
+    allDatasources.forEach(datasource -> {
+      if (!compactionEnabledDatasources.contains(datasource)) {
+        datasourceToRecentlySubmittedIntervals.remove(datasource);
+      }
+    });
   }
 
   public void onTaskSubmitted(
@@ -106,7 +117,7 @@ public class CompactionStatusTracker
     log.info("Task[%s] has new status[%s].", taskId, taskStatus);
 
     if (taskStatus.isFailure()) {
-
+      // TODO: retry logic and other stuff
     }
 
     // Do not remove the interval of this task from recently submitted intervals
@@ -115,7 +126,7 @@ public class CompactionStatusTracker
     // are published, it might re-submit the same task.
   }
 
-  public void stop()
+  public void reset()
   {
     datasourceToRecentlySubmittedIntervals.clear();
   }

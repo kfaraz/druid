@@ -311,13 +311,11 @@ public class DataSourceCompactibleSegmentIterator implements Iterator<SegmentsTo
       if (compactionStatus.isComplete()) {
         compactedSegmentStats.increment(candidates.getStats());
       } else if (compactionStatus.isSkipped()) {
-        if (!compactionStatus.getReasonToCompact().contains("recently")) {
-          skippedSegmentStats.increment(candidates.getStats());
-          log.warn(
-              "Skipping compaction for datasource[%s], interval[%s] due to reason[%s].",
-              dataSource, interval, compactionStatus.getReasonToCompact()
-          );
-        }
+        skippedSegmentStats.increment(candidates.getStats());
+        log.warn(
+            "Skipping compaction for datasource[%s], interval[%s] due to reason[%s].",
+            dataSource, interval, compactionStatus.getReasonToCompact()
+        );
       } else {
         log.info(
             "Datasource[%s], interval[%s] has [%d] segments that need to be compacted because [%s].",

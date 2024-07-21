@@ -139,6 +139,7 @@ public class CompactSegments implements CoordinatorCustomDuty
       return;
     }
 
+    statusTracker.onCompactionConfigUpdated(dynamicConfig);
     List<DataSourceCompactionConfig> compactionConfigList = dynamicConfig.getCompactionConfigs();
     if (compactionConfigList == null || compactionConfigList.isEmpty()) {
       LOG.info("Skipping compaction as compaction config list is empty.");

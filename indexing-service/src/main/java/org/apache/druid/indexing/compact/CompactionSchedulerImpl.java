@@ -215,7 +215,7 @@ public class CompactionSchedulerImpl implements CompactionScheduler
 
   private synchronized void cleanupState()
   {
-    statusTracker.stop();
+    statusTracker.reset();
 
     Optional<TaskRunner> taskRunner = taskMaster.getTaskRunner();
     if (taskRunner.isPresent()) {

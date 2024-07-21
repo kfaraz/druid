@@ -392,10 +392,10 @@ public class OverlordTest
 
   public static class MockTaskRunner implements TaskRunner
   {
-    private final Map<String, CountDownLatch> completionLatches;
-    private final Map<String, CountDownLatch> runLatches;
-    private final ConcurrentHashMap<String, TaskRunnerWorkItem> taskRunnerWorkItems;
-    private final List<String> runningTasks;
+    private Map<String, CountDownLatch> completionLatches;
+    private Map<String, CountDownLatch> runLatches;
+    private ConcurrentHashMap<String, TaskRunnerWorkItem> taskRunnerWorkItems;
+    private List<String> runningTasks;
 
     public MockTaskRunner(Map<String, CountDownLatch> runLatches, Map<String, CountDownLatch> completionLatches)
     {
