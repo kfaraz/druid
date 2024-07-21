@@ -48,7 +48,12 @@ import java.util.function.Function;
  */
 public class CompactionStatus
 {
-  private static final CompactionStatus COMPLETE = new CompactionStatus(true, null);
+  private static final CompactionStatus COMPLETE = new CompactionStatus(State.COMPLETE, null);
+
+  private enum State
+  {
+    COMPLETE, PENDING, SKIPPED
+  }
 
   /**
    * List of checks performed to determine if compaction is already complete.
@@ -68,18 +73,23 @@ public class CompactionStatus
       Evaluator::transformSpecFilterIsUpToDate
   );
 
-  private final boolean complete;
+  private final State state;
   private final String reasonToCompact;
 
-  private CompactionStatus(boolean complete, String reason)
+  private CompactionStatus(State state, String reason)
   {
-    this.complete = complete;
+    this.state = state;
     this.reasonToCompact = reason;
   }
 
   public boolean isComplete()
   {
-    return complete;
+    return state == State.COMPLETE;
+  }
+
+  public boolean isSkipped()
+  {
+    return state == State.SKIPPED;
   }
 
   public String getReasonToCompact()
@@ -89,7 +99,7 @@ public class CompactionStatus
 
   private static CompactionStatus incomplete(String reasonFormat, Object... args)
   {
-    return new CompactionStatus(false, StringUtils.format(reasonFormat, args));
+    return new CompactionStatus(State.PENDING, StringUtils.format(reasonFormat, args));
   }
 
   private static CompactionStatus completeIfEqual(String field, Object configured, Object current)
@@ -109,12 +119,17 @@ public class CompactionStatus
     );
   }
 
+  static CompactionStatus skipped(String reasonFormat, Object... args)
+  {
+    return new CompactionStatus(State.SKIPPED, StringUtils.format(reasonFormat, args));
+  }
+
   /**
    * Determines the CompactionStatus of the given candidate segments by evaluating
    * the {@link #CHECKS} one by one. If any check returns an incomplete status,
    * further checks are not performed and the incomplete status is returned.
    */
-  static CompactionStatus of(
+  static CompactionStatus compute(
       SegmentsToCompact candidateSegments,
       DataSourceCompactionConfig config,
       ObjectMapper objectMapper

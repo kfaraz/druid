@@ -69,6 +69,7 @@ import org.apache.druid.indexing.common.tasklogs.SwitchingTaskLogStreamer;
 import org.apache.druid.indexing.common.tasklogs.TaskRunnerTaskLogStreamer;
 import org.apache.druid.indexing.compact.CompactionScheduler;
 import org.apache.druid.indexing.compact.CompactionSchedulerImpl;
+import org.apache.druid.server.coordinator.compact.CompactionStatusTracker;
 import org.apache.druid.indexing.overlord.DruidOverlord;
 import org.apache.druid.indexing.overlord.ForkingTaskRunnerFactory;
 import org.apache.druid.indexing.overlord.HeapMemoryTaskStorage;
@@ -216,6 +217,7 @@ public class CliOverlord extends ServerRunnable
               binder.bind(SegmentsMetadataManager.class)
                     .toProvider(SegmentsMetadataManagerProvider.class)
                     .in(ManageLifecycle.class);
+              binder.bind(CompactionStatusTracker.class).in(LazySingleton.class);
               JsonConfigProvider.bind(binder, "druid.compaction.scheduler", CompactionSchedulerConfig.class);
             }
 

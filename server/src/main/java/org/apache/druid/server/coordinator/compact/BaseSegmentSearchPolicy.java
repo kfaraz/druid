@@ -19,34 +19,24 @@
 
 package org.apache.druid.server.coordinator.compact;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import javax.annotation.Nullable;
 import java.util.Objects;
 
 public abstract class BaseSegmentSearchPolicy implements CompactionSegmentSearchPolicy
 {
   private final String priorityDatasource;
-  private final ObjectMapper objectMapper;
 
   protected BaseSegmentSearchPolicy(
-      @Nullable String priorityDatasource,
-      ObjectMapper objectMapper
+      @Nullable String priorityDatasource
   )
   {
     this.priorityDatasource = priorityDatasource;
-    this.objectMapper = objectMapper;
   }
 
   @Nullable
   public String getPriorityDatasource()
   {
     return priorityDatasource;
-  }
-
-  public ObjectMapper getObjectMapper()
-  {
-    return objectMapper;
   }
 
   @Override

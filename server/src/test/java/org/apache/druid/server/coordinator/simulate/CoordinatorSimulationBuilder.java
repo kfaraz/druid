@@ -49,8 +49,7 @@ import org.apache.druid.server.coordinator.balancer.CachingCostBalancerStrategyF
 import org.apache.druid.server.coordinator.balancer.CostBalancerStrategyFactory;
 import org.apache.druid.server.coordinator.balancer.DiskNormalizedCostBalancerStrategyFactory;
 import org.apache.druid.server.coordinator.balancer.RandomBalancerStrategyFactory;
-import org.apache.druid.server.coordinator.compact.CompactionSegmentSearchPolicy;
-import org.apache.druid.server.coordinator.compact.NewestSegmentFirstPolicy;
+import org.apache.druid.server.coordinator.compact.CompactionStatusTracker;
 import org.apache.druid.server.coordinator.config.CoordinatorKillConfigs;
 import org.apache.druid.server.coordinator.config.CoordinatorPeriodConfig;
 import org.apache.druid.server.coordinator.config.CoordinatorRunConfig;
@@ -88,8 +87,6 @@ public class CoordinatorSimulationBuilder
               DataSegment.PruneSpecsHolder.DEFAULT
           )
       );
-  private static final CompactionSegmentSearchPolicy COMPACTION_SEGMENT_SEARCH_POLICY =
-      new NewestSegmentFirstPolicy(OBJECT_MAPPER);
   private String balancerStrategy;
   private CoordinatorDynamicConfig dynamicConfig = CoordinatorDynamicConfig.builder().build();
   private List<DruidServer> servers;
@@ -215,7 +212,8 @@ public class CoordinatorSimulationBuilder
         env.leaderSelector,
         null,
         CentralizedDatasourceSchemaConfig.create(),
-        CompactionSchedulerConfig.defaultConfig()
+        CompactionSchedulerConfig.defaultConfig(),
+        new CompactionStatusTracker(OBJECT_MAPPER)
     );
 
     return new SimulationImpl(coordinator, env);

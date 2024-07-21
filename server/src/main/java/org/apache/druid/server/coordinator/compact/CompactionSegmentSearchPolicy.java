@@ -44,6 +44,7 @@ public interface CompactionSegmentSearchPolicy
   CompactionSegmentIterator createIterator(
       Map<String, DataSourceCompactionConfig> compactionConfigs,
       Map<String, SegmentTimeline> dataSources,
-      Map<String, List<Interval>> skipIntervals
+      Map<String, List<Interval>> skipIntervals,
+      CompactionStatusTracker statusTracker
   );
 }

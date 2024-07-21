@@ -52,7 +52,7 @@ import org.apache.druid.segment.metadata.CentralizedDatasourceSchemaConfig;
 import org.apache.druid.server.DruidNode;
 import org.apache.druid.server.coordination.ServerType;
 import org.apache.druid.server.coordinator.balancer.CostBalancerStrategyFactory;
-import org.apache.druid.server.coordinator.compact.NewestSegmentFirstPolicy;
+import org.apache.druid.server.coordinator.compact.CompactionStatusTracker;
 import org.apache.druid.server.coordinator.config.CoordinatorKillConfigs;
 import org.apache.druid.server.coordinator.config.CoordinatorPeriodConfig;
 import org.apache.druid.server.coordinator.config.CoordinatorRunConfig;
@@ -113,7 +113,7 @@ public class DruidCoordinatorTest extends CuratorTestBase
   private DruidCoordinatorConfig druidCoordinatorConfig;
   private ObjectMapper objectMapper;
   private DruidNode druidNode;
-  private NewestSegmentFirstPolicy newestSegmentFirstPolicy;
+  private CompactionStatusTracker statusTracker;
   private final LatchableServiceEmitter serviceEmitter = new LatchableServiceEmitter();
 
   @Before
@@ -147,7 +147,7 @@ public class DruidCoordinatorTest extends CuratorTestBase
     curator.blockUntilConnected();
     curator.create().creatingParentsIfNeeded().forPath(LOADPATH);
     objectMapper = new DefaultObjectMapper();
-    newestSegmentFirstPolicy = new NewestSegmentFirstPolicy(objectMapper);
+    statusTracker = new CompactionStatusTracker(objectMapper);
     druidCoordinatorConfig = new DruidCoordinatorConfig(
         new CoordinatorRunConfig(new Duration(COORDINATOR_START_DELAY), new Duration(COORDINATOR_PERIOD)),
         new CoordinatorPeriodConfig(null, null),
@@ -191,7 +191,8 @@ public class DruidCoordinatorTest extends CuratorTestBase
         new TestDruidLeaderSelector(),
         null,
         CentralizedDatasourceSchemaConfig.create(),
-        CompactionSchedulerConfig.defaultConfig()
+        CompactionSchedulerConfig.defaultConfig(),
+        statusTracker
     );
   }
 
@@ -622,7 +623,8 @@ public class DruidCoordinatorTest extends CuratorTestBase
         new TestDruidLeaderSelector(),
         null,
         CentralizedDatasourceSchemaConfig.create(),
-        CompactionSchedulerConfig.defaultConfig()
+        CompactionSchedulerConfig.defaultConfig(),
+        statusTracker
     );
     // Since CompactSegments is not enabled in Custom Duty Group, then CompactSegments must be created in IndexingServiceDuties
     List<CoordinatorDuty> indexingDuties = coordinator.makeIndexingServiceDuties();
@@ -633,7 +635,7 @@ public class DruidCoordinatorTest extends CuratorTestBase
     Assert.assertTrue(compactSegmentsDutyFromCustomGroups.isEmpty());
 
     // CompactSegments returned by this method should be created using the DruidCoordinatorConfig in the DruidCoordinator
-    CompactSegments duty = coordinator.initializeCompactSegmentsDuty(newestSegmentFirstPolicy);
+    CompactSegments duty = coordinator.initializeCompactSegmentsDuty(statusTracker);
     Assert.assertNotNull(duty);
   }
 
@@ -662,7 +664,8 @@ public class DruidCoordinatorTest extends CuratorTestBase
         new TestDruidLeaderSelector(),
         null,
         CentralizedDatasourceSchemaConfig.create(),
-        CompactionSchedulerConfig.defaultConfig()
+        CompactionSchedulerConfig.defaultConfig(),
+        statusTracker
     );
     // Since CompactSegments is not enabled in Custom Duty Group, then CompactSegments must be created in IndexingServiceDuties
     List<CoordinatorDuty> indexingDuties = coordinator.makeIndexingServiceDuties();
@@ -673,7 +676,7 @@ public class DruidCoordinatorTest extends CuratorTestBase
     Assert.assertTrue(compactSegmentsDutyFromCustomGroups.isEmpty());
 
     // CompactSegments returned by this method should be created using the DruidCoordinatorConfig in the DruidCoordinator
-    CompactSegments duty = coordinator.initializeCompactSegmentsDuty(newestSegmentFirstPolicy);
+    CompactSegments duty = coordinator.initializeCompactSegmentsDuty(statusTracker);
     Assert.assertNotNull(duty);
   }
 
@@ -683,7 +686,7 @@ public class DruidCoordinatorTest extends CuratorTestBase
     CoordinatorCustomDutyGroup compactSegmentCustomGroup = new CoordinatorCustomDutyGroup(
         "group1",
         Duration.standardSeconds(1),
-        ImmutableList.of(new CompactSegments(null, null))
+        ImmutableList.of(new CompactSegments(statusTracker, null))
     );
     CoordinatorCustomDutyGroups customDutyGroups = new CoordinatorCustomDutyGroups(ImmutableSet.of(compactSegmentCustomGroup));
     coordinator = new DruidCoordinator(
@@ -702,7 +705,8 @@ public class DruidCoordinatorTest extends CuratorTestBase
         new TestDruidLeaderSelector(),
         null,
         CentralizedDatasourceSchemaConfig.create(),
-        CompactionSchedulerConfig.defaultConfig()
+        CompactionSchedulerConfig.defaultConfig(),
+        statusTracker
     );
     // Since CompactSegments is enabled in Custom Duty Group, then CompactSegments must not be created in IndexingServiceDuties
     List<CoordinatorDuty> indexingDuties = coordinator.makeIndexingServiceDuties();
@@ -715,7 +719,7 @@ public class DruidCoordinatorTest extends CuratorTestBase
     Assert.assertNotNull(compactSegmentsDutyFromCustomGroups.get(0));
 
     // CompactSegments returned by this method should be from the Custom Duty Group
-    CompactSegments duty = coordinator.initializeCompactSegmentsDuty(newestSegmentFirstPolicy);
+    CompactSegments duty = coordinator.initializeCompactSegmentsDuty(statusTracker);
     Assert.assertNotNull(duty);
   }
 
@@ -807,7 +811,8 @@ public class DruidCoordinatorTest extends CuratorTestBase
         new TestDruidLeaderSelector(),
         null,
         CentralizedDatasourceSchemaConfig.create(),
-        CompactionSchedulerConfig.defaultConfig()
+        CompactionSchedulerConfig.defaultConfig(),
+        statusTracker
     );
     coordinator.start();
 

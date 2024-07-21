@@ -19,8 +19,6 @@
 
 package org.apache.druid.server.coordinator.compact;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.base.Preconditions;
 import com.google.common.collect.Maps;
 import org.apache.druid.error.DruidException;
 import org.apache.druid.java.util.common.logger.Logger;
@@ -52,7 +50,7 @@ public class PriorityBasedCompactionSegmentIterator implements CompactionSegment
       Map<String, SegmentTimeline> datasourceToTimeline,
       Map<String, List<Interval>> skipIntervals,
       Comparator<SegmentsToCompact> segmentPriority,
-      ObjectMapper objectMapper
+      CompactionStatusTracker statusTracker
   )
   {
     this.queue = new PriorityQueue<>(segmentPriority);
@@ -74,7 +72,7 @@ public class PriorityBasedCompactionSegmentIterator implements CompactionSegment
               timeline,
               skipIntervals.getOrDefault(datasource, Collections.emptyList()),
               segmentPriority,
-              objectMapper
+              statusTracker
           )
       );
       addNextItemForDatasourceToQueue(datasource);
@@ -113,10 +111,9 @@ public class PriorityBasedCompactionSegmentIterator implements CompactionSegment
     }
 
     final SegmentsToCompact entry = queue.poll();
-    if (entry == null) {
+    if (entry == null || entry.isEmpty()) {
       throw new NoSuchElementException();
     }
-    Preconditions.checkState(!entry.isEmpty(), "Queue entry must not be empty");
 
     addNextItemForDatasourceToQueue(entry.getFirst().getDataSource());
     return entry;

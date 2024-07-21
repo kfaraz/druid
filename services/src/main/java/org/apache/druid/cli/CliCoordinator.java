@@ -54,6 +54,7 @@ import org.apache.druid.guice.QueryableModule;
 import org.apache.druid.guice.annotations.EscalatedGlobal;
 import org.apache.druid.guice.annotations.Global;
 import org.apache.druid.guice.http.JettyHttpClientModule;
+import org.apache.druid.server.coordinator.compact.CompactionStatusTracker;
 import org.apache.druid.indexing.overlord.TaskMaster;
 import org.apache.druid.indexing.overlord.TaskStorage;
 import org.apache.druid.java.util.common.IAE;
@@ -255,6 +256,7 @@ public class CliCoordinator extends ServerRunnable
 
             binder.bind(LookupCoordinatorManager.class).in(LazySingleton.class);
 
+            binder.bind(CompactionStatusTracker.class).in(LazySingleton.class);
             binder.bind(CoordinatorConfigManager.class);
             binder.bind(MetadataManager.class);
             binder.bind(DruidCoordinator.class);

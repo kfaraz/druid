@@ -25,6 +25,7 @@ import com.google.common.collect.ImmutableList;
 import org.apache.druid.common.config.Configs;
 import org.apache.druid.indexer.CompactionEngine;
 import org.apache.druid.server.coordinator.compact.CompactionSegmentSearchPolicy;
+import org.apache.druid.server.coordinator.compact.NewestSegmentFirstPolicy;
 import org.apache.druid.server.http.CompactionConfigUpdateRequest;
 
 import javax.annotation.Nullable;
@@ -39,6 +40,7 @@ public class CoordinatorCompactionConfig
   private static final int DEFAULT_MAX_COMPACTION_TASK_SLOTS = Integer.MAX_VALUE;
   private static final boolean DEFAULT_USE_AUTO_SCALE_SLOTS = false;
   private static final CompactionEngine DEFAULT_COMPACTION_ENGINE = CompactionEngine.NATIVE;
+  private static final CompactionSegmentSearchPolicy DEFAULT_COMPACTION_POLICY = new NewestSegmentFirstPolicy();
 
   private final List<DataSourceCompactionConfig> compactionConfigs;
   private final double compactionTaskSlotRatio;
@@ -102,7 +104,7 @@ public class CoordinatorCompactionConfig
     this.maxCompactionTaskSlots = Configs.valueOrDefault(maxCompactionTaskSlots, DEFAULT_MAX_COMPACTION_TASK_SLOTS);
     this.useAutoScaleSlots = Configs.valueOrDefault(useAutoScaleSlots, DEFAULT_USE_AUTO_SCALE_SLOTS);
     this.compactionEngine = Configs.valueOrDefault(compactionEngine, DEFAULT_COMPACTION_ENGINE);
-    this.compactionPolicy = compactionPolicy;
+    this.compactionPolicy = Configs.valueOrDefault(compactionPolicy, DEFAULT_COMPACTION_POLICY);
   }
 
   @JsonProperty
@@ -135,7 +137,6 @@ public class CoordinatorCompactionConfig
     return compactionEngine;
   }
 
-  @Nullable
   @JsonProperty
   public CompactionSegmentSearchPolicy getCompactionPolicy()
   {

@@ -56,6 +56,7 @@ import org.apache.druid.segment.metadata.CoordinatorSegmentMetadataCache;
 import org.apache.druid.server.DruidNode;
 import org.apache.druid.server.coordinator.balancer.BalancerStrategyFactory;
 import org.apache.druid.server.coordinator.compact.CompactionSegmentSearchPolicy;
+import org.apache.druid.server.coordinator.compact.CompactionStatusTracker;
 import org.apache.druid.server.coordinator.config.CoordinatorKillConfigs;
 import org.apache.druid.server.coordinator.config.DruidCoordinatorConfig;
 import org.apache.druid.server.coordinator.config.KillUnusedSegmentsConfig;
@@ -203,7 +204,8 @@ public class DruidCoordinator
       @Coordinator DruidLeaderSelector coordLeaderSelector,
       @Nullable CoordinatorSegmentMetadataCache coordinatorSegmentMetadataCache,
       CentralizedDatasourceSchemaConfig centralizedDatasourceSchemaConfig,
-      CompactionSchedulerConfig compactionSchedulerConfig
+      CompactionSchedulerConfig compactionSchedulerConfig,
+      CompactionStatusTracker compactionStatusTracker
   )
   {
     this.config = config;
@@ -221,7 +223,7 @@ public class DruidCoordinator
     this.balancerStrategyFactory = config.getBalancerStrategyFactory();
     this.lookupCoordinatorManager = lookupCoordinatorManager;
     this.coordLeaderSelector = coordLeaderSelector;
-    this.compactSegments = initializeCompactSegmentsDuty(compactionSchedulerConfig.getDefaultCompactionPolicy());
+    this.compactSegments = initializeCompactSegmentsDuty(compactionStatusTracker);
     this.loadQueueManager = loadQueueManager;
     this.coordinatorSegmentMetadataCache = coordinatorSegmentMetadataCache;
     this.centralizedDatasourceSchemaConfig = centralizedDatasourceSchemaConfig;
@@ -626,11 +628,11 @@ public class DruidCoordinator
   }
 
   @VisibleForTesting
-  CompactSegments initializeCompactSegmentsDuty(CompactionSegmentSearchPolicy compactionSegmentSearchPolicy)
+  CompactSegments initializeCompactSegmentsDuty(CompactionStatusTracker statusTracker)
   {
     List<CompactSegments> compactSegmentsDutyFromCustomGroups = getCompactSegmentsDutyFromCustomGroups();
     if (compactSegmentsDutyFromCustomGroups.isEmpty()) {
-      return new CompactSegments(compactionSegmentSearchPolicy, overlordClient);
+      return new CompactSegments(statusTracker, overlordClient);
     } else {
       if (compactSegmentsDutyFromCustomGroups.size() > 1) {
         log.warn(

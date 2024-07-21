@@ -19,7 +19,6 @@
 
 package org.apache.druid.server.coordinator.compact;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
@@ -64,8 +63,8 @@ public class DataSourceCompactibleSegmentIterator implements Iterator<SegmentsTo
   private static final Logger log = new Logger(DataSourceCompactibleSegmentIterator.class);
 
   private final String dataSource;
-  private final ObjectMapper objectMapper;
   private final DataSourceCompactionConfig config;
+  private final CompactionStatusTracker statusTracker;
   private final CompactionStatistics compactedSegmentStats = new CompactionStatistics();
   private final CompactionStatistics skippedSegmentStats = new CompactionStatistics();
 
@@ -82,10 +81,10 @@ public class DataSourceCompactibleSegmentIterator implements Iterator<SegmentsTo
       SegmentTimeline timeline,
       List<Interval> skipIntervals,
       Comparator<SegmentsToCompact> segmentPriority,
-      ObjectMapper objectMapper
+      CompactionStatusTracker statusTracker
   )
   {
-    this.objectMapper = objectMapper;
+    this.statusTracker = statusTracker;
     this.config = config;
     this.dataSource = config.getDataSource();
     this.queue = new PriorityQueue<>(segmentPriority);
@@ -296,7 +295,6 @@ public class DataSourceCompactibleSegmentIterator implements Iterator<SegmentsTo
    */
   private void findAndEnqueueSegmentsToCompact(CompactibleSegmentIterator compactibleSegmentIterator)
   {
-    final long inputSegmentSize = config.getInputSegmentSizeBytes();
     while (compactibleSegmentIterator.hasNext()) {
       List<DataSegment> segments = compactibleSegmentIterator.next();
 
@@ -309,32 +307,22 @@ public class DataSourceCompactibleSegmentIterator implements Iterator<SegmentsTo
       final SegmentsToCompact candidates = SegmentsToCompact.from(segments);
       final Interval interval = candidates.getUmbrellaInterval();
 
-      final CompactionStatus compactionStatus = CompactionStatus.of(candidates, config, objectMapper);
-      if (!compactionStatus.isComplete()) {
-        log.debug(
+      final CompactionStatus compactionStatus = statusTracker.computeCompactionStatus(candidates, config);
+      if (compactionStatus.isComplete()) {
+        compactedSegmentStats.increment(candidates.getStats());
+      } else if (compactionStatus.isSkipped()) {
+        if (!compactionStatus.getReasonToCompact().contains("recently")) {
+          skippedSegmentStats.increment(candidates.getStats());
+          log.warn(
+              "Skipping compaction for datasource[%s], interval[%s] due to reason[%s].",
+              dataSource, interval, compactionStatus.getReasonToCompact()
+          );
+        }
+      } else {
+        log.info(
             "Datasource[%s], interval[%s] has [%d] segments that need to be compacted because [%s].",
             dataSource, interval, candidates.size(), compactionStatus.getReasonToCompact()
         );
-      }
-
-      if (compactionStatus.isComplete()) {
-        compactedSegmentStats.increment(candidates.getStats());
-      } else if (candidates.getTotalBytes() > inputSegmentSize) {
-        skippedSegmentStats.increment(candidates.getStats());
-        log.warn(
-            "Skipping compaction for datasource[%s], interval[%s] as total segment size[%d]"
-            + " is larger than allowed inputSegmentSize[%d].",
-            dataSource, interval, candidates.getTotalBytes(), inputSegmentSize
-        );
-      } else if (config.getGranularitySpec() != null
-                 && config.getGranularitySpec().getSegmentGranularity() != null) {
-        if (compactedIntervals.contains(interval)) {
-          // Skip these candidate segments as we have already compacted this interval
-        } else {
-          compactedIntervals.add(interval);
-          queue.add(candidates);
-        }
-      } else {
         queue.add(candidates);
       }
     }
