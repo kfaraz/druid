@@ -121,14 +121,9 @@ public class CompactionStatusTracker
       SegmentsToCompact candidateSegments
   )
   {
-    final DatasourceStatus datasourceStatus = getOrComputeDatasourceStatus(taskPayload.getDataSource());
-
-    datasourceStatus.getIntervalStatuses().computeIfAbsent(
-        candidateSegments.getUmbrellaInterval(),
-        i -> new IntervalStatus(IntervalState.TASK_SUBMITTED, 0)
-    );
-
     submittedTaskIdToPayload.put(taskPayload.getId(), taskPayload);
+    getOrComputeDatasourceStatus(taskPayload.getDataSource())
+        .handleSubmittedTask(candidateSegments);
   }
 
   public void onTaskFinished(String taskId, TaskStatus taskStatus)
@@ -143,31 +138,9 @@ public class CompactionStatusTracker
       return;
     }
 
-    final DatasourceStatus datasourceStatus
-        = getOrComputeDatasourceStatus(taskPayload.getDataSource());
     final Interval compactionInterval = taskPayload.getIoConfig().getInputSpec().getInterval();
-
-    final IntervalStatus lastKnownStatus = datasourceStatus.getIntervalStatuses().get(compactionInterval);
-
-    if (taskStatus.isSuccess()) {
-      datasourceStatus.intervalStatus.put(
-          compactionInterval,
-          new IntervalStatus(IntervalState.COMPACTED, 10)
-      );
-    } else if (lastKnownStatus == null) {
-      // This is the first failure
-      datasourceStatus.intervalStatus.put(
-          compactionInterval,
-          new IntervalStatus(IntervalState.FAILED, 0)
-      );
-    } else if (lastKnownStatus.state == IntervalState.FAILED
-               && ++lastKnownStatus.retryCount > 10) {
-      // Failure retries have been exhausted
-      datasourceStatus.intervalStatus.put(
-          compactionInterval,
-          new IntervalStatus(IntervalState.FAILED_ALL_RETRIES, 10)
-      );
-    }
+    getOrComputeDatasourceStatus(taskPayload.getDataSource())
+        .handleTaskStatus(compactionInterval, taskStatus);
   }
 
   public void reset()
@@ -185,6 +158,39 @@ public class CompactionStatusTracker
     static final DatasourceStatus EMPTY = new DatasourceStatus();
 
     final Map<Interval, IntervalStatus> intervalStatus = new HashMap<>();
+
+    void handleTaskStatus(Interval compactionInterval, TaskStatus taskStatus)
+    {
+      final IntervalStatus lastKnownStatus = intervalStatus.get(compactionInterval);
+
+      if (taskStatus.isSuccess()) {
+        intervalStatus.put(compactionInterval, new IntervalStatus(IntervalState.COMPACTED, 10));
+      } else if (lastKnownStatus == null) {
+        // This is the first failure
+        intervalStatus.put(compactionInterval, new IntervalStatus(IntervalState.FAILED, 0));
+      } else if (lastKnownStatus.state == IntervalState.FAILED && ++lastKnownStatus.retryCount > 10) {
+        // Failure retries have been exhausted
+        intervalStatus.put(compactionInterval, new IntervalStatus(IntervalState.FAILED_ALL_RETRIES, 10));
+      }
+    }
+
+    void handleSubmittedTask(SegmentsToCompact candidateSegments)
+    {
+      getIntervalStatuses().computeIfAbsent(
+          candidateSegments.getUmbrellaInterval(),
+          i -> new IntervalStatus(IntervalState.TASK_SUBMITTED, 0)
+      );
+
+      final Set<Interval> readyIntervals = new HashSet<>();
+      intervalStatus.forEach((interval, status) -> {
+        status.turnsToSkip--;
+        if (status.isReady()) {
+          readyIntervals.add(interval);
+        }
+      });
+
+      readyIntervals.forEach(intervalStatus::remove);
+    }
 
     Map<Interval, IntervalStatus> getIntervalStatuses()
     {
@@ -204,9 +210,10 @@ public class CompactionStatusTracker
       this.turnsToSkip = turnsToSkip;
     }
 
-    void markSkipped()
+    boolean isReady()
     {
-      this.turnsToSkip--;
+      return turnsToSkip <= 0
+             && (state == IntervalState.COMPACTED || state == IntervalState.FAILED_ALL_RETRIES);
     }
   }
 
