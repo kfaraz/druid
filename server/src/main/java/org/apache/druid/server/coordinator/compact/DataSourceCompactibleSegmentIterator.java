@@ -72,7 +72,7 @@ public class DataSourceCompactibleSegmentIterator implements Iterator<SegmentsTo
   // If configured segmentGranularity in config is finer than current segmentGranularity, the same set of segments
   // can belong to multiple intervals in the timeline. We keep track of the compacted intervals between each
   // run of the compaction job and skip any interval that was already previously compacted.
-  private final Set<Interval> compactedIntervals = new HashSet<>();
+  private final Set<Interval> queuedIntervals = new HashSet<>();
 
   private final PriorityQueue<SegmentsToCompact> queue;
 
@@ -308,6 +308,13 @@ public class DataSourceCompactibleSegmentIterator implements Iterator<SegmentsTo
       final Interval interval = candidates.getUmbrellaInterval();
 
       final CompactionStatus compactionStatus = statusTracker.computeCompactionStatus(candidates, config);
+      if (!compactionStatus.isComplete()) {
+        log.debug(
+            "Datasource[%s], interval[%s] has [%d] segments that need to be compacted because [%s].",
+            dataSource, interval, candidates.size(), compactionStatus.getReason()
+        );
+      }
+
       if (compactionStatus.isComplete()) {
         compactedSegmentStats.increment(candidates.getStats());
       } else if (compactionStatus.isSkipped()) {
@@ -318,17 +325,13 @@ public class DataSourceCompactibleSegmentIterator implements Iterator<SegmentsTo
         );
       } else if (config.getGranularitySpec() != null
                  && config.getGranularitySpec().getSegmentGranularity() != null) {
-        if (compactedIntervals.contains(interval)) {
-          // Skip this interval
+        if (queuedIntervals.contains(interval)) {
+          // Skip these candidate segments as we have already queued this interval
         } else {
-          compactedIntervals.add(interval);
+          queuedIntervals.add(interval);
           queue.add(candidates);
         }
       } else {
-        log.debug(
-            "Datasource[%s], interval[%s] has [%d] segments that need to be compacted because [%s].",
-            dataSource, interval, candidates.size(), compactionStatus.getReason()
-        );
         queue.add(candidates);
       }
     }

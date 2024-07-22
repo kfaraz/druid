@@ -23,6 +23,10 @@ import org.apache.druid.server.coordinator.AutoCompactionSnapshot;
 
 import java.util.Map;
 
+/**
+ * Compaction Scheduler that runs on the Overlord if
+ * {@code druid.compaction.scheduler.enabled=true}.
+ */
 public interface CompactionScheduler
 {
   void becomeLeader();
