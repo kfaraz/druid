@@ -20,6 +20,7 @@
 package org.apache.druid.server.coordinator.compact;
 
 import com.google.common.collect.Maps;
+import com.google.common.collect.Ordering;
 import org.apache.druid.error.DruidException;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.server.coordinator.DataSourceCompactionConfig;
@@ -27,6 +28,8 @@ import org.apache.druid.timeline.SegmentTimeline;
 import org.apache.druid.utils.CollectionUtils;
 import org.joda.time.Interval;
 
+import javax.annotation.Nullable;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -49,11 +52,24 @@ public class PriorityBasedCompactionSegmentIterator implements CompactionSegment
       Map<String, DataSourceCompactionConfig> compactionConfigs,
       Map<String, SegmentTimeline> datasourceToTimeline,
       Map<String, List<Interval>> skipIntervals,
+      @Nullable String priorityDatasource,
       Comparator<SegmentsToCompact> segmentPriority,
       CompactionStatusTracker statusTracker
   )
   {
-    this.queue = new PriorityQueue<>(segmentPriority);
+    final Comparator<SegmentsToCompact> comparator;
+    if (priorityDatasource == null) {
+      comparator = segmentPriority;
+    } else {
+      comparator = Ordering.compound(
+          Arrays.asList(
+              Ordering.explicit(priorityDatasource).onResultOf(entry -> entry.getFirst().getDataSource()),
+              segmentPriority
+          )
+      );
+    }
+    this.queue = new PriorityQueue<>(comparator);
+
     this.datasourceIterators = Maps.newHashMapWithExpectedSize(datasourceToTimeline.size());
     compactionConfigs.forEach((datasource, config) -> {
       if (config == null) {

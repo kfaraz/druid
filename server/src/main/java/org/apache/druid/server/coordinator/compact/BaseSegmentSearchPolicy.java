@@ -19,7 +19,15 @@
 
 package org.apache.druid.server.coordinator.compact;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import org.apache.druid.server.coordinator.DataSourceCompactionConfig;
+import org.apache.druid.timeline.SegmentTimeline;
+import org.joda.time.Interval;
+
 import javax.annotation.Nullable;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 public abstract class BaseSegmentSearchPolicy implements CompactionSegmentSearchPolicy
@@ -34,10 +42,31 @@ public abstract class BaseSegmentSearchPolicy implements CompactionSegmentSearch
   }
 
   @Nullable
-  public String getPriorityDatasource()
+  @JsonProperty
+  public final String getPriorityDatasource()
   {
     return priorityDatasource;
   }
+
+  @Override
+  public CompactionSegmentIterator createIterator(
+      Map<String, DataSourceCompactionConfig> compactionConfigs,
+      Map<String, SegmentTimeline> dataSources,
+      Map<String, List<Interval>> skipIntervals,
+      CompactionStatusTracker statusTracker
+  )
+  {
+    return new PriorityBasedCompactionSegmentIterator(
+        compactionConfigs,
+        dataSources,
+        skipIntervals,
+        getPriorityDatasource(),
+        getSegmentComparator(),
+        statusTracker
+    );
+  }
+
+  protected abstract Comparator<SegmentsToCompact> getSegmentComparator();
 
   @Override
   public boolean equals(Object o)

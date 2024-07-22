@@ -74,12 +74,12 @@ public class CompactionStatus
   );
 
   private final State state;
-  private final String reasonToCompact;
+  private final String reason;
 
   private CompactionStatus(State state, String reason)
   {
     this.state = state;
-    this.reasonToCompact = reason;
+    this.reason = reason;
   }
 
   public boolean isComplete()
@@ -92,9 +92,9 @@ public class CompactionStatus
     return state == State.SKIPPED;
   }
 
-  public String getReasonToCompact()
+  public String getReason()
   {
-    return reasonToCompact;
+    return reason;
   }
 
   private static CompactionStatus incomplete(String reasonFormat, Object... args)

@@ -62,7 +62,7 @@ public class NewestSegmentFirstPolicyBenchmark
 {
   private static final String DATA_SOURCE_PREFIX = "dataSource_";
 
-  private final CompactionSegmentSearchPolicy policy = new NewestSegmentFirstPolicy();
+  private final CompactionSegmentSearchPolicy policy = new NewestSegmentFirstPolicy(null);
 
   @Param("100")
   private int numDataSources;

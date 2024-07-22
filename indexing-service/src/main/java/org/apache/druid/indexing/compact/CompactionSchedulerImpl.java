@@ -81,7 +81,7 @@ import java.util.function.Supplier;
  *  - [x] handle success and failure inside CompactionStatusTracker
  *  - [x] make policy serializable
  *  - [ ] handle priority datasource in policy
- *  - [ ] add another policy
+ *  - [ ] add another policy - newestSegmentFirst, smallestSegmentFirst, auto
  *  - [x] enable segments polling if overlord is standalone
  *  - [ ] test on cluster - standalone, coordinator-overlord
  *  - [ ] unit tests

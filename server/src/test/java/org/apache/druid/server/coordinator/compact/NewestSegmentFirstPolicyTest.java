@@ -63,6 +63,7 @@ import org.joda.time.DateTimeZone;
 import org.joda.time.Interval;
 import org.joda.time.Period;
 import org.junit.Assert;
+import org.junit.Before;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -82,8 +83,14 @@ public class NewestSegmentFirstPolicyTest
   private static final long DEFAULT_SEGMENT_SIZE = 1000;
   private static final int DEFAULT_NUM_SEGMENTS_PER_SHARD = 4;
   private final ObjectMapper mapper = new DefaultObjectMapper();
-  private final NewestSegmentFirstPolicy policy = new NewestSegmentFirstPolicy();
-  private final CompactionStatusTracker statusTracker = new CompactionStatusTracker(mapper);
+  private final NewestSegmentFirstPolicy policy = new NewestSegmentFirstPolicy(null);
+  private CompactionStatusTracker statusTracker;
+
+  @Before
+  public void setup()
+  {
+    statusTracker = new CompactionStatusTracker(mapper);
+  }
 
   @Test
   public void testLargeOffsetAndSmallSegmentInterval()

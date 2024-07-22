@@ -314,12 +314,20 @@ public class DataSourceCompactibleSegmentIterator implements Iterator<SegmentsTo
         skippedSegmentStats.increment(candidates.getStats());
         log.warn(
             "Skipping compaction for datasource[%s], interval[%s] due to reason[%s].",
-            dataSource, interval, compactionStatus.getReasonToCompact()
+            dataSource, interval, compactionStatus.getReason()
         );
+      } else if (config.getGranularitySpec() != null
+                 && config.getGranularitySpec().getSegmentGranularity() != null) {
+        if (compactedIntervals.contains(interval)) {
+          // Skip this interval
+        } else {
+          compactedIntervals.add(interval);
+          queue.add(candidates);
+        }
       } else {
-        log.info(
+        log.debug(
             "Datasource[%s], interval[%s] has [%d] segments that need to be compacted because [%s].",
-            dataSource, interval, candidates.size(), compactionStatus.getReasonToCompact()
+            dataSource, interval, candidates.size(), compactionStatus.getReason()
         );
         queue.add(candidates);
       }

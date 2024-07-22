@@ -40,7 +40,7 @@ public class CoordinatorCompactionConfig
   private static final int DEFAULT_MAX_COMPACTION_TASK_SLOTS = Integer.MAX_VALUE;
   private static final boolean DEFAULT_USE_AUTO_SCALE_SLOTS = false;
   private static final CompactionEngine DEFAULT_COMPACTION_ENGINE = CompactionEngine.NATIVE;
-  private static final CompactionSegmentSearchPolicy DEFAULT_COMPACTION_POLICY = new NewestSegmentFirstPolicy();
+  private static final CompactionSegmentSearchPolicy DEFAULT_COMPACTION_POLICY = new NewestSegmentFirstPolicy(null);
 
   private final List<DataSourceCompactionConfig> compactionConfigs;
   private final double compactionTaskSlotRatio;
