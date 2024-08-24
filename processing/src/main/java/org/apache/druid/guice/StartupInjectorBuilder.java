@@ -83,6 +83,13 @@ public class StartupInjectorBuilder extends BaseInjectorBuilder<StartupInjectorB
     return this;
   }
 
+  public StartupInjectorBuilder forEmbeddedTestServer()
+  {
+    withExtensions();
+    add(new RuntimeInfoModule());
+    return this;
+  }
+
   /**
    * Configure the injector to not load server-only classes by binding those
    * classes to providers of null values. Avoids accidental dependencies of

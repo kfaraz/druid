@@ -28,6 +28,7 @@ import org.apache.druid.java.util.common.ISE;
 import org.apache.druid.java.util.common.Intervals;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.logger.Logger;
+import org.apache.druid.testing.EmbeddedDruidCluster;
 import org.apache.druid.testing.IntegrationTestingConfig;
 import org.apache.druid.testing.clients.CoordinatorResourceTestClient;
 import org.apache.druid.testing.clients.OverlordResourceTestClient;
@@ -40,9 +41,12 @@ import org.joda.time.Interval;
 
 import java.io.BufferedReader;
 import java.io.Closeable;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.URISyntaxException;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -166,6 +170,21 @@ public abstract class AbstractIndexerTest
         throw new ISE("Failed to load resource: [%s]", file);
       }
       return IOUtils.toString(inputStream, StandardCharsets.UTF_8);
+    }
+  }
+
+  protected String getInputSourceBaseDir(String resourceDir)
+  {
+    if (config.isEmbeddedCluster()) {
+      try {
+        final URL trustStoreUrl = EmbeddedDruidCluster.class.getClassLoader().getResource("truststore.jks");
+        return new File(new File(trustStoreUrl.toURI()).getParent(), resourceDir).getAbsolutePath();
+      }
+      catch (URISyntaxException e) {
+        throw new RuntimeException(e);
+      }
+    } else {
+      return resourceDir;
     }
   }
 

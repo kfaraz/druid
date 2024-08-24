@@ -17,19 +17,22 @@
  * under the License.
  */
 
-package org.apache.druid.testing;
+package com.google.inject.servlet;
 
-import com.fasterxml.jackson.annotation.JsonSubTypes;
-import com.fasterxml.jackson.annotation.JsonTypeInfo;
-import com.google.inject.Provider;
+import com.google.inject.Inject;
 
-@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type", defaultImpl = EmbeddedClusterConfigProvider.class)
-@JsonSubTypes(value = {
-    @JsonSubTypes.Type(name = "docker", value = DockerConfigProvider.class),
-    @JsonSubTypes.Type(name = "configFile", value = ConfigFileConfigProvider.class),
-    @JsonSubTypes.Type(name = "embeddedCluster", value = EmbeddedClusterConfigProvider.class)
-})
-public interface IntegrationTestingConfigProvider extends Provider<IntegrationTestingConfig>
+public class DruidGuiceFilter extends GuiceFilter
 {
-  String PROPERTY_BASE = "druid.test.config";
+  /**
+   * Do not use. Must inject a {@link FilterPipeline} via the constructor.
+   */
+  @SuppressWarnings("unused")
+  private DruidGuiceFilter() {
+    throw new IllegalStateException();
+  }
+
+  @Inject
+  public DruidGuiceFilter(FilterPipeline filterPipeline) {
+    super(filterPipeline);
+  }
 }

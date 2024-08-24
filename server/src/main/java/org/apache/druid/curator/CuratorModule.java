@@ -197,7 +197,7 @@ public class CuratorModule implements Module
           @Override
           public void stop()
           {
-            log.debug("Stopping Curator");
+            log.info("Kashif: Stopping Curator");
             framework.close();
           }
         }

@@ -23,6 +23,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.google.inject.Injector;
 import com.google.inject.Key;
+import com.google.inject.servlet.DruidGuiceFilter;
 import com.google.inject.servlet.GuiceFilter;
 import org.apache.druid.guice.annotations.Json;
 import org.apache.druid.java.util.common.logger.Logger;
@@ -37,6 +38,7 @@ import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.handler.DefaultHandler;
 import org.eclipse.jetty.server.handler.HandlerList;
 import org.eclipse.jetty.servlet.DefaultServlet;
+import org.eclipse.jetty.servlet.FilterHolder;
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHolder;
 
@@ -93,7 +95,8 @@ class MiddleManagerJettyServerInitializer implements JettyServerInitializer
         jsonMapper
     );
 
-    root.addFilter(GuiceFilter.class, "/*", null);
+    final FilterHolder guiceFilterHolder = new FilterHolder(injector.getInstance(DruidGuiceFilter.class));
+    root.addFilter(guiceFilterHolder, "/*", null);
 
     final HandlerList handlerList = new HandlerList();
     JettyServerInitUtils.maybeAddHSTSRewriteHandler(serverConfig, handlerList);
