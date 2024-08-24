@@ -29,9 +29,7 @@ import com.google.inject.multibindings.Multibinder;
 import org.apache.druid.curator.CuratorConfig;
 import org.apache.druid.discovery.NodeRole;
 import org.apache.druid.guice.JsonConfigProvider;
-import org.apache.druid.guice.LifecycleModule;
 import org.apache.druid.guice.ManageLifecycle;
-import org.apache.druid.guice.ManageLifecycleInit;
 import org.apache.druid.guice.annotations.EscalatedClient;
 import org.apache.druid.guice.annotations.Self;
 import org.apache.druid.java.util.common.lifecycle.Lifecycle;
@@ -42,7 +40,6 @@ import org.apache.druid.java.util.http.client.CredentialedHttpClient;
 import org.apache.druid.java.util.http.client.HttpClient;
 import org.apache.druid.java.util.http.client.auth.BasicCredentials;
 import org.apache.druid.server.DruidNode;
-import org.apache.druid.testing.EmbeddedDruidCluster;
 import org.apache.druid.testing.IntegrationTestingConfig;
 import org.apache.druid.testing.IntegrationTestingConfigProvider;
 import org.apache.druid.testing.IntegrationTestingCuratorConfig;
@@ -81,11 +78,6 @@ public class DruidTestModule implements Module
     binder.bind(DruidNode.class).annotatedWith(Self.class).toInstance(
         new DruidNode("integration-tests", "localhost", false, 9191, null, null, true, false)
     );
-
-    if (useEmbeddedCluster()) {
-      LifecycleModule.register(binder, EmbeddedDruidCluster.class);
-      binder.bind(EmbeddedDruidCluster.class).in(ManageLifecycleInit.class);
-    }
 
     // Required for MSQIndexingModule
     Multibinder.newSetBinder(binder, NodeRole.class, Self.class).addBinding().toInstance(NodeRole.PEON);
