@@ -47,7 +47,6 @@ public class SuiteListener implements ISuiteListener
     }
     Lifecycle lifecycle = injector.getInstance(Lifecycle.class);
     try {
-      System.out.println("Kashif: starting lifecycle");
       lifecycle.start();
     }
     catch (Exception e) {
@@ -61,7 +60,6 @@ public class SuiteListener implements ISuiteListener
   {
     Injector injector = DruidTestModuleFactory.getInjector();
     Lifecycle lifecycle = injector.getInstance(Lifecycle.class);
-    System.out.println("Kashif: stopping lifecycle");
     lifecycle.stop();
   }
 }

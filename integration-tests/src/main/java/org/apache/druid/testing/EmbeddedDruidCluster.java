@@ -40,8 +40,8 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * TODO later:
- *    Run some old ITs with embedded cluster
- *    - How can different tests use different configs?
+ *    - allow different tests to use different configs
+ *    - see if the config can somehow be generated from the docker config
  *    - Put only as much effort as is required for migration to new ITs, no more
  *  TODO now:
  *    - reduce coordinator logs
@@ -115,8 +115,7 @@ public class EmbeddedDruidCluster
     try {
       zookeeper.setupServerAndCurator();
     }
-    catch (Exception e)
-    {
+    catch (Exception e) {
       log.error(e, "Error while starting embedded zookeeper");
     }
   }

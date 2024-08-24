@@ -24,7 +24,6 @@ import com.google.inject.Inject;
 import com.google.inject.Injector;
 import com.google.inject.Key;
 import com.google.inject.servlet.DruidGuiceFilter;
-import com.google.inject.servlet.GuiceFilter;
 import org.apache.druid.guice.annotations.Json;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.server.initialization.ServerConfig;

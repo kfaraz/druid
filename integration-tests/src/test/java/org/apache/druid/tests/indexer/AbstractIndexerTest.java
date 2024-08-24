@@ -184,7 +184,7 @@ public abstract class AbstractIndexerTest
         throw new RuntimeException(e);
       }
     } else {
-      return resourceDir;
+      return "/resources" + resourceDir;
     }
   }
 
