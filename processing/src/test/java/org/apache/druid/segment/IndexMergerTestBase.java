@@ -65,6 +65,7 @@ import org.apache.druid.segment.incremental.OnheapIncrementalIndex;
 import org.apache.druid.segment.index.semantic.StringValueSetIndexes;
 import org.apache.druid.segment.writeout.SegmentWriteOutMediumFactory;
 import org.apache.druid.testing.InitializedNullHandlingTest;
+import org.apache.druid.timeline.SegmentId;
 import org.joda.time.Interval;
 import org.junit.Assert;
 import org.junit.Rule;
@@ -255,14 +256,14 @@ public class IndexMergerTestBase extends InitializedNullHandlingTest
     Assert.assertEquals(6, index.getNumRows());
     Assert.assertEquals(
         ImmutableList.of(
-            ImmutableList.of(timestamp, "1", "2", 1L),
-            ImmutableList.of(timestamp, "1", "2", 1L),
-            ImmutableList.of(timestamp + 1, "1", "2", 1L),
-            ImmutableList.of(timestamp, "3", "4", 1L),
-            ImmutableList.of(timestamp, "3", "4", 1L),
-            ImmutableList.of(timestamp + 1, "3", "4", 1L)
+            ImmutableList.of("1", "2", timestamp, 1L),
+            ImmutableList.of("1", "2", timestamp, 1L),
+            ImmutableList.of("1", "2", timestamp + 1, 1L),
+            ImmutableList.of("3", "4", timestamp, 1L),
+            ImmutableList.of("3", "4", timestamp, 1L),
+            ImmutableList.of("3", "4", timestamp + 1, 1L)
         ),
-        FrameTestUtil.readRowsFromAdapter(new QueryableIndexStorageAdapter(index), null, false).toList()
+        FrameTestUtil.readRowsFromCursorFactory(new QueryableIndexCursorFactory(index)).toList()
     );
   }
 
@@ -325,12 +326,12 @@ public class IndexMergerTestBase extends InitializedNullHandlingTest
     Assert.assertEquals(4, index.getNumRows());
     Assert.assertEquals(
         ImmutableList.of(
-            ImmutableList.of(timestamp, "1", "2", 2L),
-            ImmutableList.of(timestamp + 1, "1", "2", 1L),
-            ImmutableList.of(timestamp, "3", "4", 2L),
-            ImmutableList.of(timestamp + 1, "3", "4", 1L)
+            ImmutableList.of("1", "2", timestamp, 2L),
+            ImmutableList.of("1", "2", timestamp + 1, 1L),
+            ImmutableList.of("3", "4", timestamp, 2L),
+            ImmutableList.of("3", "4", timestamp + 1, 1L)
         ),
-        FrameTestUtil.readRowsFromAdapter(new QueryableIndexStorageAdapter(index), null, false).toList()
+        FrameTestUtil.readRowsFromCursorFactory(new QueryableIndexCursorFactory(index)).toList()
     );
   }
 
@@ -1705,10 +1706,14 @@ public class IndexMergerTestBase extends InitializedNullHandlingTest
         indexSpec,
         -1
     );
-    final QueryableIndexStorageAdapter adapter = new QueryableIndexStorageAdapter(closer.closeLater(indexIO.loadIndex(
-        merged)));
-    Assert.assertEquals(ImmutableSet.of("A", "C"), ImmutableSet.copyOf(adapter.getAvailableMetrics()));
-
+    final QueryableIndexSegment segment = new QueryableIndexSegment(
+        closer.closeLater(indexIO.loadIndex(merged)),
+        SegmentId.dummy("test")
+    );
+    Assert.assertEquals(
+        ImmutableSet.of("A", "C"),
+        Arrays.stream(segment.as(PhysicalSegmentInspector.class).getMetadata().getAggregators()).map(AggregatorFactory::getName).collect(Collectors.toSet())
+    );
   }
 
   @Test
@@ -1777,9 +1782,14 @@ public class IndexMergerTestBase extends InitializedNullHandlingTest
         indexSpec,
         -1
     );
-    final QueryableIndexStorageAdapter adapter = new QueryableIndexStorageAdapter(closer.closeLater(indexIO.loadIndex(
-        merged)));
-    Assert.assertEquals(ImmutableSet.of("A", "C"), ImmutableSet.copyOf(adapter.getAvailableMetrics()));
+    final QueryableIndexSegment segment = new QueryableIndexSegment(
+        closer.closeLater(indexIO.loadIndex(merged)),
+        SegmentId.dummy("test")
+    );
+    Assert.assertEquals(
+        ImmutableSet.of("A", "C"),
+        Arrays.stream(segment.as(PhysicalSegmentInspector.class).getMetadata().getAggregators()).map(AggregatorFactory::getName).collect(Collectors.toSet())
+    );
 
   }
 
@@ -1844,10 +1854,14 @@ public class IndexMergerTestBase extends InitializedNullHandlingTest
     );
 
     // Since D was not present in any of the indices, it is not present in the output
-    final QueryableIndexStorageAdapter adapter = new QueryableIndexStorageAdapter(closer.closeLater(indexIO.loadIndex(
-        merged)));
-    Assert.assertEquals(ImmutableSet.of("A", "B", "C"), ImmutableSet.copyOf(adapter.getAvailableMetrics()));
-
+    final QueryableIndexSegment segment = new QueryableIndexSegment(
+        closer.closeLater(indexIO.loadIndex(merged)),
+        SegmentId.dummy("test")
+    );
+    Assert.assertEquals(
+        ImmutableSet.of("A", "B", "C"),
+        Arrays.stream(segment.as(PhysicalSegmentInspector.class).getMetadata().getAggregators()).map(AggregatorFactory::getName).collect(Collectors.toSet())
+    );
   }
 
   @Test(expected = IAE.class)
@@ -1888,10 +1902,14 @@ public class IndexMergerTestBase extends InitializedNullHandlingTest
         indexSpec,
         -1
     );
-    final QueryableIndexStorageAdapter adapter = new QueryableIndexStorageAdapter(
-        closer.closeLater(indexIO.loadIndex(merged))
+    final QueryableIndexSegment segment = new QueryableIndexSegment(
+        closer.closeLater(indexIO.loadIndex(merged)),
+        SegmentId.dummy("test")
     );
-    Assert.assertEquals(ImmutableSet.of("A", "B", "C"), ImmutableSet.copyOf(adapter.getAvailableMetrics()));
+    Assert.assertEquals(
+        ImmutableSet.of("A", "B", "C"),
+        Arrays.stream(segment.as(PhysicalSegmentInspector.class).getMetadata().getAggregators()).map(AggregatorFactory::getName).collect(Collectors.toSet())
+    );
   }
 
   @Test
