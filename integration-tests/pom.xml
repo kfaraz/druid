@@ -263,6 +263,12 @@
             <version>${project.parent.version}</version>
         </dependency>
         <dependency>
+            <groupId>org.apache.druid</groupId>
+            <artifactId>druid-server</artifactId>
+            <version>${project.parent.version}</version>
+            <type>test-jar</type>
+        </dependency>
+        <dependency>
             <groupId>commons-io</groupId>
             <artifactId>commons-io</artifactId>
         </dependency>
@@ -417,6 +423,11 @@
         <dependency>
             <groupId>com.google.protobuf</groupId>
             <artifactId>protobuf-java</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.curator</groupId>
+            <artifactId>curator-test</artifactId>
+            <scope>compile</scope>
         </dependency>
 
         <!-- Tests -->
@@ -669,6 +680,7 @@
                                 -Xmx128m
                                 -Duser.timezone=UTC
                                 -Dfile.encoding=UTF-8
+                                -Ddruid.test.config.type=docker
                                 -Ddruid.test.config.dockerIp=${env.DOCKER_IP}
                                 -Ddruid.test.config.extraDatasourceNameSuffix=${extra.datasource.name.suffix}
                                 -Ddruid.zk.service.host=${env.DOCKER_IP}

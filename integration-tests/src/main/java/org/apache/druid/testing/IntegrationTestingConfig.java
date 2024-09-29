@@ -197,4 +197,9 @@ public interface IntegrationTestingConfig
   {
     return null;
   }
+
+  default boolean isEmbeddedCluster()
+  {
+    return false;
+  }
 }
