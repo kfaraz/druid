@@ -44,9 +44,7 @@ import java.util.concurrent.TimeUnit;
  *    - see if the config can somehow be generated from the docker config
  *    - Put only as much effort as is required for migration to new ITs, no more
  *  TODO now:
- *    - reduce coordinator logs
- *    - print a summary every 30 mins
- *    - raise an alert if anything is amiss
+ *    - wait for cluster to be ready before starting tests
  *    - run some new ITs with embedded cluster
  *    - understand the new IT framework
  *    - write up a comparison of the two frameworks
