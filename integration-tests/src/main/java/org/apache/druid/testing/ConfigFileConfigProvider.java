@@ -64,7 +64,7 @@ public class ConfigFileConfigProvider implements IntegrationTestingConfigProvide
   private String zookeeperHosts;        // comma-separated list of host:port
   private String kafkaHost;
   private String schemaRegistryHost;
-  private Map<String, String> props = null;
+  private final Map<String, String> props;
   private String username;
   private String password;
   private String cloudBucket;
@@ -78,22 +78,32 @@ public class ConfigFileConfigProvider implements IntegrationTestingConfigProvide
   private String streamEndpoint;
 
   @JsonCreator
-  ConfigFileConfigProvider(@JsonProperty("configFile") String configFile)
+  public ConfigFileConfigProvider(@JsonProperty("configFile") String configFile)
   {
-    loadProperties(configFile);
+    this(readProperties(configFile));
   }
 
-  private void loadProperties(String configFile)
+  public ConfigFileConfigProvider(Map<String, String> properties)
+  {
+    this.props = properties;
+    loadProperties();
+  }
+
+  private static Map<String, String> readProperties(String configFile)
   {
     ObjectMapper jsonMapper = new ObjectMapper();
     try {
-      props = jsonMapper.readValue(
+      return jsonMapper.readValue(
           new File(configFile), JacksonUtils.TYPE_REFERENCE_MAP_STRING_STRING
       );
     }
     catch (IOException ex) {
       throw new RuntimeException(ex);
     }
+  }
+
+  private void loadProperties()
+  {
     routerHost = props.get("router_host");
     // there might not be a router; we want routerHost to be null in that case
     routerUrl = props.get("router_url");
@@ -254,6 +264,16 @@ public class ConfigFileConfigProvider implements IntegrationTestingConfigProvide
     LOG.info("Username: [%s]", username);
   }
 
+  public String getZkConnectionString()
+  {
+    return zookeeperHosts;
+  }
+
+  public boolean isEmbeddedCluster()
+  {
+    return false;
+  }
+
   @Override
   public IntegrationTestingConfig get()
   {
@@ -408,7 +428,7 @@ public class ConfigFileConfigProvider implements IntegrationTestingConfigProvide
       @Override
       public String getZookeeperHosts()
       {
-        return zookeeperHosts;
+        return getZkConnectionString();
       }
 
       @Override
@@ -553,6 +573,12 @@ public class ConfigFileConfigProvider implements IntegrationTestingConfigProvide
       public boolean isDocker()
       {
         return false;
+      }
+
+      @Override
+      public boolean isEmbeddedCluster()
+      {
+        return ConfigFileConfigProvider.this.isEmbeddedCluster();
       }
     };
   }
