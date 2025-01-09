@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.druid.metadata.cache;
+package org.apache.druid.metadata.segment.cache;
 
 import com.google.common.base.Supplier;
 

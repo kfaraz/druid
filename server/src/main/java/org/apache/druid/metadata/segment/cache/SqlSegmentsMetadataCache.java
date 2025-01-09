@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.druid.metadata.cache;
+package org.apache.druid.metadata.segment.cache;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Supplier;
@@ -51,8 +51,9 @@ import java.util.concurrent.atomic.AtomicReference;
  * -[ ] Perform read writes to the cache only if it is READY
  * -[ ] Add APIs in cache to read/update
  * -[ ] Wire up cache in IndexerSQLMetadataStorageCoordinator
- * -[ ] Wire up cache in OverlordCompactionScheduler
  * -[ ] Poll pending segments too
+ * -[ ] Add a common interface with 2 impls: SqlSegmentsMetadataQuery and the other powered by cache
+ * -[ ] Wire up cache in OverlordCompactionScheduler
  * -[ ] Write unit tests
  * -[ ] Write integration tests
  * -[ ] Write a benchmark
@@ -98,25 +99,30 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
 
 
   @Override
-  public void startPollingDatabase()
+  public void start()
   {
     if (currentCacheState.compareAndSet(CacheState.STOPPED, CacheState.STARTING)) {
+      // Clean up any stray entries in the cache left over due to race conditions
       tearDown();
       pollExecutor.schedule(this::pollSegments, pollDuration.getMillis(), TimeUnit.MILLISECONDS);
     }
   }
 
   @Override
-  public void stopPollingDatabase()
+  public void stop()
   {
     currentCacheState.set(CacheState.STOPPED);
     tearDown();
 
     // TODO: Handle race conditions
-    // T1: sees cache as READY and starts to write something to it
-    // T2: stops the cache and cleans it up
-    // T1: updates the cache but does not do clean up afterwards
-    // I guess it is okay to have the stray entries as long as we clean up everything when we start
+    // T1: sees cache as ready
+    // T2: stops the cache
+    // T1: tries to read some value from the cache and fails
+    // Question: Should leader term validation logic live in the cache itself?
+    // It could simplify certain operations
+    // But then every method called on the cache will require the expected leader term to be passed to it?
+    // I am not sure if that is such a great idea
+    // I think it makes more sense to have that info at the transaction level or something
 
     // Should start-stop wait on everything else?
     // When does stop happen?
@@ -213,7 +219,7 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
     // Remove unknown segment IDs from cache
     // This is safe to do since updates are always made first to metadata store and then to cache
     datasourceToSegmentCache.forEach((dataSource, cache) -> {
-      final Set<String> unknownSegmentIds = cache.getUnknownSegmentIds(
+      final Set<String> unknownSegmentIds = cache.getSegmentIdsNotIn(
           datasourceToKnownSegmentIds.getOrDefault(dataSource, Set.of())
       );
       final int numSegmentsRemoved = cache.removeSegmentIds(unknownSegmentIds);

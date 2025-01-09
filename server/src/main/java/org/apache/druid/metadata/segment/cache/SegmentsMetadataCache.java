@@ -17,13 +17,13 @@
  * under the License.
  */
 
-package org.apache.druid.metadata.cache;
+package org.apache.druid.metadata.segment.cache;
 
 public interface SegmentsMetadataCache extends SegmentsMetadataReadOnlyCache
 {
-  void startPollingDatabase();
+  void start();
 
-  void stopPollingDatabase();
+  void stop();
 
 
 }

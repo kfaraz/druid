@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.druid.metadata.cache;
+package org.apache.druid.metadata.segment.cache;
 
 import org.apache.druid.server.http.DataSegmentPlus;
 import org.apache.druid.timeline.DataSegment;
@@ -31,11 +31,23 @@ import java.util.stream.Collectors;
 
 class DatasourceSegmentCache extends BaseCache
 {
-  final Map<String, DataSegment> idToUsedSegment = new HashMap<>();
-  final Map<String, SegmentState> idToSegmentState = new HashMap<>();
-  final SegmentTimeline usedSegmentTimeline = SegmentTimeline.forSegments(Set.of());
+  /**
+   * Used to obtain the segment for a given ID so that it can be updated in the
+   * timeline.
+   */
+  private final Map<String, DataSegment> idToUsedSegment = new HashMap<>();
 
-  final Set<String> unusedSegmentIds = new HashSet<>();
+  /**
+   * Current state of segments as seen by the cache.
+   */
+  private final Map<String, SegmentState> idToSegmentState = new HashMap<>();
+
+  /**
+   * Allows lookup of segments by interval.
+   */
+  private final SegmentTimeline usedSegmentTimeline = SegmentTimeline.forSegments(Set.of());
+
+  private final Set<String> unusedSegmentIds = new HashSet<>();
 
   DatasourceSegmentCache()
   {
@@ -52,6 +64,11 @@ class DatasourceSegmentCache extends BaseCache
     });
   }
 
+  /**
+   * Checks if a segment needs to be refreshed. A refresh is required if the
+   * cache has no known state for the given segment or if the metadata store
+   * has a more recent last_updated_time than the cache.
+   */
   boolean shouldRefreshSegment(SegmentState metadataState)
   {
     return withReadLock(() -> {
@@ -147,7 +164,7 @@ class DatasourceSegmentCache extends BaseCache
     });
   }
 
-  Set<String> getUnknownSegmentIds(Set<String> knownSegmentIds)
+  Set<String> getSegmentIdsNotIn(Set<String> knownSegmentIds)
   {
     return withReadLock(
         () -> idToSegmentState.keySet()

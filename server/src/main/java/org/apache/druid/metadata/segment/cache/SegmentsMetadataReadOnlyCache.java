@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.druid.metadata.cache;
+package org.apache.druid.metadata.segment.cache;
 
 import org.apache.druid.timeline.SegmentTimeline;
 
@@ -28,6 +28,8 @@ public interface SegmentsMetadataReadOnlyCache
   boolean isReady();
 
   Map<String, SegmentTimeline> getDataSourceToUsedSegmentTimeline();
+
+
 
   // TODO: Let's think about the API for a bit
   // What kind of methods are we going to need
@@ -50,7 +52,7 @@ public interface SegmentsMetadataReadOnlyCache
 
   // The queries will have to move away from IndexerSQLMetadataStorageCoordinator because
   // - updates go both to cache and metadata store
-  // -
+  // - it allows us to have cleaner code
 
   // - We will still need the new connector so that stuff is handled properly
   // - otherwise, there will be a lot of duplication of term logic and other cache logic
