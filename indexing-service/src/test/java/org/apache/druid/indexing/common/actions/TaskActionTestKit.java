@@ -113,7 +113,7 @@ public class TaskActionTestKit extends ExternalResource
     segmentSchemaCache = new SegmentSchemaCache(NoopServiceEmitter.instance());
     segmentsMetadataManager = new SqlSegmentsMetadataManager(
         objectMapper,
-        Suppliers.ofInstance(new SegmentsMetadataManagerConfig()),
+        Suppliers.ofInstance(new SegmentsMetadataManagerConfig(null, null)),
         Suppliers.ofInstance(metadataStorageTablesConfig),
         testDerbyConnector,
         segmentSchemaCache,

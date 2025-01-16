@@ -22,6 +22,7 @@ package org.apache.druid.metadata.segment.cache;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Supplier;
 import com.google.inject.Inject;
+import org.apache.druid.error.DruidException;
 import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.common.Stopwatch;
 import org.apache.druid.java.util.common.StringUtils;
@@ -45,19 +46,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-/**
- * TODO:
- * -[x] Handle all cases of cache vs metadata store
- * -[ ] Perform read writes to the cache only if it is READY
- * -[ ] Add APIs in cache to read/update
- * -[ ] Wire up cache in IndexerSQLMetadataStorageCoordinator
- * -[ ] Poll pending segments too
- * -[ ] Add a common interface with 2 impls: SqlSegmentsMetadataQuery and the other powered by cache
- * -[ ] Wire up cache in OverlordCompactionScheduler
- * -[ ] Write unit tests
- * -[ ] Write integration tests
- * -[ ] Write a benchmark
- */
 public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
 {
   private static final EmittingLogger log = new EmittingLogger(SqlSegmentsMetadataCache.class);
@@ -69,6 +57,7 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
 
   private final ObjectMapper jsonMapper;
   private final Duration pollDuration;
+  private final boolean isCacheEnabled;
   private final Supplier<MetadataStorageTablesConfig> tablesConfig;
   private final SQLMetadataConnector connector;
 
@@ -91,17 +80,18 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
   )
   {
     this.jsonMapper = jsonMapper;
+    this.isCacheEnabled = config.get().isUseCache();
     this.pollDuration = config.get().getPollDuration().toStandardDuration();
     this.tablesConfig = tablesConfig;
     this.connector = connector;
-    this.pollExecutor = executorFactory.create(1, "SegmentsMetadataCache-%s");
+    this.pollExecutor = isCacheEnabled ? executorFactory.create(1, "SegmentsMetadataCache-%s") : null;
   }
 
 
   @Override
-  public void start()
+  public synchronized void start()
   {
-    if (currentCacheState.compareAndSet(CacheState.STOPPED, CacheState.STARTING)) {
+    if (isCacheEnabled && currentCacheState.compareAndSet(CacheState.STOPPED, CacheState.STARTING)) {
       // Clean up any stray entries in the cache left over due to race conditions
       tearDown();
       pollExecutor.schedule(this::pollSegments, pollDuration.getMillis(), TimeUnit.MILLISECONDS);
@@ -109,10 +99,12 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
   }
 
   @Override
-  public void stop()
+  public synchronized void stop()
   {
-    currentCacheState.set(CacheState.STOPPED);
-    tearDown();
+    if (isCacheEnabled) {
+      currentCacheState.set(CacheState.STOPPED);
+      tearDown();
+    }
 
     // TODO: Handle race conditions
     // T1: sees cache as ready
@@ -143,7 +135,15 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
   @Override
   public Map<String, SegmentTimeline> getDataSourceToUsedSegmentTimeline()
   {
+    verifyCacheIsReady();
     return Map.of();
+  }
+
+  private void verifyCacheIsReady()
+  {
+    if (!isReady()) {
+      throw DruidException.defensive("Segment metadata cache is not ready yet.");
+    }
   }
 
   private boolean isStopped()
@@ -262,12 +262,13 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
 
     // TODO: poll pending segments
     // TODO: emit poll duration metric
-
     pollFinishTime.set(DateTimes.nowUtc());
 
     if (isStopped()) {
       tearDown();
     } else {
+      currentCacheState.compareAndSet(CacheState.STARTING, CacheState.READY);
+
       // Schedule the next poll
       final long nextPollDelay = Math.max(pollDuration.getMillis() - sincePollStart.millisElapsed(), 0);
       pollExecutor.schedule(this::pollSegments, nextPollDelay, TimeUnit.MILLISECONDS);
