@@ -19,13 +19,6 @@
 
 package org.apache.druid.metadata.segment.cache;
 
-import org.apache.druid.metadata.PendingSegmentRecord;
-import org.apache.druid.timeline.DataSegment;
-import org.joda.time.Interval;
-
-import java.util.List;
-import java.util.Set;
-
 /**
  * TODO:
  * -[x] Handle all cases of cache vs metadata store
@@ -49,18 +42,4 @@ public interface SegmentsMetadataCache extends SegmentsMetadataReadOnlyCache
   void start();
 
   void stop();
-
-  void commitSegments(Set<DataSegment> segments);
-
-  void deleteSegments(Set<DataSegment> segments);
-
-  // Methods for pending segments
-
-  void commitPendingSegments(List<PendingSegmentRecord> pendingSegments);
-
-  void deletePendingSegments(String dataSource);
-
-  void deletePendingSegments(String dataSource, String taskAllocatorId);
-
-  void deletePendingSegmentsCreatedIn(String dataSource, Interval createdInterval);
 }

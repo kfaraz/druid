@@ -91,7 +91,10 @@ public class TestIndexerMetadataStorageCoordinator implements IndexerMetadataSto
   }
 
   @Override
-  public List<Pair<DataSegment, String>> retrieveUsedSegmentsAndCreatedDates(String dataSource, List<Interval> intervals)
+  public List<Pair<DataSegment, String>> retrieveUsedSegmentsAndCreatedDates(
+      String dataSource,
+      List<Interval> intervals
+  )
   {
     return ImmutableList.of();
   }
@@ -255,6 +258,14 @@ public class TestIndexerMetadataStorageCoordinator implements IndexerMetadataSto
   }
 
   @Override
+  public List<PendingSegmentRecord> upgradePendingSegmentsOverlappingWith(
+      Set<DataSegment> replaceSegments
+  )
+  {
+    return Collections.emptyList();
+  }
+
+  @Override
   public int deletePendingSegmentsCreatedInInterval(String dataSource, Interval deleteInterval)
   {
     throw new UnsupportedOperationException();
@@ -267,11 +278,10 @@ public class TestIndexerMetadataStorageCoordinator implements IndexerMetadataSto
   }
 
   @Override
-  public int deleteSegments(Set<DataSegment> segments)
+  public void deleteSegments(Set<DataSegment> segments)
   {
     deleteSegmentsCount++;
     nuked.addAll(segments);
-    return segments.size();
   }
 
   @Override
