@@ -24,7 +24,6 @@ import com.google.inject.Inject;
 import org.apache.druid.discovery.DruidLeaderSelector;
 import org.apache.druid.metadata.MetadataStorageTablesConfig;
 import org.apache.druid.metadata.SQLMetadataConnector;
-import org.apache.druid.metadata.SqlSegmentsMetadataQuery;
 import org.apache.druid.metadata.segment.cache.SegmentsMetadataCache;
 import org.skife.jdbi.v2.Handle;
 

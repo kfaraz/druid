@@ -142,25 +142,6 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
         && !centralizedDatasourceSchemaConfig.isTaskSchemaPublishDisabled();
   }
 
-  public IndexerSQLMetadataStorageCoordinator(
-      ObjectMapper jsonMapper,
-      MetadataStorageTablesConfig dbTables,
-      SQLMetadataConnector connector,
-      SegmentSchemaManager segmentSchemaManager,
-      CentralizedDatasourceSchemaConfig centralizedDatasourceSchemaConfig
-  )
-  {
-    this.transactionFactory = null;
-    this.jsonMapper = jsonMapper;
-    this.dbTables = dbTables;
-    this.connector = connector;
-    this.segmentSchemaManager = segmentSchemaManager;
-    this.centralizedDatasourceSchemaConfig = centralizedDatasourceSchemaConfig;
-    this.schemaPersistEnabled =
-        centralizedDatasourceSchemaConfig.isEnabled()
-        && !centralizedDatasourceSchemaConfig.isTaskSchemaPublishDisabled();
-  }
-
   @LifecycleStart
   public void start()
   {
