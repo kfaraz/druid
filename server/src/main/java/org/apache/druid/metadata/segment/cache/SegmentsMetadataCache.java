@@ -19,6 +19,11 @@
 
 package org.apache.druid.metadata.segment.cache;
 
+import org.apache.druid.server.http.DataSegmentPlus;
+import org.apache.druid.timeline.DataSegment;
+
+import java.util.Set;
+
 /**
  * TODO:
  * -[x] Handle all cases of cache vs metadata store
@@ -42,4 +47,6 @@ public interface SegmentsMetadataCache extends SegmentsMetadataReadOnlyCache
   void start();
 
   void stop();
+
+  void addSegments(String dataSource, Set<DataSegmentPlus> segments);
 }

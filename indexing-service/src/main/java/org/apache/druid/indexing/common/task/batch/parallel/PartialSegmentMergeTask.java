@@ -338,7 +338,7 @@ abstract class PartialSegmentMergeTask<S extends ShardSpec> extends PerfectRollu
     if (toolbox.getCentralizedTableSchemaConfig().isEnabled()) {
       LOG.info("SegmentSchema for the pushed segments is [%s]", segmentSchemaMapping);
     }
-    return new DataSegmentsWithSchemas(pushedSegments, segmentSchemaMapping.isNonEmpty() ? segmentSchemaMapping : null);
+    return new DataSegmentsWithSchemas(pushedSegments, segmentSchemaMapping.isEmpty() ? null : segmentSchemaMapping);
   }
 
   private static Pair<File, List<String>> mergeSegmentsInSamePartition(

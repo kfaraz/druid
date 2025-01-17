@@ -460,7 +460,7 @@ public class SinglePhaseSubTask extends AbstractBatchSubtask implements ChatHand
       LOG.info("SegmentSchema is [%s]", segmentSchemaMapping);
       appenderator.close();
 
-      return new DataSegmentsWithSchemas(pushedSegments, segmentSchemaMapping.isNonEmpty() ? segmentSchemaMapping : null);
+      return new DataSegmentsWithSchemas(pushedSegments, segmentSchemaMapping.isEmpty() ? null : segmentSchemaMapping);
     }
     catch (TimeoutException | ExecutionException e) {
       exceptionOccurred = true;

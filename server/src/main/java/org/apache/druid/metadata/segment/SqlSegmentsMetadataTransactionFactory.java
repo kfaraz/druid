@@ -28,9 +28,13 @@ import org.apache.druid.metadata.SqlSegmentsMetadataQuery;
 import org.apache.druid.metadata.segment.cache.SegmentsMetadataCache;
 import org.skife.jdbi.v2.Handle;
 
+/**
+ * Factory for {@link SqlSegmentsMetadataTransaction}s. If the
+ * {@link SegmentsMetadataCache} is enabled and ready, the transaction may
+ * read/write from the cache as applicable.
+ */
 public class SqlSegmentsMetadataTransactionFactory
 {
-
   private final ObjectMapper jsonMapper;
   private final MetadataStorageTablesConfig tablesConfig;
   private final SQLMetadataConnector connector;
@@ -55,12 +59,12 @@ public class SqlSegmentsMetadataTransactionFactory
 
   public SqlSegmentsMetadataTransaction createTransaction(Handle handle)
   {
-    final SqlSegmentsMetadataQuery metadataQuery
-        = SqlSegmentsMetadataQuery.forHandle(handle, connector, tablesConfig, jsonMapper);
+    final SqlSegmentsMetadataTransaction metadataTransaction
+        = new SqlSegmentsMetadataTransactionImpl(handle, connector, tablesConfig, jsonMapper);
 
     return segmentsMetadataCache.isReady()
-           ? new SqlSegmentsMetadataTransactionWithCache(metadataQuery, segmentsMetadataCache, leaderSelector)
-           : metadataQuery;
+           ? new SqlSegmentsMetadataCachedTransaction(metadataTransaction, segmentsMetadataCache, leaderSelector)
+           : metadataTransaction;
   }
 
 }

@@ -32,6 +32,8 @@ import org.apache.druid.metadata.MetadataStorageTablesConfig;
 import org.apache.druid.metadata.SQLMetadataConnector;
 import org.apache.druid.metadata.SegmentsMetadataManagerConfig;
 import org.apache.druid.metadata.SqlSegmentsMetadataQuery;
+import org.apache.druid.server.http.DataSegmentPlus;
+import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.timeline.SegmentTimeline;
 import org.joda.time.DateTime;
 import org.joda.time.Duration;
@@ -45,6 +47,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
 {
@@ -130,6 +133,28 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
   public boolean isReady()
   {
     return currentCacheState.get() == CacheState.READY;
+  }
+
+  @Override
+  public Set<String> findExistingSegmentIds(String dataSource, Set<DataSegment> segments)
+  {
+    verifyCacheIsReady();
+
+    Set<String> segmentIdsToFind = segments.stream()
+                                           .map(s -> s.getId().toString())
+                                           .collect(Collectors.toSet());
+    return datasourceToSegmentCache.getOrDefault(dataSource, DatasourceSegmentCache.empty())
+                                   .getSegmentIdsIn(segmentIdsToFind);
+  }
+
+  @Override
+  public void addSegments(String dataSource, Set<DataSegmentPlus> segments)
+  {
+    verifyCacheIsReady();
+
+    datasourceToSegmentCache
+        .computeIfAbsent(dataSource, ds -> new DatasourceSegmentCache())
+        .addSegments(segments);
   }
 
   @Override

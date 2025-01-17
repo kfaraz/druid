@@ -75,9 +75,9 @@ public class SegmentSchemaMapping
     return schemaVersion;
   }
 
-  public boolean isNonEmpty()
+  public boolean isEmpty()
   {
-    return segmentIdToMetadataMap.size() > 0;
+    return segmentIdToMetadataMap.isEmpty();
   }
 
   /**

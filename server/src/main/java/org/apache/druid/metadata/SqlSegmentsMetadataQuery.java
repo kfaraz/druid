@@ -33,7 +33,6 @@ import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.jackson.JacksonUtils;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.java.util.common.parsers.CloseableIterator;
-import org.apache.druid.metadata.segment.SqlSegmentsMetadataTransaction;
 import org.apache.druid.server.http.DataSegmentPlus;
 import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.timeline.SegmentId;
@@ -62,7 +61,7 @@ import java.util.stream.Collectors;
  * queries to the metadata store segments table. Each instance of this class is scoped to a single handle and is meant
  * to be short-lived.
  */
-public class SqlSegmentsMetadataQuery implements SqlSegmentsMetadataTransaction
+public class SqlSegmentsMetadataQuery
 {
   private static final Logger log = new Logger(SqlSegmentsMetadataQuery.class);
 

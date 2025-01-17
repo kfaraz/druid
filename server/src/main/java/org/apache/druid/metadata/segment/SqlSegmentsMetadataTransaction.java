@@ -19,6 +19,11 @@
 
 package org.apache.druid.metadata.segment;
 
+import org.apache.druid.server.http.DataSegmentPlus;
+import org.apache.druid.timeline.DataSegment;
+
+import java.util.Set;
+
 /**
  * Represents a single transaction involving read/write of segment metadata into
  * the metadata store. A transaction is associated with a single instance of a
@@ -26,5 +31,16 @@ package org.apache.druid.metadata.segment;
  */
 public interface SqlSegmentsMetadataTransaction
 {
+  /**
+   * Returns the IDs of segments (out of the given set) which already exist in
+   * the metadata store.
+   */
+  Set<String> findExistingSegmentIds(Set<DataSegment> segments);
 
+  /**
+   * Inserts the given segments into the metadata store.
+   */
+  void insertSegments(Set<DataSegmentPlus> segments) throws Exception;
+
+  void insertSegmentsWithMetadata(Set<DataSegmentPlus> segments) throws Exception;
 }

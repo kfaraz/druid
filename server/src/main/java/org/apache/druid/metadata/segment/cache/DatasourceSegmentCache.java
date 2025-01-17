@@ -31,6 +31,8 @@ import java.util.stream.Collectors;
 
 class DatasourceSegmentCache extends BaseCache
 {
+  private static final DatasourceSegmentCache EMPTY_INSTANCE = new DatasourceSegmentCache();
+
   /**
    * Used to obtain the segment for a given ID so that it can be updated in the
    * timeline.
@@ -49,6 +51,11 @@ class DatasourceSegmentCache extends BaseCache
 
   private final Set<String> unusedSegmentIds = new HashSet<>();
 
+  static DatasourceSegmentCache empty()
+  {
+    return EMPTY_INSTANCE;
+  }
+
   DatasourceSegmentCache()
   {
     super(true);
@@ -61,6 +68,27 @@ class DatasourceSegmentCache extends BaseCache
       idToUsedSegment.clear();
       unusedSegmentIds.clear();
       idToUsedSegment.values().forEach(usedSegmentTimeline::remove);
+    });
+  }
+
+  void addSegments(Set<DataSegmentPlus> segments)
+  {
+    withWriteLock(() -> {
+      for (DataSegmentPlus segmentPlus : segments) {
+        final DataSegment segment = segmentPlus.getDataSegment();
+        final SegmentState state = new SegmentState(
+            segment.getId().toString(),
+            segment.getDataSource(),
+            Boolean.TRUE.equals(segmentPlus.getUsed()),
+            segmentPlus.getUsedStatusLastUpdatedDate()
+        );
+
+        if (state.isUsed()) {
+          refreshUsedSegment(segmentPlus);
+        } else {
+          refreshUnusedSegment(state);
+        }
+      }
     });
   }
 
@@ -164,13 +192,29 @@ class DatasourceSegmentCache extends BaseCache
     });
   }
 
+  /**
+   * Returns the set of segment IDs present in the cache and in the given set of
+   * known segment IDs.
+   */
+  Set<String> getSegmentIdsIn(Set<String> knownSegmentIds)
+  {
+    return withReadLock(
+        () -> knownSegmentIds.stream()
+                             .filter(idToSegmentState::containsKey)
+                             .collect(Collectors.toSet())
+    );
+  }
+
+  /**
+   * Returns the set of segment IDs present in the cache but not present in the
+   * given set of known segment IDs.
+   */
   Set<String> getSegmentIdsNotIn(Set<String> knownSegmentIds)
   {
     return withReadLock(
-        () -> idToSegmentState.keySet()
-                              .stream()
-                              .filter(knownSegmentIds::contains)
-                              .collect(Collectors.toSet())
+        () -> knownSegmentIds.stream()
+                             .filter(id -> !idToSegmentState.containsKey(id))
+                             .collect(Collectors.toSet())
     );
   }
 }

@@ -19,13 +19,17 @@
 
 package org.apache.druid.metadata.segment.cache;
 
+import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.timeline.SegmentTimeline;
 
 import java.util.Map;
+import java.util.Set;
 
 public interface SegmentsMetadataReadOnlyCache
 {
   boolean isReady();
+
+  Set<String> findExistingSegmentIds(String dataSource, Set<DataSegment> segments);
 
   Map<String, SegmentTimeline> getDataSourceToUsedSegmentTimeline();
 

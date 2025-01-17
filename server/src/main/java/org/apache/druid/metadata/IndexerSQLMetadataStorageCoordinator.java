@@ -48,6 +48,8 @@ import org.apache.druid.java.util.common.jackson.JacksonUtils;
 import org.apache.druid.java.util.common.lifecycle.LifecycleStart;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.java.util.common.parsers.CloseableIterator;
+import org.apache.druid.metadata.segment.SqlSegmentsMetadataTransaction;
+import org.apache.druid.metadata.segment.SqlSegmentsMetadataTransactionFactory;
 import org.apache.druid.segment.SegmentMetadata;
 import org.apache.druid.segment.SegmentSchemaMapping;
 import org.apache.druid.segment.SegmentUtils;
@@ -60,7 +62,6 @@ import org.apache.druid.timeline.Partitions;
 import org.apache.druid.timeline.SegmentId;
 import org.apache.druid.timeline.SegmentTimeline;
 import org.apache.druid.timeline.TimelineObjectHolder;
-import org.apache.druid.timeline.partition.NoneShardSpec;
 import org.apache.druid.timeline.partition.NumberedShardSpec;
 import org.apache.druid.timeline.partition.PartialShardSpec;
 import org.apache.druid.timeline.partition.PartitionChunk;
@@ -72,7 +73,6 @@ import org.joda.time.Interval;
 import org.joda.time.chrono.ISOChronology;
 import org.skife.jdbi.v2.Handle;
 import org.skife.jdbi.v2.PreparedBatch;
-import org.skife.jdbi.v2.PreparedBatchPart;
 import org.skife.jdbi.v2.Query;
 import org.skife.jdbi.v2.ResultIterator;
 import org.skife.jdbi.v2.StatementContext;
@@ -119,7 +119,29 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
   private final CentralizedDatasourceSchemaConfig centralizedDatasourceSchemaConfig;
   private final boolean schemaPersistEnabled;
 
+  private final SqlSegmentsMetadataTransactionFactory transactionFactory;
+
   @Inject
+  public IndexerSQLMetadataStorageCoordinator(
+      SqlSegmentsMetadataTransactionFactory transactionFactory,
+      ObjectMapper jsonMapper,
+      MetadataStorageTablesConfig dbTables,
+      SQLMetadataConnector connector,
+      SegmentSchemaManager segmentSchemaManager,
+      CentralizedDatasourceSchemaConfig centralizedDatasourceSchemaConfig
+  )
+  {
+    this.transactionFactory = transactionFactory;
+    this.jsonMapper = jsonMapper;
+    this.dbTables = dbTables;
+    this.connector = connector;
+    this.segmentSchemaManager = segmentSchemaManager;
+    this.centralizedDatasourceSchemaConfig = centralizedDatasourceSchemaConfig;
+    this.schemaPersistEnabled =
+        centralizedDatasourceSchemaConfig.isEnabled()
+        && !centralizedDatasourceSchemaConfig.isTaskSchemaPublishDisabled();
+  }
+
   public IndexerSQLMetadataStorageCoordinator(
       ObjectMapper jsonMapper,
       MetadataStorageTablesConfig dbTables,
@@ -128,6 +150,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
       CentralizedDatasourceSchemaConfig centralizedDatasourceSchemaConfig
   )
   {
+    this.transactionFactory = null;
     this.jsonMapper = jsonMapper;
     this.dbTables = dbTables;
     this.connector = connector;
@@ -482,21 +505,13 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
 
     final String dataSource = segments.iterator().next().getDataSource();
 
-    // Find which segments are used (i.e. not overshadowed).
-    final Set<DataSegment> usedSegments = new HashSet<>();
-    List<TimelineObjectHolder<String, DataSegment>> segmentHolders =
-        SegmentTimeline.forSegments(segments).lookupWithIncompletePartitions(Intervals.ETERNITY);
-    for (TimelineObjectHolder<String, DataSegment> holder : segmentHolders) {
-      for (PartitionChunk<DataSegment> chunk : holder.getObject()) {
-        usedSegments.add(chunk.getObject());
-      }
-    }
-
     final AtomicBoolean definitelyNotUpdated = new AtomicBoolean(false);
 
     try {
       return connector.retryTransaction(
           (handle, transactionStatus) -> {
+            final SqlSegmentsMetadataTransaction transaction = transactionFactory.createTransaction(handle);
+
             // Set definitelyNotUpdated back to false upon retrying.
             definitelyNotUpdated.set(false);
 
@@ -522,10 +537,10 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
             }
 
             final Set<DataSegment> inserted =
-                announceHistoricalSegmentBatch(
+                insertSegments(
                     handle,
+                    transaction,
                     segments,
-                    usedSegments,
                     segmentSchemaMapping
                 );
             return SegmentPublishResult.ok(ImmutableSet.copyOf(inserted));
@@ -556,6 +571,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     try {
       return connector.retryTransaction(
           (handle, transactionStatus) -> {
+            final SqlSegmentsMetadataTransaction transaction = transactionFactory.createTransaction(handle);
             final Set<DataSegment> segmentsToInsert = new HashSet<>(replaceSegments);
 
             Set<DataSegmentPlus> upgradedSegments =
@@ -581,6 +597,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
             return SegmentPublishResult.ok(
                 insertSegments(
                     handle,
+                    transaction,
                     segmentsToInsert,
                     segmentSchemaMapping,
                     upgradeSegmentMetadata,
@@ -1440,6 +1457,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     try {
       return connector.retryTransaction(
           (handle, transactionStatus) -> {
+            final SqlSegmentsMetadataTransaction transaction = transactionFactory.createTransaction(handle);
             metadataNotUpdated.set(false);
 
             if (startMetadata != null) {
@@ -1475,6 +1493,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
             return SegmentPublishResult.ok(
                 insertSegments(
                     handle,
+                    transaction,
                     allSegmentsToInsert,
                     segmentSchemaMapping,
                     Collections.emptyMap(),
@@ -2011,7 +2030,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
   {
     return schemaPersistEnabled
            && segmentSchemaMapping != null
-           && segmentSchemaMapping.isNonEmpty();
+           && !segmentSchemaMapping.isEmpty();
   }
 
   private void persistSchema(
@@ -2040,12 +2059,12 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     );
   }
 
-  private Set<DataSegment> announceHistoricalSegmentBatch(
+  private Set<DataSegment> insertSegments(
       final Handle handle,
+      final SqlSegmentsMetadataTransaction transaction,
       final Set<DataSegment> segments,
-      final Set<DataSegment> usedSegments,
       @Nullable final SegmentSchemaMapping segmentSchemaMapping
-  ) throws IOException
+  ) throws Exception
   {
     final Set<DataSegment> toInsertSegments = new HashSet<>();
     try {
@@ -2055,7 +2074,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
         persistSchema(handle, segments, segmentSchemaMapping);
       }
 
-      Set<String> existedSegments = segmentExistsBatch(handle, segments);
+      Set<String> existedSegments = transaction.findExistingSegmentIds(segments);
       log.info("Found these segments already exist in DB: %s", existedSegments);
 
       for (DataSegment segment : segments) {
@@ -2064,60 +2083,30 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
         }
       }
 
-      // SELECT -> INSERT can fail due to races; callers must be prepared to retry.
-      // Avoiding ON DUPLICATE KEY since it's not portable.
-      // Avoiding try/catch since it may cause inadvertent transaction-splitting.
-      final List<List<DataSegment>> partitionedSegments = Lists.partition(
-          new ArrayList<>(toInsertSegments),
-          MAX_NUM_SEGMENTS_TO_ANNOUNCE_AT_ONCE
-      );
+      final DateTime createdTime = DateTimes.nowUtc();
+      final Set<DataSegment> usedSegments = findNonOvershadowedSegments(segments);
 
-      final String now = DateTimes.nowUtc().toString();
-      PreparedBatch preparedBatch = handle.prepareBatch(buildSqlToInsertSegments());
-      for (List<DataSegment> partition : partitionedSegments) {
-        for (DataSegment segment : partition) {
-          String segmentId = segment.getId().toString();
+      final Set<DataSegmentPlus> segmentPlusToInsert = toInsertSegments.stream().map(segment -> {
+        SegmentMetadata segmentMetadata
+            = shouldPersistSchema
+              ? segmentSchemaMapping.getSegmentIdToMetadataMap().get(segment.getId().toString())
+              : null;
 
-          PreparedBatchPart preparedBatchPart = preparedBatch.add()
-              .bind("id", segmentId)
-              .bind("dataSource", segment.getDataSource())
-              .bind("created_date", now)
-              .bind("start", segment.getInterval().getStart().toString())
-              .bind("end", segment.getInterval().getEnd().toString())
-              .bind("partitioned", !(segment.getShardSpec() instanceof NoneShardSpec))
-              .bind("version", segment.getVersion())
-              .bind("used", usedSegments.contains(segment))
-              .bind("payload", jsonMapper.writeValueAsBytes(segment))
-              .bind("used_status_last_updated", now)
-              .bind("upgraded_from_segment_id", (String) null);
+        return new DataSegmentPlus(
+            segment,
+            createdTime,
+            createdTime,
+            usedSegments.contains(segment),
+            segmentMetadata == null ? null : segmentMetadata.getSchemaFingerprint(),
+            segmentMetadata == null ? null : segmentMetadata.getNumRows(),
+            null
+        );
+      }).collect(Collectors.toSet());
 
-          if (schemaPersistEnabled) {
-            Long numRows = null;
-            String schemaFingerprint = null;
-            if (shouldPersistSchema && segmentSchemaMapping.getSegmentIdToMetadataMap().containsKey(segmentId)) {
-              SegmentMetadata segmentMetadata = segmentSchemaMapping.getSegmentIdToMetadataMap().get(segmentId);
-              numRows = segmentMetadata.getNumRows();
-              schemaFingerprint = segmentMetadata.getSchemaFingerprint();
-            }
-            preparedBatchPart
-                .bind("num_rows", numRows)
-                .bind("schema_fingerprint", schemaFingerprint);
-          }
-        }
-        final int[] affectedRows = preparedBatch.execute();
-        final boolean succeeded = Arrays.stream(affectedRows).allMatch(eachAffectedRows -> eachAffectedRows == 1);
-        if (succeeded) {
-          log.infoSegments(partition, "Published segments to DB");
-        } else {
-          final List<DataSegment> failedToPublish = IntStream.range(0, partition.size())
-              .filter(i -> affectedRows[i] != 1)
-              .mapToObj(partition::get)
-              .collect(Collectors.toList());
-          throw new ISE(
-              "Failed to publish segments to DB: %s",
-              SegmentUtils.commaSeparatedIdentifiers(failedToPublish)
-          );
-        }
+      if (schemaPersistEnabled) {
+        transaction.insertSegmentsWithMetadata(segmentPlusToInsert);
+      } else {
+        transaction.insertSegments(segmentPlusToInsert);
       }
     }
     catch (Exception e) {
@@ -2262,94 +2251,74 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     }
   }
 
+  private static Set<DataSegment> findNonOvershadowedSegments(Set<DataSegment> segments)
+  {
+    final Set<DataSegment> nonOvershadowedSegments = new HashSet<>();
+
+    List<TimelineObjectHolder<String, DataSegment>> segmentHolders =
+        SegmentTimeline.forSegments(segments).lookupWithIncompletePartitions(Intervals.ETERNITY);
+    for (TimelineObjectHolder<String, DataSegment> holder : segmentHolders) {
+      for (PartitionChunk<DataSegment> chunk : holder.getObject()) {
+        nonOvershadowedSegments.add(chunk.getObject());
+      }
+    }
+
+    return nonOvershadowedSegments;
+  }
+
   /**
-   * Inserts the given segments into the DB in batches of size
-   * {@link #MAX_NUM_SEGMENTS_TO_ANNOUNCE_AT_ONCE} and returns the set of
-   * segments actually inserted.
+   * Inserts the given segments into the metadata store.
    * <p>
    * This method avoids inserting segment IDs which already exist in the DB.
    * Callers of this method might need to retry as INSERT followed by SELECT
    * might fail due to race conditions.
+   *
+   * @return Set of segments inserted
    */
   private Set<DataSegment> insertSegments(
       Handle handle,
+      SqlSegmentsMetadataTransaction transaction,
       Set<DataSegment> segments,
       @Nullable SegmentSchemaMapping segmentSchemaMapping,
       Map<SegmentId, SegmentMetadata> upgradeSegmentMetadata,
       Map<SegmentId, SegmentId> newVersionForAppendToParent,
       Map<String, String> upgradedFromSegmentIdMap
-  ) throws IOException
+  ) throws Exception
   {
     if (shouldPersistSchema(segmentSchemaMapping)) {
       persistSchema(handle, segments, segmentSchemaMapping);
     }
 
     // Do not insert segment IDs which already exist
-    Set<String> existingSegmentIds = segmentExistsBatch(handle, segments);
+    Set<String> existingSegmentIds = transaction.findExistingSegmentIds(segments);
     final Set<DataSegment> segmentsToInsert = segments.stream().filter(
         s -> !existingSegmentIds.contains(s.getId().toString())
     ).collect(Collectors.toSet());
 
-    // Insert the segments in batches of manageable size
-    final List<List<DataSegment>> partitionedSegments = Lists.partition(
-        new ArrayList<>(segmentsToInsert),
-        MAX_NUM_SEGMENTS_TO_ANNOUNCE_AT_ONCE
-    );
+    final DateTime createdTime = DateTimes.nowUtc();
+    final Set<DataSegmentPlus> segmentPlusToInsert = segmentsToInsert.stream().map(segment -> {
+      SegmentMetadata segmentMetadata = getSegmentMetadataFromSchemaMappingOrUpgradeMetadata(
+          segment.getId(),
+          segmentSchemaMapping,
+          newVersionForAppendToParent,
+          upgradeSegmentMetadata
+      );
 
-    final String now = DateTimes.nowUtc().toString();
-    final PreparedBatch batch = handle.prepareBatch(buildSqlToInsertSegments());
-    for (List<DataSegment> partition : partitionedSegments) {
-      for (DataSegment segment : partition) {
-        PreparedBatchPart preparedBatchPart =
-            batch.add()
-                 .bind("id", segment.getId().toString())
-                 .bind("dataSource", segment.getDataSource())
-                 .bind("created_date", now)
-                 .bind("start", segment.getInterval().getStart().toString())
-                 .bind("end", segment.getInterval().getEnd().toString())
-                 .bind("partitioned", (segment.getShardSpec() instanceof NoneShardSpec) ? false : true)
-                 .bind("version", segment.getVersion())
-                 .bind("used", true)
-                 .bind("payload", jsonMapper.writeValueAsBytes(segment))
-                 .bind("used_status_last_updated", now)
-                 .bind("upgraded_from_segment_id", upgradedFromSegmentIdMap.get(segment.getId().toString()));
+      return new DataSegmentPlus(
+          segment,
+          createdTime,
+          createdTime,
+          true,
+          segmentMetadata == null ? null : segmentMetadata.getSchemaFingerprint(),
+          segmentMetadata == null ? null : segmentMetadata.getNumRows(),
+          upgradedFromSegmentIdMap.get(segment.getId().toString())
+      );
+    }).collect(Collectors.toSet());
 
-        if (schemaPersistEnabled) {
-          SegmentMetadata segmentMetadata =
-              getSegmentMetadataFromSchemaMappingOrUpgradeMetadata(
-                  segment.getId(),
-                  segmentSchemaMapping,
-                  newVersionForAppendToParent,
-                  upgradeSegmentMetadata
-              );
-          Long numRows = null;
-          String schemaFingerprint = null;
-          if (segmentMetadata != null) {
-            numRows = segmentMetadata.getNumRows();
-            schemaFingerprint = segmentMetadata.getSchemaFingerprint();
-          }
-          preparedBatchPart
-              .bind("num_rows", numRows)
-              .bind("schema_fingerprint", schemaFingerprint);
-        }
-      }
-
-      final int[] affectedRows = batch.execute();
-
-      final List<DataSegment> failedInserts = new ArrayList<>();
-      for (int i = 0; i < partition.size(); ++i) {
-        if (affectedRows[i] != 1) {
-          failedInserts.add(partition.get(i));
-        }
-      }
-      if (failedInserts.isEmpty()) {
-        log.infoSegments(partition, "Published segments to DB");
-      } else {
-        throw new ISE(
-            "Failed to publish segments to DB: %s",
-            SegmentUtils.commaSeparatedIdentifiers(failedInserts)
-        );
-      }
+    if (schemaPersistEnabled) {
+      transaction.insertSegmentsWithMetadata(segmentPlusToInsert);
+    } else {
+      transaction.insertSegments(segmentPlusToInsert);
     }
 
     return segmentsToInsert;
@@ -2456,33 +2425,6 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     }
   }
 
-  private String buildSqlToInsertSegments()
-  {
-    String insertStatement =
-        "INSERT INTO %1$s (id, dataSource, created_date, start, %2$send%2$s,"
-        + " partitioned, version, used, payload, used_status_last_updated, upgraded_from_segment_id %3$s) "
-        + "VALUES (:id, :dataSource, :created_date, :start, :end,"
-        + " :partitioned, :version, :used, :payload, :used_status_last_updated, :upgraded_from_segment_id %4$s)";
-
-    if (schemaPersistEnabled) {
-      return StringUtils.format(
-          insertStatement,
-          dbTables.getSegmentsTable(),
-          connector.getQuoteString(),
-          ", schema_fingerprint, num_rows",
-          ", :schema_fingerprint, :num_rows"
-      );
-    } else {
-      return StringUtils.format(
-          insertStatement,
-          dbTables.getSegmentsTable(),
-          connector.getQuoteString(),
-          "",
-          ""
-      );
-    }
-  }
-
   /**
    * Finds the append segments that were covered by the given task REPLACE locks.
    * These append segments must now be upgraded to the same version as the segments
@@ -2514,23 +2456,6 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
       segmentIdToLockVersion.put(result.lhs, result.rhs);
     }
     return segmentIdToLockVersion;
-  }
-
-  private Set<String> segmentExistsBatch(final Handle handle, final Set<DataSegment> segments)
-  {
-    Set<String> existedSegments = new HashSet<>();
-
-    List<List<DataSegment>> segmentsLists = Lists.partition(new ArrayList<>(segments), MAX_NUM_SEGMENTS_TO_ANNOUNCE_AT_ONCE);
-    for (List<DataSegment> segmentList : segmentsLists) {
-      String segmentIds = segmentList.stream()
-          .map(segment -> "'" + StringUtils.escapeSql(segment.getId().toString()) + "'")
-          .collect(Collectors.joining(","));
-      List<String> existIds = handle.createQuery(StringUtils.format("SELECT id FROM %s WHERE id in (%s)", dbTables.getSegmentsTable(), segmentIds))
-          .mapTo(String.class)
-          .list();
-      existedSegments.addAll(existIds);
-    }
-    return existedSegments;
   }
 
   /**
