@@ -27,11 +27,16 @@ import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.common.Stopwatch;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.concurrent.ScheduledExecutorFactory;
+import org.apache.druid.java.util.common.lifecycle.LifecycleStart;
+import org.apache.druid.java.util.common.lifecycle.LifecycleStop;
 import org.apache.druid.java.util.emitter.EmittingLogger;
+import org.apache.druid.java.util.emitter.service.ServiceEmitter;
+import org.apache.druid.java.util.emitter.service.ServiceMetricEvent;
 import org.apache.druid.metadata.MetadataStorageTablesConfig;
 import org.apache.druid.metadata.SQLMetadataConnector;
 import org.apache.druid.metadata.SegmentsMetadataManagerConfig;
 import org.apache.druid.metadata.SqlSegmentsMetadataQuery;
+import org.apache.druid.query.DruidMetrics;
 import org.apache.druid.server.http.DataSegmentPlus;
 import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.timeline.SegmentTimeline;
@@ -52,6 +57,7 @@ import java.util.stream.Collectors;
 public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
 {
   private static final EmittingLogger log = new EmittingLogger(SqlSegmentsMetadataCache.class);
+  private static final String METRIC_PREFIX = "segment/metadataCache/";
 
   private enum CacheState
   {
@@ -65,6 +71,7 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
   private final SQLMetadataConnector connector;
 
   private final ScheduledExecutorService pollExecutor;
+  private final ServiceEmitter emitter;
 
   private final AtomicReference<CacheState> currentCacheState
       = new AtomicReference<>(CacheState.STOPPED);
@@ -79,7 +86,8 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
       Supplier<SegmentsMetadataManagerConfig> config,
       Supplier<MetadataStorageTablesConfig> tablesConfig,
       SQLMetadataConnector connector,
-      ScheduledExecutorFactory executorFactory
+      ScheduledExecutorFactory executorFactory,
+      ServiceEmitter emitter
   )
   {
     this.jsonMapper = jsonMapper;
@@ -88,10 +96,12 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
     this.tablesConfig = tablesConfig;
     this.connector = connector;
     this.pollExecutor = isCacheEnabled ? executorFactory.create(1, "SegmentsMetadataCache-%s") : null;
+    this.emitter = emitter;
   }
 
 
   @Override
+  @LifecycleStart
   public synchronized void start()
   {
     if (isCacheEnabled && currentCacheState.compareAndSet(CacheState.STOPPED, CacheState.STARTING)) {
@@ -102,6 +112,7 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
   }
 
   @Override
+  @LifecycleStop
   public synchronized void stop()
   {
     if (isCacheEnabled) {
@@ -143,8 +154,9 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
     Set<String> segmentIdsToFind = segments.stream()
                                            .map(s -> s.getId().toString())
                                            .collect(Collectors.toSet());
-    return datasourceToSegmentCache.getOrDefault(dataSource, DatasourceSegmentCache.empty())
-                                   .getSegmentIdsIn(segmentIdsToFind);
+    return datasourceToSegmentCache
+        .getOrDefault(dataSource, DatasourceSegmentCache.empty())
+        .getSegmentIdsIn(segmentIdsToFind);
   }
 
   @Override
@@ -221,6 +233,7 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
                                                  .add(segmentId);
                   } else if (cache.refreshUnusedSegment(metadataState)) {
                     countOfRefreshedUnusedSegments.incrementAndGet();
+                    emitDatasourceMetric(dataSource, "refreshed/unused", 1);
                   }
                 }
 
@@ -237,9 +250,10 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
     );
 
     if (countOfRefreshedUnusedSegments.get() > 0) {
-      log.info("Refreshed [%d] unused segments from metadata store.", countOfRefreshedUnusedSegments.get());
-      // TODO: emit a metric here
+      log.info("Refreshed total [%d] unused segments from metadata store.", countOfRefreshedUnusedSegments.get());
     }
+
+    // TODO: handle changes made to the metadata store between these two database calls
 
     // Remove unknown segment IDs from cache
     // This is safe to do since updates are always made first to metadata store and then to cache
@@ -276,17 +290,20 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
             .count();
       });
 
-      // TODO: emit metric here
+      emitDatasourceMetric(dataSource, "refresh/used", numUpdatedUsedSegments);
       countOfRefreshedUsedSegments.addAndGet((int) numUpdatedUsedSegments);
     });
 
     if (countOfRefreshedUsedSegments.get() > 0) {
-      log.info("Refreshed [%d] used segments from metadata store.", countOfRefreshedUnusedSegments.get());
-      // TODO: emit a metric here
+      log.info(
+          "Refreshed total [%d] used segments from metadata store.",
+          countOfRefreshedUnusedSegments.get()
+      );
     }
 
     // TODO: poll pending segments
-    // TODO: emit poll duration metric
+
+    emitMetric("poll/time", sincePollStart.millisElapsed());
     pollFinishTime.set(DateTimes.nowUtc());
 
     if (isStopped()) {
@@ -303,6 +320,23 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
   private String getSegmentsTable()
   {
     return tablesConfig.get().getSegmentsTable();
+  }
+
+  private void emitMetric(String metric, long value)
+  {
+    emitter.emit(
+        ServiceMetricEvent.builder()
+                          .setMetric(METRIC_PREFIX + metric, value)
+    );
+  }
+
+  private void emitDatasourceMetric(String datasource, String metric, long value)
+  {
+    emitter.emit(
+        ServiceMetricEvent.builder()
+                          .setDimension(DruidMetrics.DATASOURCE, datasource)
+                          .setMetric(METRIC_PREFIX + metric, value)
+    );
   }
 
 }

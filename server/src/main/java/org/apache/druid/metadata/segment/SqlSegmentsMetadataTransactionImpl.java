@@ -23,16 +23,22 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.Lists;
 import org.apache.druid.error.InternalServerError;
 import org.apache.druid.java.util.common.StringUtils;
+import org.apache.druid.java.util.common.parsers.CloseableIterator;
 import org.apache.druid.metadata.MetadataStorageTablesConfig;
 import org.apache.druid.metadata.SQLMetadataConnector;
+import org.apache.druid.metadata.SqlSegmentsMetadataQuery;
 import org.apache.druid.segment.SegmentUtils;
 import org.apache.druid.server.http.DataSegmentPlus;
 import org.apache.druid.timeline.DataSegment;
+import org.apache.druid.timeline.SegmentId;
 import org.joda.time.DateTime;
+import org.joda.time.Interval;
 import org.skife.jdbi.v2.Handle;
 import org.skife.jdbi.v2.PreparedBatch;
 import org.skife.jdbi.v2.PreparedBatchPart;
+import org.skife.jdbi.v2.TransactionStatus;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -44,12 +50,16 @@ public class SqlSegmentsMetadataTransactionImpl implements SqlSegmentsMetadataTr
   private static final int MAX_SEGMENTS_PER_BATCH = 100;
 
   private final Handle handle;
+  private final TransactionStatus transactionStatus;
   private final SQLMetadataConnector connector;
   private final MetadataStorageTablesConfig dbTables;
   private final ObjectMapper jsonMapper;
 
+  private final SqlSegmentsMetadataQuery query;
+
   public SqlSegmentsMetadataTransactionImpl(
       Handle handle,
+      TransactionStatus transactionStatus,
       SQLMetadataConnector connector,
       MetadataStorageTablesConfig dbTables,
       ObjectMapper jsonMapper
@@ -59,6 +69,19 @@ public class SqlSegmentsMetadataTransactionImpl implements SqlSegmentsMetadataTr
     this.connector = connector;
     this.dbTables = dbTables;
     this.jsonMapper = jsonMapper;
+    this.query = SqlSegmentsMetadataQuery.forHandle(handle, connector, dbTables, jsonMapper);
+  }
+
+  @Override
+  public Handle getHandle()
+  {
+    return handle;
+  }
+
+  @Override
+  public void setRollbackOnly()
+  {
+    transactionStatus.setRollbackOnly();
   }
 
   @Override
@@ -81,6 +104,68 @@ public class SqlSegmentsMetadataTransactionImpl implements SqlSegmentsMetadataTr
     }
 
     return existingSegmentIds;
+  }
+
+  @Override
+  public Set<SegmentId> findUsedSegmentIds(String dataSource, Interval interval)
+  {
+    return query.retrieveUsedSegmentIds(dataSource, interval);
+  }
+
+  @Override
+  public CloseableIterator<DataSegment> findUsedSegments(String dataSource, List<Interval> intervals)
+  {
+    return query.retrieveUsedSegments(dataSource, intervals);
+  }
+
+  @Override
+  public CloseableIterator<DataSegmentPlus> findUsedSegmentsPlus(String dataSource, List<Interval> intervals)
+  {
+    return query.retrieveUsedSegmentsPlus(dataSource, intervals);
+  }
+
+  @Override
+  public DataSegment findSegment(String segmentId)
+  {
+    return query.retrieveSegmentForId(segmentId);
+  }
+
+  @Override
+  public DataSegment findUsedSegment(String segmentId)
+  {
+    return query.retrieveUsedSegmentForId(segmentId);
+  }
+
+  @Override
+  public List<DataSegmentPlus> findSegments(String dataSource, Set<String> segmentIds)
+  {
+    return query.retrieveSegmentsById(dataSource, segmentIds);
+  }
+
+  @Override
+  public List<DataSegmentPlus> findSegmentsWithSchema(String dataSource, Set<String> segmentIds)
+  {
+    return query.retrieveSegmentsWithSchemaById(dataSource, segmentIds);
+  }
+
+  @Override
+  public CloseableIterator<DataSegment> findUnusedSegments(
+      String dataSource,
+      Interval interval,
+      @Nullable List<String> versions,
+      @Nullable Integer limit,
+      @Nullable DateTime maxUsedStatusLastUpdatedTime
+  )
+  {
+    return query.retrieveUnusedSegments(
+        dataSource,
+        List.of(interval),
+        versions,
+        limit,
+        null,
+        null,
+        maxUsedStatusLastUpdatedTime
+    );
   }
 
   @Override
@@ -111,6 +196,12 @@ public class SqlSegmentsMetadataTransactionImpl implements SqlSegmentsMetadataTr
         + ":version, :used, :payload, :used_status_last_updated, :upgraded_from_segment_id, "
         + ":schema_fingerprint, :num_rows)"
     );
+  }
+
+  @Override
+  public int markSegmentsUnused(String dataSource, Interval interval)
+  {
+    return query.markSegmentsUnused(dataSource, interval);
   }
 
   private void insertSegmentsInBatches(

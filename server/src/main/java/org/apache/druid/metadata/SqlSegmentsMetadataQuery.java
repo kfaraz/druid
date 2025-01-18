@@ -149,6 +149,24 @@ public class SqlSegmentsMetadataQuery
     );
   }
 
+  public CloseableIterator<DataSegmentPlus> retrieveUsedSegmentsPlus(
+      String dataSource,
+      Collection<Interval> intervals
+  )
+  {
+    return retrieveSegmentsPlus(
+        dataSource,
+        intervals,
+        null,
+        IntervalMode.OVERLAPS,
+        true,
+        null,
+        null,
+        null,
+        null
+    );
+  }
+
   /**
    * Retrieves segments for a given datasource that are marked unused and that are <b>fully contained by</b> any interval
    * in a particular collection of intervals. If the collection of intervals is empty, this method will retrieve all

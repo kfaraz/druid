@@ -21,10 +21,14 @@ package org.apache.druid.metadata.segment;
 
 import org.apache.druid.discovery.DruidLeaderSelector;
 import org.apache.druid.error.InternalServerError;
+import org.apache.druid.java.util.common.parsers.CloseableIterator;
 import org.apache.druid.metadata.segment.cache.SegmentsMetadataCache;
 import org.apache.druid.server.http.DataSegmentPlus;
 import org.apache.druid.timeline.DataSegment;
+import org.joda.time.Interval;
+import org.skife.jdbi.v2.Handle;
 
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -70,6 +74,18 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
   }
 
   @Override
+  public Handle getHandle()
+  {
+    return delegate.getHandle();
+  }
+
+  @Override
+  public void setRollbackOnly()
+  {
+    delegate.setRollbackOnly();
+  }
+
+  @Override
   public Set<String> findExistingSegmentIds(Set<DataSegment> segments)
   {
     if (segments.isEmpty()) {
@@ -77,6 +93,20 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
     }
 
     return metadataCache.findExistingSegmentIds(getDataSource(segments), segments);
+  }
+
+  @Override
+  public CloseableIterator<DataSegment> findUsedSegments(String dataSource, List<Interval> intervals)
+  {
+    // TODO: implement this
+    return null;
+  }
+
+  @Override
+  public CloseableIterator<DataSegmentPlus> findUsedSegmentsPlus(String dataSource, List<Interval> intervals)
+  {
+    // TODO: implement this
+    return null;
   }
 
   @Override

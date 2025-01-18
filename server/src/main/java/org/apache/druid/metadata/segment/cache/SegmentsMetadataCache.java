@@ -20,7 +20,6 @@
 package org.apache.druid.metadata.segment.cache;
 
 import org.apache.druid.server.http.DataSegmentPlus;
-import org.apache.druid.timeline.DataSegment;
 
 import java.util.Set;
 
@@ -31,12 +30,13 @@ import java.util.Set;
  * -[ ] Add APIs in cache to read/update
  * -[ ] Mark as used / unused should happen within TaskLockbox.giant()
  * -[ ] Wire up cache in IndexerSQLMetadataStorageCoordinator
+ * -[ ] Just using a handle doesn't ensure a transaction. Make sure the read + write
+ * stuff happens in a transaction wherever applicable
  * -[ ] Poll pending segments too
  * -[ ] How to ensure that cache is not updated while some read is happening.
  * - We cannot acquire TaskLockbox.giant as that would significantly slow down read operations.
  * - I think read from cache would be fast anyway. We just need to ensure that we read a consistent state
  * - and I think that would be ensured by the lock inside the DatasourceSegmentCache.
- * -[ ] Add a common interface with 2 impls: SqlSegmentsMetadataQuery and the other powered by cache
  * -[ ] Wire up cache in OverlordCompactionScheduler
  * -[ ] Write unit tests
  * -[ ] Write integration tests

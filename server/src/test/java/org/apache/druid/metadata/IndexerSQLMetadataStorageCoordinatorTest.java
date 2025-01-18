@@ -34,8 +34,11 @@ import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.common.Intervals;
 import org.apache.druid.java.util.common.Pair;
 import org.apache.druid.java.util.common.StringUtils;
+import org.apache.druid.java.util.metrics.StubServiceEmitter;
 import org.apache.druid.metadata.segment.SqlSegmentsMetadataTransactionFactory;
 import org.apache.druid.metadata.segment.cache.NoopSegmentsMetadataCache;
+import org.apache.druid.metadata.segment.cache.SegmentsMetadataCache;
+import org.apache.druid.metadata.segment.cache.SqlSegmentsMetadataCache;
 import org.apache.druid.segment.SegmentSchemaMapping;
 import org.apache.druid.segment.TestDataSource;
 import org.apache.druid.segment.metadata.CentralizedDatasourceSchemaConfig;
@@ -43,7 +46,9 @@ import org.apache.druid.segment.metadata.FingerprintGenerator;
 import org.apache.druid.segment.metadata.SegmentSchemaManager;
 import org.apache.druid.segment.metadata.SegmentSchemaTestUtils;
 import org.apache.druid.segment.realtime.appenderator.SegmentIdWithShardSpec;
+import org.apache.druid.server.coordinator.simulate.BlockingExecutorService;
 import org.apache.druid.server.coordinator.simulate.TestDruidLeaderSelector;
+import org.apache.druid.server.coordinator.simulate.WrappingScheduledExecutorService;
 import org.apache.druid.server.http.DataSegmentPlus;
 import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.timeline.SegmentId;
@@ -63,6 +68,7 @@ import org.apache.druid.timeline.partition.TombstoneShardSpec;
 import org.assertj.core.api.Assertions;
 import org.joda.time.DateTime;
 import org.joda.time.Interval;
+import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Ignore;
@@ -89,6 +95,11 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
   @Rule
   public final TestDerbyConnector.DerbyConnectorRule derbyConnectorRule = new TestDerbyConnector.DerbyConnectorRule();
 
+  private TestDruidLeaderSelector leaderSelector;
+  private SegmentsMetadataCache segmentsMetadataCache;
+  private StubServiceEmitter emitter;
+  private SqlSegmentsMetadataTransactionFactory transactionFactory;
+
   @Before
   public void setUp()
   {
@@ -107,14 +118,33 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
     segmentSchemaManager = new SegmentSchemaManager(derbyConnectorRule.metadataTablesConfigSupplier().get(), mapper, derbyConnector);
     segmentSchemaTestUtils = new SegmentSchemaTestUtils(derbyConnectorRule, derbyConnector, mapper);
 
-    coordinator = new IndexerSQLMetadataStorageCoordinator(
-        new SqlSegmentsMetadataTransactionFactory(
-            mapper,
-            derbyConnectorRule.metadataTablesConfigSupplier().get(),
-            derbyConnector,
-            new TestDruidLeaderSelector(),
-            new NoopSegmentsMetadataCache()
+    emitter = new StubServiceEmitter();
+    leaderSelector = new TestDruidLeaderSelector();
+    segmentsMetadataCache = new SqlSegmentsMetadataCache(
+        mapper,
+        () -> new SegmentsMetadataManagerConfig(null, false),
+        derbyConnectorRule.metadataTablesConfigSupplier(),
+        derbyConnector,
+        (corePoolSize, nameFormat) -> new WrappingScheduledExecutorService(
+            nameFormat,
+            new BlockingExecutorService(nameFormat),
+            false
         ),
+        emitter
+    );
+
+    leaderSelector.becomeLeader();
+    segmentsMetadataCache.start();
+
+    transactionFactory = new SqlSegmentsMetadataTransactionFactory(
+        mapper,
+        derbyConnectorRule.metadataTablesConfigSupplier().get(),
+        derbyConnector,
+        leaderSelector,
+        segmentsMetadataCache
+    );
+    coordinator = new IndexerSQLMetadataStorageCoordinator(
+        transactionFactory,
         mapper,
         derbyConnectorRule.metadataTablesConfigSupplier().get(),
         derbyConnector,
@@ -141,6 +171,13 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
         return MAX_SQL_MEATADATA_RETRY_FOR_TEST;
       }
     };
+  }
+
+  @After
+  public void tearDown()
+  {
+    segmentsMetadataCache.stop();
+    leaderSelector.stopBeingLeader();
   }
 
   @Test
@@ -3800,7 +3837,7 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
 
     Assert.assertEquals(expected,
                         derbyConnector.retryWithHandle(
-                            handle -> coordinator.retrieveUsedSegmentsForAllocation(handle, datasource, month)
+                            handle -> coordinator.retrieveUsedSegmentsForAllocation(transactionFactory.createTransaction(handle), datasource, month)
                                                  .stream()
                                                  .map(SegmentIdWithShardSpec::fromDataSegment)
                                                  .collect(Collectors.toSet())

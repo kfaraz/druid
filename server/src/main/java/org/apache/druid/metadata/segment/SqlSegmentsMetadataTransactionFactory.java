@@ -26,6 +26,7 @@ import org.apache.druid.metadata.MetadataStorageTablesConfig;
 import org.apache.druid.metadata.SQLMetadataConnector;
 import org.apache.druid.metadata.segment.cache.SegmentsMetadataCache;
 import org.skife.jdbi.v2.Handle;
+import org.skife.jdbi.v2.TransactionStatus;
 
 /**
  * Factory for {@link SqlSegmentsMetadataTransaction}s. If the
@@ -56,10 +57,13 @@ public class SqlSegmentsMetadataTransactionFactory
     this.segmentsMetadataCache = segmentsMetadataCache;
   }
 
-  public SqlSegmentsMetadataTransaction createTransaction(Handle handle)
+  public SqlSegmentsMetadataTransaction createTransaction(
+      Handle handle,
+      TransactionStatus transactionStatus
+  )
   {
     final SqlSegmentsMetadataTransaction metadataTransaction
-        = new SqlSegmentsMetadataTransactionImpl(handle, connector, tablesConfig, jsonMapper);
+        = new SqlSegmentsMetadataTransactionImpl(handle, transactionStatus, connector, tablesConfig, jsonMapper);
 
     return segmentsMetadataCache.isReady()
            ? new SqlSegmentsMetadataCachedTransaction(metadataTransaction, segmentsMetadataCache, leaderSelector)
