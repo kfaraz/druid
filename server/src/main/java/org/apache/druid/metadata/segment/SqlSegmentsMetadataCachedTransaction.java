@@ -25,9 +25,12 @@ import org.apache.druid.java.util.common.parsers.CloseableIterator;
 import org.apache.druid.metadata.segment.cache.SegmentsMetadataCache;
 import org.apache.druid.server.http.DataSegmentPlus;
 import org.apache.druid.timeline.DataSegment;
+import org.apache.druid.timeline.SegmentId;
+import org.joda.time.DateTime;
 import org.joda.time.Interval;
 import org.skife.jdbi.v2.Handle;
 
+import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Set;
 
@@ -96,6 +99,27 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
   }
 
   @Override
+  public Set<SegmentId> findUsedSegmentIds(String dataSource, Interval interval)
+  {
+    // TODO
+    return Set.of();
+  }
+
+  @Override
+  public List<DataSegmentPlus> findSegments(String dataSource, Set<String> segmentIds)
+  {
+    // TODO
+    return List.of();
+  }
+
+  @Override
+  public List<DataSegmentPlus> findSegmentsWithSchema(String dataSource, Set<String> segmentIds)
+  {
+    // TODO
+    return List.of();
+  }
+
+  @Override
   public CloseableIterator<DataSegment> findUsedSegments(String dataSource, List<Interval> intervals)
   {
     // TODO: implement this
@@ -106,6 +130,33 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
   public CloseableIterator<DataSegmentPlus> findUsedSegmentsPlus(String dataSource, List<Interval> intervals)
   {
     // TODO: implement this
+    return null;
+  }
+
+  @Override
+  public CloseableIterator<DataSegment> findUnusedSegments(
+      String dataSource,
+      Interval interval,
+      @Nullable List<String> versions,
+      @Nullable Integer limit,
+      @Nullable DateTime maxUsedStatusLastUpdatedTime
+  )
+  {
+    // TODO
+    return null;
+  }
+
+  @Override
+  public DataSegment findSegment(String segmentId)
+  {
+    // TODO
+    return null;
+  }
+
+  @Override
+  public DataSegment findUsedSegment(String segmentId)
+  {
+    // TODO
     return null;
   }
 
@@ -129,6 +180,13 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
     if (isLeaderWithSameTerm() && !segments.isEmpty()) {
       metadataCache.addSegments(getDataSourceName(segments), segments);
     }
+  }
+
+  @Override
+  public int markSegmentsUnused(String dataSource, Interval interval)
+  {
+    // TODO
+    return 0;
   }
 
   private static String getDataSource(Set<DataSegment> segments)

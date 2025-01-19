@@ -69,6 +69,7 @@ public class SqlSegmentsMetadataTransactionImpl implements SqlSegmentsMetadataTr
     this.connector = connector;
     this.dbTables = dbTables;
     this.jsonMapper = jsonMapper;
+    this.transactionStatus = transactionStatus;
     this.query = SqlSegmentsMetadataQuery.forHandle(handle, connector, dbTables, jsonMapper);
   }
 

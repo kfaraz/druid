@@ -255,14 +255,6 @@ public class TestIndexerMetadataStorageCoordinator implements IndexerMetadataSto
   }
 
   @Override
-  public List<PendingSegmentRecord> upgradePendingSegmentsOverlappingWith(
-      Set<DataSegment> replaceSegments
-  )
-  {
-    return Collections.emptyList();
-  }
-
-  @Override
   public int deletePendingSegmentsCreatedInInterval(String dataSource, Interval deleteInterval)
   {
     throw new UnsupportedOperationException();

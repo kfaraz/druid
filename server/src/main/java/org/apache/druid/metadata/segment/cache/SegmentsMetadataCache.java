@@ -37,6 +37,8 @@ import java.util.Set;
  * - We cannot acquire TaskLockbox.giant as that would significantly slow down read operations.
  * - I think read from cache would be fast anyway. We just need to ensure that we read a consistent state
  * - and I think that would be ensured by the lock inside the DatasourceSegmentCache.
+ * - BUT we want the lock to be held for the ENTIRE DURATION of the transaction,
+ * not just while we are doing the actual read operation.
  * -[ ] Wire up cache in OverlordCompactionScheduler
  * -[ ] Write unit tests
  * -[ ] Write integration tests

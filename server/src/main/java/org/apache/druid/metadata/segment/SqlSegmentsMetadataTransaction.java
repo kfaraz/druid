@@ -26,7 +26,6 @@ import org.apache.druid.timeline.SegmentId;
 import org.joda.time.DateTime;
 import org.joda.time.Interval;
 import org.skife.jdbi.v2.Handle;
-import org.skife.jdbi.v2.TransactionStatus;
 
 import javax.annotation.Nullable;
 import java.util.List;

@@ -35,6 +35,7 @@ import org.apache.druid.java.util.common.Intervals;
 import org.apache.druid.java.util.common.Pair;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.metrics.StubServiceEmitter;
+import org.apache.druid.metadata.segment.SqlSegmentsMetadataTransaction;
 import org.apache.druid.metadata.segment.SqlSegmentsMetadataTransactionFactory;
 import org.apache.druid.metadata.segment.cache.NoopSegmentsMetadataCache;
 import org.apache.druid.metadata.segment.cache.SegmentsMetadataCache;
@@ -74,7 +75,6 @@ import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
-import org.skife.jdbi.v2.Handle;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -154,7 +154,7 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
     {
       @Override
       protected DataStoreMetadataUpdateResult updateDataSourceMetadataWithHandle(
-          Handle handle,
+          SqlSegmentsMetadataTransaction transaction,
           String dataSource,
           DataSourceMetadata startMetadata,
           DataSourceMetadata endMetadata
@@ -162,7 +162,7 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
       {
         // Count number of times this method is called.
         metadataUpdateCounter.getAndIncrement();
-        return super.updateDataSourceMetadataWithHandle(handle, dataSource, startMetadata, endMetadata);
+        return super.updateDataSourceMetadataWithHandle(transaction, dataSource, startMetadata, endMetadata);
       }
 
       @Override
@@ -304,8 +304,15 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
       );
     }
 
-    derbyConnector.retryWithHandle(
-        handle -> coordinator.insertPendingSegmentsIntoMetastore(handle, pendingSegmentsForTask, TestDataSource.WIKI, false)
+    derbyConnector.retryTransaction(
+        (handle, transactionStatus) -> coordinator.insertPendingSegmentsIntoMetastore(
+            transactionFactory.createTransaction(handle, transactionStatus),
+            pendingSegmentsForTask,
+            TestDataSource.WIKI,
+            false
+        ),
+        3,
+        0
     );
 
     final Map<DataSegment, ReplaceTaskLock> segmentToReplaceLock
@@ -401,14 +408,7 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
     }
 
     segmentSchemaTestUtils.insertUsedSegments(segmentsAppendedWithReplaceLock, Collections.emptyMap());
-    derbyConnector.retryWithHandle(
-        handle -> coordinator.insertPendingSegmentsIntoMetastore(
-            handle,
-            ImmutableList.of(pendingSegmentForInterval),
-            "foo",
-            true
-        )
-    );
+    insertPendingSegments("foo", List.of(pendingSegmentForInterval), true);
     insertIntoUpgradeSegmentsTable(appendedSegmentToReplaceLockMap, derbyConnectorRule.metadataTablesConfigSupplier().get());
 
     final Set<DataSegment> replacingSegments = new HashSet<>();
@@ -480,13 +480,10 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
     }
 
     segmentSchemaTestUtils.insertUsedSegments(segmentsAppendedWithReplaceLock, Collections.emptyMap());
-    derbyConnector.retryWithHandle(
-        handle -> coordinator.insertPendingSegmentsIntoMetastore(
-            handle,
-            ImmutableList.of(pendingSegmentInInterval, pendingSegmentOutsideInterval),
-            "foo",
-            true
-        )
+    insertPendingSegments(
+        "foo",
+        List.of(pendingSegmentInInterval, pendingSegmentOutsideInterval),
+        true
     );
     insertIntoUpgradeSegmentsTable(appendedSegmentToReplaceLockMap, derbyConnectorRule.metadataTablesConfigSupplier().get());
 
@@ -586,13 +583,10 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
         null,
         "taskAllocatorId"
     );
-    final int actualInserted = derbyConnector.retryWithHandle(
-        handle -> coordinator.insertPendingSegmentsIntoMetastore(
-            handle,
-            ImmutableList.of(pendingSegment0, pendingSegment0, pendingSegment1, pendingSegment1, pendingSegment1),
-            "foo",
-            true
-        )
+    final int actualInserted = insertPendingSegments(
+        "foo",
+        List.of(pendingSegment0, pendingSegment0, pendingSegment1, pendingSegment1, pendingSegment1),
+        true
     );
     Assert.assertEquals(2, actualInserted);
   }
@@ -761,7 +755,7 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
     {
       @Override
       protected DataStoreMetadataUpdateResult updateDataSourceMetadataWithHandle(
-          Handle handle,
+          SqlSegmentsMetadataTransaction transaction,
           String dataSource,
           DataSourceMetadata startMetadata,
           DataSourceMetadata endMetadata
@@ -771,7 +765,7 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
         if (attemptCounter.getAndIncrement() == 0) {
           return DataStoreMetadataUpdateResult.retryableFailure(null);
         } else {
-          return super.updateDataSourceMetadataWithHandle(handle, dataSource, startMetadata, endMetadata);
+          return super.updateDataSourceMetadataWithHandle(transaction, dataSource, startMetadata, endMetadata);
         }
       }
     };
@@ -3835,14 +3829,21 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
       }
     }
 
-    Assert.assertEquals(expected,
-                        derbyConnector.retryWithHandle(
-                            handle -> coordinator.retrieveUsedSegmentsForAllocation(transactionFactory.createTransaction(handle), datasource, month)
-                                                 .stream()
-                                                 .map(SegmentIdWithShardSpec::fromDataSegment)
-                                                 .collect(Collectors.toSet())
-                        )
+    Set<SegmentIdWithShardSpec> observed = derbyConnector.retryTransaction(
+        (handle, transactionStatus) ->
+            coordinator.retrieveUsedSegmentsForAllocation(
+                           transactionFactory.createTransaction(handle, transactionStatus),
+                           datasource,
+                           month
+                       )
+                       .stream()
+                       .map(SegmentIdWithShardSpec::fromDataSegment)
+                       .collect(Collectors.toSet()),
+        3,
+        SQLMetadataConnector.DEFAULT_MAX_TRIES
     );
+
+    Assert.assertEquals(expected, observed);
   }
 
   private SegmentIdWithShardSpec allocatePendingSegment(
@@ -3867,6 +3868,24 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
             partialShardSpec,
             taskAllocatorId
         )
+    );
+  }
+
+  private int insertPendingSegments(
+      String dataSource,
+      List<PendingSegmentRecord> pendingSegments,
+      boolean skipLineageCheck
+  )
+  {
+    return derbyConnector.retryTransaction(
+        (handle, transactionStatus) -> coordinator.insertPendingSegmentsIntoMetastore(
+            transactionFactory.createTransaction(handle, transactionStatus),
+            pendingSegments,
+            dataSource,
+            skipLineageCheck
+        ),
+        3,
+        SQLMetadataConnector.DEFAULT_MAX_TRIES
     );
   }
 
