@@ -304,16 +304,7 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
       );
     }
 
-    derbyConnector.retryTransaction(
-        (handle, transactionStatus) -> coordinator.insertPendingSegmentsIntoMetastore(
-            transactionFactory.createTransaction(handle, transactionStatus),
-            pendingSegmentsForTask,
-            TestDataSource.WIKI,
-            false
-        ),
-        3,
-        0
-    );
+    insertPendingSegments(TestDataSource.WIKI, pendingSegmentsForTask, false);
 
     final Map<DataSegment, ReplaceTaskLock> segmentToReplaceLock
         = expectedSegmentsToUpgrade.stream()
