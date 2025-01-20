@@ -3869,12 +3869,9 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
   )
   {
     return derbyConnector.retryTransaction(
-        (handle, transactionStatus) -> coordinator.insertPendingSegmentsIntoMetastore(
-            transactionFactory.createTransaction(handle, transactionStatus),
-            pendingSegments,
-            dataSource,
-            skipLineageCheck
-        ),
+        (handle, transactionStatus) ->
+            transactionFactory.createTransaction(handle, transactionStatus)
+                              .insertPendingSegments(dataSource, pendingSegments, skipLineageCheck),
         3,
         SQLMetadataConnector.DEFAULT_MAX_TRIES
     );
