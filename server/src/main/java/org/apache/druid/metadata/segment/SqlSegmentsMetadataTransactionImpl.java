@@ -133,6 +133,15 @@ public class SqlSegmentsMetadataTransactionImpl implements SqlSegmentsMetadataTr
   }
 
   @Override
+  public List<DataSegment> findUsedSegments(Set<String> segmentIds)
+  {
+    return query.retrieveSegmentsById(dataSource, segmentIds)
+                .stream()
+                .map(DataSegmentPlus::getDataSegment)
+                .collect(Collectors.toList());
+  }
+
+  @Override
   public Set<DataSegmentPlus> findUsedSegmentsPlus(List<Interval> intervals)
   {
     try (CloseableIterator<DataSegmentPlus> iterator

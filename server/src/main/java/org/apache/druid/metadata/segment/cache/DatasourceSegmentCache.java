@@ -19,6 +19,9 @@
 
 package org.apache.druid.metadata.segment.cache;
 
+import org.apache.druid.error.DruidException;
+import org.apache.druid.java.util.common.CloseableIterators;
+import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.common.parsers.CloseableIterator;
 import org.apache.druid.metadata.PendingSegmentRecord;
 import org.apache.druid.metadata.segment.DatasourceReadTransaction;
@@ -32,10 +35,12 @@ import org.joda.time.DateTime;
 import org.joda.time.Interval;
 
 import javax.annotation.Nullable;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -52,7 +57,7 @@ class DatasourceSegmentCache
    * Used to obtain the segment for a given ID so that it can be updated in the
    * timeline.
    */
-  private final Map<String, DataSegment> idToUsedSegment = new HashMap<>();
+  private final Map<String, DataSegmentPlus> idToUsedSegment = new HashMap<>();
 
   /**
    * Current state of segments as seen by the cache.
@@ -82,7 +87,7 @@ class DatasourceSegmentCache
       idToSegmentState.clear();
       idToUsedSegment.clear();
       unusedSegmentIds.clear();
-      idToUsedSegment.values().forEach(usedSegmentTimeline::remove);
+      idToUsedSegment.values().forEach(s -> usedSegmentTimeline.remove(s.getDataSegment()));
     });
   }
 
@@ -115,9 +120,9 @@ class DatasourceSegmentCache
 
       if (oldState != null && oldState.isUsed()) {
         // Segment has transitioned from used to unused
-        DataSegment segment = idToUsedSegment.remove(newState.getSegmentId());
+        DataSegmentPlus segment = idToUsedSegment.remove(newState.getSegmentId());
         if (segment != null) {
-          usedSegmentTimeline.remove(segment);
+          usedSegmentTimeline.remove(segment.getDataSegment());
         }
       }
 
@@ -145,14 +150,14 @@ class DatasourceSegmentCache
       }
 
       final SegmentState oldState = idToSegmentState.put(newState.getSegmentId(), newState);
-      final DataSegment oldSegment = idToUsedSegment.put(newState.getSegmentId(), segment);
+      final DataSegmentPlus oldSegmentPlus = idToUsedSegment.put(newState.getSegmentId(), segmentPlus);
 
       if (oldState == null) {
         // This is a new segment
       } else if (oldState.isUsed()) {
         // Segment payload may have changed
-        if (oldSegment != null) {
-          usedSegmentTimeline.remove(oldSegment);
+        if (oldSegmentPlus != null) {
+          usedSegmentTimeline.remove(oldSegmentPlus.getDataSegment());
         }
       } else {
         // Segment has transitioned from unused to used
@@ -176,9 +181,9 @@ class DatasourceSegmentCache
 
         unusedSegmentIds.remove(segmentId);
 
-        final DataSegment segment = idToUsedSegment.remove(segmentId);
+        final DataSegmentPlus segment = idToUsedSegment.remove(segmentId);
         if (segment != null) {
-          usedSegmentTimeline.remove(segment);
+          usedSegmentTimeline.remove(segment.getDataSegment());
         }
       }
 
@@ -202,14 +207,11 @@ class DatasourceSegmentCache
   @Override
   public Set<String> findExistingSegmentIds(Set<DataSegment> segments)
   {
-    final Set<String> segmentIdsToFind = segments.stream()
-                                                 .map(s -> s.getId().toString())
-                                                 .collect(Collectors.toSet());
-
     return withReadLock(
-        () -> segmentIdsToFind.stream()
-                              .filter(idToSegmentState::containsKey)
-                              .collect(Collectors.toSet())
+        () -> segments.stream()
+                      .map(s -> s.getId().toString())
+                      .filter(idToSegmentState::containsKey)
+                      .collect(Collectors.toSet())
     );
   }
 
@@ -219,6 +221,7 @@ class DatasourceSegmentCache
     return withReadLock(
         () -> idToUsedSegment.values()
                              .stream()
+                             .map(DataSegmentPlus::getDataSegment)
                              .filter(s -> s.getInterval().overlaps(interval))
                              .map(DataSegment::getId)
                              .collect(Collectors.toSet())
@@ -228,37 +231,60 @@ class DatasourceSegmentCache
   @Override
   public CloseableIterator<DataSegment> findUsedSegments(List<Interval> intervals)
   {
-    return null;
+    return CloseableIterators.withEmptyBaggage(
+        findUsedSegmentsPlus(intervals).stream().map(DataSegmentPlus::getDataSegment).iterator()
+    );
+  }
+
+  @Override
+  public List<DataSegment> findUsedSegments(Set<String> segmentIds)
+  {
+    return withReadLock(
+        () -> segmentIds.stream()
+                        .map(idToUsedSegment::get)
+                        .filter(Objects::nonNull)
+                        .map(DataSegmentPlus::getDataSegment)
+                        .collect(Collectors.toList())
+    );
   }
 
   @Override
   public Set<DataSegmentPlus> findUsedSegmentsPlus(List<Interval> intervals)
   {
-    return Set.of();
+    // TODO: can probably use the timeline here
+    return withReadLock(
+        () -> idToUsedSegment.values()
+                             .stream()
+                             .filter(s -> anyIntervalOverlaps(intervals, s.getDataSegment().getInterval()))
+                             .collect(Collectors.toSet())
+    );
   }
 
   @Override
   public DataSegment findSegment(String segmentId)
   {
-    return null;
+    throw DruidException.defensive("Unsupported: Unused segments are not cached");
   }
 
   @Override
   public DataSegment findUsedSegment(String segmentId)
   {
-    return null;
+    return withReadLock(() -> {
+      final DataSegmentPlus segmentPlus = idToUsedSegment.get(segmentId);
+      return segmentPlus == null ? null : segmentPlus.getDataSegment();
+    });
   }
 
   @Override
   public List<DataSegmentPlus> findSegments(Set<String> segmentIds)
   {
-    return List.of();
+    throw DruidException.defensive("Unsupported: Unused segments are not cached");
   }
 
   @Override
   public List<DataSegmentPlus> findSegmentsWithSchema(Set<String> segmentIds)
   {
-    return List.of();
+    throw DruidException.defensive("Unsupported: Unused segments are not cached");
   }
 
   @Override
@@ -269,7 +295,7 @@ class DatasourceSegmentCache
       @Nullable DateTime maxUsedStatusLastUpdatedTime
   )
   {
-    return List.of();
+    throw DruidException.defensive("Unsupported: Unused segments are not cached");
   }
 
   @Override
@@ -333,13 +359,27 @@ class DatasourceSegmentCache
   @Override
   public int markSegmentsUnused(Interval interval)
   {
+    // TODO: find a way to have the same updated time as was persisted to the metadata store
+    final DateTime updateTime = DateTimes.nowUtc();
+    try (CloseableIterator<DataSegment> segmentIterator = findUsedSegments(List.of(interval))) {
+      while (segmentIterator.hasNext()) {
+        final DataSegment next = segmentIterator.next();
+        refreshUnusedSegment(
+            new SegmentState(next.getId().toString(), next.getDataSource(), false, updateTime)
+        );
+      }
+    }
+    catch (IOException e) {
+      throw DruidException.defensive("Error while updating segments in cache");
+    }
+
     return 0;
   }
 
   @Override
   public void updateSegmentPayload(DataSegment segment)
   {
-
+    throw DruidException.defensive("Unsupported: Segment payload updates are not supported in the cache");
   }
 
   @Override
@@ -358,5 +398,10 @@ class DatasourceSegmentCache
   public int deletePendingSegments(List<String> segmentIdsToDelete)
   {
     return 0;
+  }
+
+  private static boolean anyIntervalOverlaps(List<Interval> intervals, Interval testInterval)
+  {
+    return intervals.stream().anyMatch(interval -> interval.overlaps(testInterval));
   }
 }

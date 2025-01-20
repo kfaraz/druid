@@ -1764,8 +1764,6 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
       return Collections.emptySet();
     }
 
-    final String datasource = replaceSegments.iterator().next().getDataSource();
-
     // For each replace interval, find the number of core partitions and total partitions
     final Map<Interval, Integer> intervalToNumCorePartitions = new HashMap<>();
     final Map<Interval, Integer> intervalToCurrentPartitionNum = new HashMap<>();
@@ -2438,7 +2436,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     for (Map<Interval, SegmentId> itvlMap : versionIntervalToSmallestSegmentId.values()) {
       segmentIdsToRetrieve.addAll(itvlMap.values().stream().map(SegmentId::toString).collect(Collectors.toList()));
     }
-    final Set<DataSegment> dataSegments = retrieveSegmentsById(dataSource, segmentIdsToRetrieve);
+    final List<DataSegment> dataSegments = transaction.findUsedSegments(segmentIdsToRetrieve);
     final Set<String> retrievedIds = new HashSet<>();
     final Map<String, Map<Interval, Integer>> versionIntervalToNumCorePartitions = new HashMap<>();
     for (DataSegment segment : dataSegments) {

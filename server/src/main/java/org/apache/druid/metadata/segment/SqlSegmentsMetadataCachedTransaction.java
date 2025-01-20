@@ -110,19 +110,27 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
   @Override
   public List<DataSegmentPlus> findSegments(Set<String> segmentIds)
   {
-    return readCache().findSegments(segmentIds);
+    // Read from metadata store since unused segment payloads are not cached
+    return delegate.findSegments(segmentIds);
   }
 
   @Override
   public List<DataSegmentPlus> findSegmentsWithSchema(Set<String> segmentIds)
   {
-    return readCache().findSegmentsWithSchema(segmentIds);
+    // Read from metadata store since unused segment payloads are not cached
+    return delegate.findSegmentsWithSchema(segmentIds);
   }
 
   @Override
   public CloseableIterator<DataSegment> findUsedSegments(List<Interval> intervals)
   {
     return readCache().findUsedSegments(intervals);
+  }
+
+  @Override
+  public List<DataSegment> findUsedSegments(Set<String> segmentIds)
+  {
+    return readCache().findUsedSegments(segmentIds);
   }
 
   @Override
@@ -139,13 +147,15 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
       @Nullable DateTime maxUsedStatusLastUpdatedTime
   )
   {
-    return readCache().findUnusedSegments(interval, versions, limit, maxUsedStatusLastUpdatedTime);
+    // Read from metadata store since unused segment payloads are not cached
+    return delegate.findUnusedSegments(interval, versions, limit, maxUsedStatusLastUpdatedTime);
   }
 
   @Override
   public DataSegment findSegment(String segmentId)
   {
-    return readCache().findSegment(segmentId);
+    // Read from metadata store since unused segment payloads are not cached
+    return delegate.findSegment(segmentId);
   }
 
   @Override
@@ -222,8 +232,14 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
   @Override
   public int markSegmentsUnused(Interval interval)
   {
-    // TODO
-    return 0;
+    verifyStillLeaderWithSameTerm();
+    int updatedCount = delegate.markSegmentsUnused(interval);
+
+    if (isLeaderWithSameTerm()) {
+      writeCache().markSegmentsUnused(interval);
+    }
+
+    return updatedCount;
   }
 
   @Override

@@ -36,6 +36,9 @@ public interface DatasourceWriteTransaction
 
   void insertSegmentsWithMetadata(Set<DataSegmentPlus> segments);
 
+  /**
+   * Marks the segments fully contained in the given interval as unused.
+   */
   int markSegmentsUnused(Interval interval);
 
   void updateSegmentPayload(DataSegment segment);
