@@ -21,7 +21,9 @@ package org.apache.druid.metadata.segment.cache;
 
 import org.apache.druid.server.http.DataSegmentPlus;
 import org.apache.druid.timeline.DataSegment;
+import org.apache.druid.timeline.SegmentId;
 import org.apache.druid.timeline.SegmentTimeline;
+import org.joda.time.Interval;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -214,6 +216,17 @@ class DatasourceSegmentCache extends BaseCache
     return withReadLock(
         () -> knownSegmentIds.stream()
                              .filter(id -> !idToSegmentState.containsKey(id))
+                             .collect(Collectors.toSet())
+    );
+  }
+
+  Set<SegmentId> getUsedSegmentIdsOverlapping(Interval interval)
+  {
+    return withReadLock(
+        () -> idToUsedSegment.values()
+                             .stream()
+                             .filter(s -> s.getInterval().overlaps(interval))
+                             .map(DataSegment::getId)
                              .collect(Collectors.toSet())
     );
   }

@@ -57,17 +57,30 @@ public class SqlSegmentsMetadataTransactionFactory
     this.segmentsMetadataCache = segmentsMetadataCache;
   }
 
-  public SqlSegmentsMetadataTransaction createTransaction(
+  public SqlSegmentsMetadataTransaction createTransactionForDatasource(
+      String dataSource,
       Handle handle,
       TransactionStatus transactionStatus
   )
   {
-    final SqlSegmentsMetadataTransaction metadataTransaction
-        = new SqlSegmentsMetadataTransactionImpl(handle, transactionStatus, connector, tablesConfig, jsonMapper);
+    final SqlSegmentsMetadataTransaction metadataTransaction = new SqlSegmentsMetadataTransactionImpl(
+        dataSource,
+        handle,
+        transactionStatus,
+        connector,
+        tablesConfig,
+        jsonMapper
+    );
 
-    return segmentsMetadataCache.isReady()
-           ? new SqlSegmentsMetadataCachedTransaction(metadataTransaction, segmentsMetadataCache, leaderSelector)
-           : metadataTransaction;
+    return
+        segmentsMetadataCache.isReady()
+        ? new SqlSegmentsMetadataCachedTransaction(
+            dataSource,
+            metadataTransaction,
+            segmentsMetadataCache,
+            leaderSelector
+        )
+        : metadataTransaction;
   }
 
 }

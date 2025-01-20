@@ -43,6 +43,7 @@ import java.util.Set;
  */
 public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadataTransaction
 {
+  private final String dataSource;
   private final SqlSegmentsMetadataTransaction delegate;
   private final SegmentsMetadataCache metadataCache;
   private final DruidLeaderSelector leaderSelector;
@@ -50,11 +51,13 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
   private final int startTerm;
 
   public SqlSegmentsMetadataCachedTransaction(
+      String dataSource,
       SqlSegmentsMetadataTransaction delegate,
       SegmentsMetadataCache metadataCache,
       DruidLeaderSelector leaderSelector
   )
   {
+    this.dataSource = dataSource;
     this.delegate = delegate;
     this.metadataCache = metadataCache;
     this.leaderSelector = leaderSelector;
@@ -93,51 +96,45 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
   @Override
   public Set<String> findExistingSegmentIds(Set<DataSegment> segments)
   {
-    if (segments.isEmpty()) {
-      return Set.of();
-    }
-
-    return metadataCache.findExistingSegmentIds(getDataSource(segments), segments);
+    return metadataCache.findExistingSegmentIds(dataSource, segments);
   }
 
   @Override
-  public Set<SegmentId> findUsedSegmentIds(String dataSource, Interval interval)
+  public Set<SegmentId> findUsedSegmentIds(Interval interval)
+  {
+    return metadataCache.findUsedSegmentIds(dataSource, interval);
+  }
+
+  @Override
+  public List<DataSegmentPlus> findSegments(Set<String> segmentIds)
   {
     // TODO
-    return Set.of();
+    return null;
   }
 
   @Override
-  public List<DataSegmentPlus> findSegments(String dataSource, Set<String> segmentIds)
+  public List<DataSegmentPlus> findSegmentsWithSchema(Set<String> segmentIds)
   {
     // TODO
     return List.of();
   }
 
   @Override
-  public List<DataSegmentPlus> findSegmentsWithSchema(String dataSource, Set<String> segmentIds)
-  {
-    // TODO
-    return List.of();
-  }
-
-  @Override
-  public CloseableIterator<DataSegment> findUsedSegments(String dataSource, List<Interval> intervals)
+  public CloseableIterator<DataSegment> findUsedSegments(List<Interval> intervals)
   {
     // TODO: implement this
     return null;
   }
 
   @Override
-  public CloseableIterator<DataSegmentPlus> findUsedSegmentsPlus(String dataSource, List<Interval> intervals)
+  public Set<DataSegmentPlus> findUsedSegmentsPlus(List<Interval> intervals)
   {
     // TODO: implement this
     return null;
   }
 
   @Override
-  public CloseableIterator<DataSegment> findUnusedSegments(
-      String dataSource,
+  public List<DataSegment> findUnusedSegments(
       Interval interval,
       @Nullable List<String> versions,
       @Nullable Integer limit,
@@ -185,21 +182,20 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
   }
 
   @Override
-  public int markSegmentsUnused(String dataSource, Interval interval)
+  public int markSegmentsUnused(Interval interval)
   {
     // TODO
     return 0;
   }
 
   @Override
-  public void updateSegmentPayload(String dataSource, DataSegment segment)
+  public void updateSegmentPayload(DataSegment segment)
   {
     // TODO
   }
 
   @Override
   public List<SegmentIdWithShardSpec> findPendingSegmentIds(
-      String dataSource,
       String sequenceName,
       String sequencePreviousId
   )
@@ -209,28 +205,31 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
   }
 
   @Override
-  public List<SegmentIdWithShardSpec> findPendingSegmentIdsWithExactInterval(String dataSource, String sequenceName, Interval interval)
+  public List<SegmentIdWithShardSpec> findPendingSegmentIdsWithExactInterval(
+      String sequenceName,
+      Interval interval
+  )
   {
     // TODO
     return List.of();
   }
 
   @Override
-  public List<PendingSegmentRecord> findPendingSegmentsOverlappingInterval(String dataSource, Interval interval)
+  public List<PendingSegmentRecord> findPendingSegmentsOverlappingInterval(Interval interval)
   {
     // TODO
     return List.of();
   }
 
   @Override
-  public List<PendingSegmentRecord> findPendingSegmentsWithExactInterval(String dataSource, Interval interval)
+  public List<PendingSegmentRecord> findPendingSegmentsWithExactInterval(Interval interval)
   {
     // TODO
     return List.of();
   }
 
   @Override
-  public List<PendingSegmentRecord> findPendingSegments(String dataSource, String taskAllocatorId)
+  public List<PendingSegmentRecord> findPendingSegments(String taskAllocatorId)
   {
     // TODO
     return List.of();
@@ -238,7 +237,6 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
 
   @Override
   public void insertPendingSegment(
-      String dataSource,
       PendingSegmentRecord pendingSegment,
       boolean skipSegmentLineageCheck
   )
@@ -248,7 +246,6 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
 
   @Override
   public int insertPendingSegments(
-      String dataSource,
       List<PendingSegmentRecord> pendingSegments,
       boolean skipSegmentLineageCheck
   )
@@ -258,15 +255,10 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
   }
 
   @Override
-  public int deletePendingSegments(String dataSource, List<String> segmentIdsToDelete)
+  public int deletePendingSegments(List<String> segmentIdsToDelete)
   {
     // TODO
     return 0;
-  }
-
-  private static String getDataSource(Set<DataSegment> segments)
-  {
-    return segments.stream().findFirst().map(DataSegment::getDataSource).orElse(null);
   }
 
   private static String getDataSourceName(Set<DataSegmentPlus> segments)

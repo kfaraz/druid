@@ -26,13 +26,13 @@ import java.util.Set;
 /**
  * TODO:
  * -[x] Handle all cases of cache vs metadata store
- * -[ ] Perform read writes to the cache only if it is READY
+ * -[x] Perform read writes to the cache only if it is READY
  * -[ ] Add APIs in cache to read/update
  * -[ ] Mark as used / unused should happen within TaskLockbox.giant()
- * -[ ] Wire up cache in IndexerSQLMetadataStorageCoordinator
- * -[ ] Just using a handle doesn't ensure a transaction. Make sure the read + write
+ * -[x] Wire up cache in IndexerSQLMetadataStorageCoordinator
+ * -[x] Just using a handle doesn't ensure a transaction. Make sure the read + write
  * stuff happens in a transaction wherever applicable
- * -[ ] Poll pending segments too
+ * -[ ] Poll and cache pending segments too
  * -[ ] How to ensure that cache is not updated while some read is happening.
  * - We cannot acquire TaskLockbox.giant as that would significantly slow down read operations.
  * - I think read from cache would be fast anyway. We just need to ensure that we read a consistent state

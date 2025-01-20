@@ -20,7 +20,9 @@
 package org.apache.druid.metadata.segment.cache;
 
 import org.apache.druid.timeline.DataSegment;
+import org.apache.druid.timeline.SegmentId;
 import org.apache.druid.timeline.SegmentTimeline;
+import org.joda.time.Interval;
 
 import java.util.Map;
 import java.util.Set;
@@ -30,6 +32,10 @@ public interface SegmentsMetadataReadOnlyCache
   boolean isReady();
 
   Set<String> findExistingSegmentIds(String dataSource, Set<DataSegment> segments);
+
+  Set<SegmentId> findUsedSegmentIds(String dataSource, Interval interval);
+
+
 
   Map<String, SegmentTimeline> getDataSourceToUsedSegmentTimeline();
 

@@ -21,7 +21,10 @@ package org.apache.druid.metadata.segment;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
+import org.apache.druid.error.DruidException;
 import org.apache.druid.error.InternalServerError;
 import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.common.StringUtils;
@@ -44,6 +47,7 @@ import org.skife.jdbi.v2.TransactionStatus;
 import org.skife.jdbi.v2.Update;
 
 import javax.annotation.Nullable;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -55,6 +59,7 @@ public class SqlSegmentsMetadataTransactionImpl implements SqlSegmentsMetadataTr
 {
   private static final int MAX_SEGMENTS_PER_BATCH = 100;
 
+  private final String dataSource;
   private final Handle handle;
   private final TransactionStatus transactionStatus;
   private final SQLMetadataConnector connector;
@@ -64,6 +69,7 @@ public class SqlSegmentsMetadataTransactionImpl implements SqlSegmentsMetadataTr
   private final SqlSegmentsMetadataQuery query;
 
   public SqlSegmentsMetadataTransactionImpl(
+      String dataSource,
       Handle handle,
       TransactionStatus transactionStatus,
       SQLMetadataConnector connector,
@@ -71,6 +77,7 @@ public class SqlSegmentsMetadataTransactionImpl implements SqlSegmentsMetadataTr
       ObjectMapper jsonMapper
   )
   {
+    this.dataSource = dataSource;
     this.handle = handle;
     this.connector = connector;
     this.dbTables = dbTables;
@@ -114,21 +121,26 @@ public class SqlSegmentsMetadataTransactionImpl implements SqlSegmentsMetadataTr
   }
 
   @Override
-  public Set<SegmentId> findUsedSegmentIds(String dataSource, Interval interval)
+  public Set<SegmentId> findUsedSegmentIds(Interval interval)
   {
     return query.retrieveUsedSegmentIds(dataSource, interval);
   }
 
   @Override
-  public CloseableIterator<DataSegment> findUsedSegments(String dataSource, List<Interval> intervals)
+  public CloseableIterator<DataSegment> findUsedSegments(List<Interval> intervals)
   {
     return query.retrieveUsedSegments(dataSource, intervals);
   }
 
   @Override
-  public CloseableIterator<DataSegmentPlus> findUsedSegmentsPlus(String dataSource, List<Interval> intervals)
+  public Set<DataSegmentPlus> findUsedSegmentsPlus(List<Interval> intervals)
   {
-    return query.retrieveUsedSegmentsPlus(dataSource, intervals);
+    try (CloseableIterator<DataSegmentPlus> iterator
+             = query.retrieveUsedSegmentsPlus(dataSource, intervals)) {
+      return ImmutableSet.copyOf(iterator);
+    } catch (Exception e) {
+      throw DruidException.defensive(e, "Error while retrieving used segments");
+    }
   }
 
   @Override
@@ -144,41 +156,48 @@ public class SqlSegmentsMetadataTransactionImpl implements SqlSegmentsMetadataTr
   }
 
   @Override
-  public List<DataSegmentPlus> findSegments(String dataSource, Set<String> segmentIds)
+  public List<DataSegmentPlus> findSegments(Set<String> segmentIds)
   {
     return query.retrieveSegmentsById(dataSource, segmentIds);
   }
 
   @Override
-  public List<DataSegmentPlus> findSegmentsWithSchema(String dataSource, Set<String> segmentIds)
+  public List<DataSegmentPlus> findSegmentsWithSchema(Set<String> segmentIds)
   {
     return query.retrieveSegmentsWithSchemaById(dataSource, segmentIds);
   }
 
   @Override
-  public CloseableIterator<DataSegment> findUnusedSegments(
-      String dataSource,
+  public List<DataSegment> findUnusedSegments(
       Interval interval,
       @Nullable List<String> versions,
       @Nullable Integer limit,
       @Nullable DateTime maxUsedStatusLastUpdatedTime
   )
   {
-    return query.retrieveUnusedSegments(
-        dataSource,
-        List.of(interval),
-        versions,
-        limit,
-        null,
-        null,
-        maxUsedStatusLastUpdatedTime
-    );
+    try (final CloseableIterator<DataSegment> iterator =
+             query.retrieveUnusedSegments(
+                 dataSource,
+                 List.of(interval),
+                 versions,
+                 limit,
+                 null,
+                 null,
+                 maxUsedStatusLastUpdatedTime
+             )
+    ) {
+      return ImmutableList.copyOf(iterator);
+    }
+    catch (IOException e) {
+      throw DruidException.defensive(e, "Error while reading unused segments");
+    }
   }
 
   @Override
   public void insertSegments(Set<DataSegmentPlus> segments)
   {
     insertSegmentsInBatches(
+        dataSource,
         segments,
         "INSERT INTO %1$s "
         + "(id, dataSource, created_date, start, %2$send%2$s, partitioned, "
@@ -193,6 +212,7 @@ public class SqlSegmentsMetadataTransactionImpl implements SqlSegmentsMetadataTr
   public void insertSegmentsWithMetadata(Set<DataSegmentPlus> segments)
   {
     insertSegmentsInBatches(
+        dataSource,
         segments,
         "INSERT INTO %1$s "
         + "(id, dataSource, created_date, start, %2$send%2$s, partitioned, "
@@ -206,13 +226,13 @@ public class SqlSegmentsMetadataTransactionImpl implements SqlSegmentsMetadataTr
   }
 
   @Override
-  public int markSegmentsUnused(String dataSource, Interval interval)
+  public int markSegmentsUnused(Interval interval)
   {
     return query.markSegmentsUnused(dataSource, interval);
   }
 
   @Override
-  public void updateSegmentPayload(String dataSource, DataSegment segment)
+  public void updateSegmentPayload(DataSegment segment)
   {
     final String sql = "UPDATE %s SET payload = :payload WHERE id = :id";
     handle
@@ -224,7 +244,6 @@ public class SqlSegmentsMetadataTransactionImpl implements SqlSegmentsMetadataTr
 
   @Override
   public List<SegmentIdWithShardSpec> findPendingSegmentIds(
-      String dataSource,
       String sequenceName,
       String sequencePreviousId
   )
@@ -234,7 +253,6 @@ public class SqlSegmentsMetadataTransactionImpl implements SqlSegmentsMetadataTr
 
   @Override
   public List<SegmentIdWithShardSpec> findPendingSegmentIdsWithExactInterval(
-      String dataSource,
       String sequenceName,
       Interval interval
   )
@@ -243,26 +261,25 @@ public class SqlSegmentsMetadataTransactionImpl implements SqlSegmentsMetadataTr
   }
 
   @Override
-  public List<PendingSegmentRecord> findPendingSegmentsOverlappingInterval(String dataSource, Interval interval)
+  public List<PendingSegmentRecord> findPendingSegmentsOverlappingInterval(Interval interval)
   {
     return query.retrievePendingSegmentsOverlappingInterval(dataSource, interval);
   }
 
   @Override
-  public List<PendingSegmentRecord> findPendingSegmentsWithExactInterval(String dataSource, Interval interval)
+  public List<PendingSegmentRecord> findPendingSegmentsWithExactInterval(Interval interval)
   {
     return query.retrievePendingSegmentsWithExactInterval(dataSource, interval);
   }
 
   @Override
-  public List<PendingSegmentRecord> findPendingSegments(String dataSource, String taskAllocatorId)
+  public List<PendingSegmentRecord> findPendingSegments(String taskAllocatorId)
   {
     return query.retrievePendingSegmentsForTaskAllocatorId(dataSource, taskAllocatorId);
   }
 
   @Override
   public void insertPendingSegment(
-      String dataSource,
       PendingSegmentRecord pendingSegment,
       boolean skipSegmentLineageCheck
   )
@@ -289,7 +306,6 @@ public class SqlSegmentsMetadataTransactionImpl implements SqlSegmentsMetadataTr
 
   @Override
   public int insertPendingSegments(
-      String dataSource,
       List<PendingSegmentRecord> pendingSegments,
       boolean skipSegmentLineageCheck
   )
@@ -328,7 +344,7 @@ public class SqlSegmentsMetadataTransactionImpl implements SqlSegmentsMetadataTr
   }
 
   @Override
-  public int deletePendingSegments(String dataSource, List<String> segmentIdsToDelete)
+  public int deletePendingSegments(List<String> segmentIdsToDelete)
   {
     if (segmentIdsToDelete.isEmpty()) {
       return 0;
@@ -339,14 +355,13 @@ public class SqlSegmentsMetadataTransactionImpl implements SqlSegmentsMetadataTr
 
     int numDeletedPendingSegments = 0;
     for (List<String> pendingSegmentIdBatch : pendingSegmentIdBatches) {
-      numDeletedPendingSegments +=
-          deletePendingSegmentsBatch(dataSource, pendingSegmentIdBatch);
+      numDeletedPendingSegments += deletePendingSegmentsBatch(pendingSegmentIdBatch);
     }
 
     return numDeletedPendingSegments;
   }
 
-  private int deletePendingSegmentsBatch(String dataSource, List<String> segmentIdsToDelete)
+  private int deletePendingSegmentsBatch(List<String> segmentIdsToDelete)
   {
     Update query = handle.createStatement(
         StringUtils.format(
@@ -361,7 +376,8 @@ public class SqlSegmentsMetadataTransactionImpl implements SqlSegmentsMetadataTr
   }
 
   private void insertSegmentsInBatches(
-      Set<DataSegmentPlus> segments,
+      final String dataSource,
+      final Set<DataSegmentPlus> segments,
       String insertSql
   )
   {
@@ -385,7 +401,7 @@ public class SqlSegmentsMetadataTransactionImpl implements SqlSegmentsMetadataTr
         PreparedBatchPart preparedBatchPart =
             batch.add()
                  .bind("id", segment.getId().toString())
-                 .bind("dataSource", segment.getDataSource())
+                 .bind("dataSource", dataSource)
                  .bind("created_date", nullSafeString(segmentPlus.getCreatedDate()))
                  .bind("start", segment.getInterval().getStart().toString())
                  .bind("end", segment.getInterval().getEnd().toString())

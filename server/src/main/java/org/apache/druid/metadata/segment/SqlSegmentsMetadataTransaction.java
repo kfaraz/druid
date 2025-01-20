@@ -56,22 +56,25 @@ public interface SqlSegmentsMetadataTransaction
    */
   Set<String> findExistingSegmentIds(Set<DataSegment> segments);
 
-  Set<SegmentId> findUsedSegmentIds(String dataSource, Interval interval);
+  /**
+   * Retrieves IDs of used segments that belong to the datasource and overlap
+   * the given interval.
+   */
+  Set<SegmentId> findUsedSegmentIds(Interval interval);
 
-  CloseableIterator<DataSegment> findUsedSegments(String dataSource, List<Interval> intervals);
+  CloseableIterator<DataSegment> findUsedSegments(List<Interval> intervals);
 
-  CloseableIterator<DataSegmentPlus> findUsedSegmentsPlus(String dataSource, List<Interval> intervals);
+  Set<DataSegmentPlus> findUsedSegmentsPlus(List<Interval> intervals);
 
   DataSegment findSegment(String segmentId);
 
   DataSegment findUsedSegment(String segmentId);
 
-  List<DataSegmentPlus> findSegments(String dataSource, Set<String> segmentIds);
+  List<DataSegmentPlus> findSegments(Set<String> segmentIds);
 
-  List<DataSegmentPlus> findSegmentsWithSchema(String dataSource, Set<String> segmentIds);
+  List<DataSegmentPlus> findSegmentsWithSchema(Set<String> segmentIds);
 
-  CloseableIterator<DataSegment> findUnusedSegments(
-      String dataSource,
+  List<DataSegment> findUnusedSegments(
       Interval interval,
       @Nullable List<String> versions,
       @Nullable Integer limit,
@@ -85,39 +88,35 @@ public interface SqlSegmentsMetadataTransaction
 
   void insertSegmentsWithMetadata(Set<DataSegmentPlus> segments);
 
-  int markSegmentsUnused(String dataSource, Interval interval);
+  int markSegmentsUnused(Interval interval);
 
-  void updateSegmentPayload(String dataSource, DataSegment segment);
+  void updateSegmentPayload(DataSegment segment);
 
   List<SegmentIdWithShardSpec> findPendingSegmentIds(
-      String dataSource,
       String sequenceName,
       String sequencePreviousId
   );
 
   List<SegmentIdWithShardSpec> findPendingSegmentIdsWithExactInterval(
-      String dataSource,
       String sequenceName,
       Interval interval
   );
 
-  List<PendingSegmentRecord> findPendingSegmentsOverlappingInterval(String dataSource, Interval interval);
+  List<PendingSegmentRecord> findPendingSegmentsOverlappingInterval(Interval interval);
 
-  List<PendingSegmentRecord> findPendingSegmentsWithExactInterval(String dataSource, Interval interval);
+  List<PendingSegmentRecord> findPendingSegmentsWithExactInterval(Interval interval);
 
-  List<PendingSegmentRecord> findPendingSegments(String dataSource, String taskAllocatorId);
+  List<PendingSegmentRecord> findPendingSegments(String taskAllocatorId);
 
   void insertPendingSegment(
-      String dataSource,
       PendingSegmentRecord pendingSegment,
       boolean skipSegmentLineageCheck
   );
 
   int insertPendingSegments(
-      String dataSource,
       List<PendingSegmentRecord> pendingSegments,
       boolean skipSegmentLineageCheck
   );
 
-  int deletePendingSegments(String dataSource, List<String> segmentIdsToDelete);
+  int deletePendingSegments(List<String> segmentIdsToDelete);
 }

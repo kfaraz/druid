@@ -39,9 +39,11 @@ import org.apache.druid.metadata.SqlSegmentsMetadataQuery;
 import org.apache.druid.query.DruidMetrics;
 import org.apache.druid.server.http.DataSegmentPlus;
 import org.apache.druid.timeline.DataSegment;
+import org.apache.druid.timeline.SegmentId;
 import org.apache.druid.timeline.SegmentTimeline;
 import org.joda.time.DateTime;
 import org.joda.time.Duration;
+import org.joda.time.Interval;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -150,13 +152,25 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
   public Set<String> findExistingSegmentIds(String dataSource, Set<DataSegment> segments)
   {
     verifyCacheIsReady();
+    if (segments.isEmpty()) {
+      return Set.of();
+    }
 
     Set<String> segmentIdsToFind = segments.stream()
                                            .map(s -> s.getId().toString())
                                            .collect(Collectors.toSet());
-    return datasourceToSegmentCache
-        .getOrDefault(dataSource, DatasourceSegmentCache.empty())
-        .getSegmentIdsIn(segmentIdsToFind);
+
+    DatasourceSegmentCache cache = datasourceToSegmentCache.get(dataSource);
+    return cache == null ? Set.of() : cache.getSegmentIdsIn(segmentIdsToFind);
+  }
+
+  @Override
+  public Set<SegmentId> findUsedSegmentIds(String dataSource, Interval interval)
+  {
+    verifyCacheIsReady();
+
+    DatasourceSegmentCache cache = datasourceToSegmentCache.get(dataSource);
+    return cache == null ? Set.of() : cache.getUsedSegmentIdsOverlapping(interval);
   }
 
   @Override

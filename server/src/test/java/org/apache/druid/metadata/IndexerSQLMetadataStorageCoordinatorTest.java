@@ -869,7 +869,10 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
   public void testRetrieveUsedSegmentForId()
   {
     segmentSchemaTestUtils.insertUsedSegments(ImmutableSet.of(defaultSegment), Collections.emptyMap());
-    Assert.assertEquals(defaultSegment, coordinator.retrieveSegmentForId(defaultSegment.getId().toString(), false));
+    Assert.assertEquals(
+        defaultSegment,
+        coordinator.retrieveUsedSegmentForId(defaultSegment.getDataSource(), defaultSegment.getId().toString())
+    );
   }
 
   @Test
@@ -877,7 +880,10 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
   {
     segmentSchemaTestUtils.insertUsedSegments(ImmutableSet.of(defaultSegment), Collections.emptyMap());
     markAllSegmentsUnused(ImmutableSet.of(defaultSegment), DateTimes.nowUtc());
-    Assert.assertEquals(defaultSegment, coordinator.retrieveSegmentForId(defaultSegment.getId().toString(), true));
+    Assert.assertEquals(
+        defaultSegment,
+        coordinator.retrieveSegmentForId(defaultSegment.getDataSource(), defaultSegment.getId().toString())
+    );
   }
 
   @Test
@@ -3559,7 +3565,7 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
         false,
         "taskAllocatorId"
     );
-    Assert.assertNull(coordinator.retrieveSegmentForId(theId.asSegmentId().toString(), true));
+    Assert.assertNull(coordinator.retrieveSegmentForId(theId.getDataSource(), theId.asSegmentId().toString()));
   }
 
   @Test
@@ -3823,7 +3829,7 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
     Set<SegmentIdWithShardSpec> observed = derbyConnector.retryTransaction(
         (handle, transactionStatus) ->
             coordinator.retrieveUsedSegmentsForAllocation(
-                           transactionFactory.createTransaction(handle, transactionStatus),
+                           transactionFactory.createTransactionForDatasource(datasource, handle, transactionStatus),
                            datasource,
                            month
                        )
@@ -3870,8 +3876,8 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
   {
     return derbyConnector.retryTransaction(
         (handle, transactionStatus) ->
-            transactionFactory.createTransaction(handle, transactionStatus)
-                              .insertPendingSegments(dataSource, pendingSegments, skipLineageCheck),
+            transactionFactory.createTransactionForDatasource(dataSource, handle, transactionStatus)
+                              .insertPendingSegments(pendingSegments, skipLineageCheck),
         3,
         SQLMetadataConnector.DEFAULT_MAX_TRIES
     );

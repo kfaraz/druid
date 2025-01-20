@@ -79,8 +79,6 @@ import org.skife.jdbi.v2.exceptions.CallbackFailedException;
 import javax.annotation.Nullable;
 import javax.validation.constraints.NotNull;
 import java.io.IOException;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -177,14 +175,14 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
       final Segments visibility
   )
   {
-    return retryTransaction(
+    return retryDatasourceTransaction(
+        dataSource,
         transaction -> {
           if (visibility == Segments.ONLY_VISIBLE) {
-            final SegmentTimeline timeline =
-                getTimelineForIntervals(transaction, dataSource, intervals);
+            final SegmentTimeline timeline = getTimelineForIntervals(transaction, intervals);
             return timeline.findNonOvershadowedObjectsInInterval(Intervals.ETERNITY, Partitions.ONLY_COMPLETE);
           } else {
-            return asSet(() -> transaction.findUsedSegments(dataSource, intervals));
+            return asSet(() -> transaction.findUsedSegments(intervals));
           }
         }
     );
@@ -193,14 +191,15 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
   @Override
   public List<Pair<DataSegment, String>> retrieveUsedSegmentsAndCreatedDates(String dataSource, List<Interval> intervals)
   {
-    return retryTransaction(
-        transaction -> asSet(() -> transaction.findUsedSegmentsPlus(dataSource, intervals))
-            .stream()
-            .map(s -> Pair.of(
-                s.getDataSegment(),
-                s.getCreatedDate() == null ? null : s.getCreatedDate().toString()
-            ))
-            .collect(Collectors.toList())
+    return retryDatasourceTransaction(
+        dataSource,
+        transaction -> transaction.findUsedSegmentsPlus(intervals)
+                                  .stream()
+                                  .map(s -> Pair.of(
+                                      s.getDataSegment(),
+                                      s.getCreatedDate() == null ? null : s.getCreatedDate().toString()
+                                  ))
+                                  .collect(Collectors.toList())
     );
   }
 
@@ -251,20 +250,14 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
       @Nullable DateTime maxUsedStatusLastUpdatedTime
   )
   {
-    final List<DataSegment> matchingSegments = inReadOnlyTransaction(
-        transaction -> {
-          try (final CloseableIterator<DataSegment> iterator =
-                   transaction.findUnusedSegments(
-                       dataSource,
-                       interval,
-                       versions,
-                       limit,
-                       maxUsedStatusLastUpdatedTime
-                   )
-          ) {
-            return ImmutableList.copyOf(iterator);
-          }
-        }
+    final List<DataSegment> matchingSegments = inReadOnlyDatasourceTransaction(
+        dataSource,
+        transaction -> transaction.findUnusedSegments(
+            interval,
+            versions,
+            limit,
+            maxUsedStatusLastUpdatedTime
+        )
     );
 
     log.debug(
@@ -278,9 +271,10 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
   @Override
   public Set<DataSegment> retrieveSegmentsById(String dataSource, Set<String> segmentIds)
   {
-    return inReadOnlyTransaction(
+    return inReadOnlyDatasourceTransaction(
+        dataSource,
         transaction ->
-            retrieveSegmentsById(transaction, dataSource, segmentIds)
+            retrieveSegmentsById(transaction, segmentIds)
                 .stream()
                 .map(DataSegmentPlus::getDataSegment)
                 .collect(Collectors.toSet())
@@ -290,8 +284,9 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
   @Override
   public int markSegmentsAsUnusedWithinInterval(String dataSource, Interval interval)
   {
-    final Integer numSegmentsMarkedUnused = retryTransaction(
-        transaction -> transaction.markSegmentsUnused(dataSource, interval)
+    final Integer numSegmentsMarkedUnused = retryDatasourceTransaction(
+        dataSource,
+        transaction -> transaction.markSegmentsUnused(interval)
     );
 
     log.info(
@@ -303,12 +298,11 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
 
   private SegmentTimeline getTimelineForIntervals(
       final SqlSegmentsMetadataTransaction transaction,
-      final String dataSource,
       final List<Interval> intervals
   ) throws IOException
   {
     try (final CloseableIterator<DataSegment> iterator
-             = transaction.findUsedSegments(dataSource, intervals)) {
+             = transaction.findUsedSegments(intervals)) {
       return SegmentTimeline.forSegments(iterator);
     }
   }
@@ -363,7 +357,8 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     final AtomicBoolean definitelyNotUpdated = new AtomicBoolean(false);
 
     try {
-      return retryTransaction(
+      return retryDatasourceTransaction(
+          dataSource,
           transaction -> {
             // Set definitelyNotUpdated back to false upon retrying.
             definitelyNotUpdated.set(false);
@@ -416,10 +411,11 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
       @Nullable final SegmentSchemaMapping segmentSchemaMapping
   )
   {
-    verifySegmentsToCommit(replaceSegments);
+    final String dataSource = verifySegmentsToCommit(replaceSegments);
 
     try {
-      return retryTransaction(
+      return retryDatasourceTransaction(
+          dataSource,
           transaction -> {
             final Set<DataSegment> segmentsToInsert = new HashSet<>(replaceSegments);
 
@@ -523,7 +519,8 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     final AtomicBoolean definitelyNotUpdated = new AtomicBoolean(false);
 
     try {
-      return retryTransaction(
+      return retryDatasourceTransaction(
+          dataSource,
           transaction -> {
             // Set definitelyNotUpdated back to false upon retrying.
             definitelyNotUpdated.set(false);
@@ -580,8 +577,8 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     Preconditions.checkNotNull(allocateInterval, "interval");
 
     final Interval interval = allocateInterval.withChronology(ISOChronology.getInstanceUTC());
-    return retryTransaction(
-        transaction -> allocatePendingSegments(
+    return retryDatasourceTransaction(
+        dataSource, transaction -> allocatePendingSegments(
             transaction,
             dataSource,
             interval,
@@ -605,11 +602,11 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     Preconditions.checkNotNull(interval, "interval");
     final Interval allocateInterval = interval.withChronology(ISOChronology.getInstanceUTC());
 
-    return retryTransaction(
-        transaction -> {
+    return retryDatasourceTransaction(
+        dataSource, transaction -> {
           // Get the time chunk and associated data segments for the given interval, if any
           final List<TimelineObjectHolder<String, DataSegment>> existingChunks =
-              getTimelineForIntervals(transaction, dataSource, ImmutableList.of(interval))
+              getTimelineForIntervals(transaction, ImmutableList.of(interval))
                   .lookup(interval);
           if (existingChunks.size() > 1) {
             // Not possible to expand more than one chunk with a single segment.
@@ -706,7 +703,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
       int currentPartitionNumber = maxSegmentId.getShardSpec().getPartitionNum();
 
       final List<PendingSegmentRecord> overlappingPendingSegments
-          = transaction.findPendingSegmentsOverlappingInterval(datasource, replaceInterval);
+          = transaction.findPendingSegmentsOverlappingInterval(replaceInterval);
 
       for (PendingSegmentRecord overlappingPendingSegment : overlappingPendingSegments) {
         final SegmentIdWithShardSpec pendingSegmentId = overlappingPendingSegment.getId();
@@ -737,7 +734,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     // Do not skip lineage check so that the sequence_name_prev_id_sha1
     // includes hash of both sequence_name and prev_segment_id
     int numInsertedPendingSegments =
-        transaction.insertPendingSegments(datasource, upgradedPendingSegments, false);
+        transaction.insertPendingSegments(upgradedPendingSegments, false);
     log.info(
         "Inserted total [%d] new versions for [%d] pending segments.",
         numInsertedPendingSegments, upgradedPendingSegments.size()
@@ -783,7 +780,6 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
   )
   {
     final List<SegmentIdWithShardSpec> existingPendingSegmentIds = transaction.findPendingSegmentIds(
-        dataSource,
         createRequest.getSequenceName(),
         createRequest.getPreviousSegmentId()
     );
@@ -820,7 +816,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
         null,
         createRequest.getTaskAllocatorId()
     );
-    transaction.insertPendingSegment(dataSource, record, false);
+    transaction.insertPendingSegment(record, false);
     return newIdentifier;
   }
 
@@ -831,12 +827,13 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
       boolean reduceMetadataIO
   )
   {
-    return retryTransaction(
+    return retryDatasourceTransaction(
+        dataSource,
         transaction -> {
           if (reduceMetadataIO) {
             return SegmentTimeline.forSegments(retrieveUsedSegmentsForAllocation(transaction, dataSource, interval));
           } else {
-            return getTimelineForIntervals(transaction, dataSource, Collections.singletonList(interval));
+            return getTimelineForIntervals(transaction, Collections.singletonList(interval));
           }
         }
     );
@@ -866,10 +863,10 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     final Map<SegmentCreateRequest, CheckExistingSegmentIdResult> existingSegmentIds;
     if (skipSegmentLineageCheck) {
       existingSegmentIds =
-          getExistingSegmentIdsSkipLineageCheck(transaction, dataSource, interval, existingVersion, requests);
+          getExistingSegmentIdsSkipLineageCheck(transaction, interval, existingVersion, requests);
     } else {
       existingSegmentIds =
-          getExistingSegmentIdsWithLineageCheck(transaction, dataSource, interval, existingVersion, requests);
+          getExistingSegmentIdsWithLineageCheck(transaction, interval, existingVersion, requests);
     }
 
     // For every request see if a segment id already exists
@@ -905,7 +902,6 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     // Using a single column instead of (sequence_name, sequence_prev_id) as some MySQL storage engines
     // have difficulty with large unique keys (see https://github.com/apache/druid/issues/2319)
     transaction.insertPendingSegments(
-        dataSource,
         ImmutableList.copyOf(createdSegments.values()),
         skipSegmentLineageCheck
     );
@@ -926,7 +922,6 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
   )
   {
     final List<SegmentIdWithShardSpec> existingPendingSegmentIds = transaction.findPendingSegmentIdsWithExactInterval(
-        dataSource,
         createRequest.getSequenceName(),
         interval
     );
@@ -962,7 +957,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
         null,
         createRequest.getTaskAllocatorId()
     );
-    transaction.insertPendingSegment(dataSource, record, true);
+    transaction.insertPendingSegment(record, true);
 
     log.info(
         "Created new pending segment[%s] for datasource[%s], interval[%s].",
@@ -977,14 +972,13 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
    */
   private Map<SegmentCreateRequest, CheckExistingSegmentIdResult> getExistingSegmentIdsSkipLineageCheck(
       SqlSegmentsMetadataTransaction transaction,
-      String dataSource,
       Interval interval,
       String usedSegmentVersion,
       List<SegmentCreateRequest> requests
   )
   {
     final List<PendingSegmentRecord> existingPendingSegments
-        = transaction.findPendingSegmentsWithExactInterval(dataSource, interval);
+        = transaction.findPendingSegmentsWithExactInterval(interval);
 
     // Map from sequenceName to segment id
     final Map<String, SegmentIdWithShardSpec> sequenceToSegmentId = new HashMap<>();
@@ -1011,7 +1005,6 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
    */
   private Map<SegmentCreateRequest, CheckExistingSegmentIdResult> getExistingSegmentIdsWithLineageCheck(
       SqlSegmentsMetadataTransaction transaction,
-      String dataSource,
       Interval interval,
       String usedSegmentVersion,
       List<SegmentCreateRequest> requests
@@ -1026,7 +1019,6 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     final Map<SegmentCreateRequest, CheckExistingSegmentIdResult> requestToResult = new HashMap<>();
     for (SegmentCreateRequest request : requests) {
       final List<SegmentIdWithShardSpec> existingPendingSegmentIds = transaction.findPendingSegmentIds(
-          dataSource,
           request.getSequenceName(),
           request.getPreviousSegmentId()
       );
@@ -1146,15 +1138,15 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
       @Nullable SegmentSchemaMapping segmentSchemaMapping
   )
   {
-    verifySegmentsToCommit(appendSegments);
+    final String dataSource = verifySegmentsToCommit(appendSegments);
     if ((startMetadata == null && endMetadata != null)
         || (startMetadata != null && endMetadata == null)) {
       throw new IllegalArgumentException("start/end metadata pair must be either null or non-null");
     }
 
-    final String dataSource = appendSegments.iterator().next().getDataSource();
-    final List<PendingSegmentRecord> segmentIdsForNewVersions = inReadOnlyTransaction(
-        transaction -> transaction.findPendingSegments(dataSource, taskAllocatorId)
+    final List<PendingSegmentRecord> segmentIdsForNewVersions = inReadOnlyDatasourceTransaction(
+        dataSource,
+        transaction -> transaction.findPendingSegments(taskAllocatorId)
     );
 
     // Create entries for all required versions of the append segments
@@ -1188,8 +1180,8 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
 
     final AtomicBoolean metadataNotUpdated = new AtomicBoolean(false);
     try {
-      return retryTransaction(
-          transaction -> {
+      return retryDatasourceTransaction(
+          dataSource, transaction -> {
             metadataNotUpdated.set(false);
 
             if (startMetadata != null) {
@@ -1211,7 +1203,6 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
 
             // Delete the pending segments to be committed in this transaction in batches of at most 100
             int numDeletedPendingSegments = transaction.deletePendingSegments(
-                dataSource,
                 allSegmentsToInsert.stream()
                                    .map(pendingSegment -> pendingSegment.getId().toString())
                                    .collect(Collectors.toList())
@@ -1290,7 +1281,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     // A pending segment having a higher partitionId must also be considered
     // to avoid clashes when inserting the pending segment created here.
     final Set<SegmentIdWithShardSpec> pendingSegments =
-        transaction.findPendingSegmentsOverlappingInterval(dataSource, interval)
+        transaction.findPendingSegmentsOverlappingInterval(interval)
                    .stream()
                    .map(PendingSegmentRecord::getId)
                    .collect(Collectors.toSet());
@@ -1487,7 +1478,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     // A pending segment having a higher partitionId must also be considered
     // to avoid clashes when inserting the pending segment created here.
     final Set<SegmentIdWithShardSpec> pendings =
-        transaction.findPendingSegmentsOverlappingInterval(dataSource, interval)
+        transaction.findPendingSegmentsOverlappingInterval(interval)
                    .stream()
                    .map(PendingSegmentRecord::getId)
                    .collect(Collectors.toSet());
@@ -1576,7 +1567,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
   private SegmentIdWithShardSpec getTrueAllocatedId(SegmentIdWithShardSpec allocatedId)
   {
     // Check if there is a conflict with an existing entry in the segments table
-    if (retrieveSegmentForId(allocatedId.asSegmentId().toString(), true) == null) {
+    if (retrieveSegmentForId(allocatedId.getDataSource(), allocatedId.asSegmentId().toString()) == null) {
       return allocatedId;
     }
 
@@ -1796,7 +1787,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
         = getAppendSegmentsCommittedDuringTask(transaction, taskId);
 
     final List<DataSegmentPlus> segmentsToUpgrade
-        = retrieveSegmentsById(transaction, datasource, upgradeSegmentToLockVersion.keySet());
+        = retrieveSegmentsById(transaction, upgradeSegmentToLockVersion.keySet());
 
     if (segmentsToUpgrade.isEmpty()) {
       return Collections.emptySet();
@@ -1877,19 +1868,22 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
    * <li>The set of segments being committed is non-empty.</li>
    * <li>All segments belong to the same datasource.</li>
    * </ul>
+   * @return Name of the common data source
    */
-  private void verifySegmentsToCommit(Collection<DataSegment> segments)
+  private String verifySegmentsToCommit(Collection<DataSegment> segments)
   {
     if (segments.isEmpty()) {
-      throw new IllegalArgumentException("No segment to commit");
+      throw InvalidInput.exception("No segment to commit");
     }
 
     final String dataSource = segments.iterator().next().getDataSource();
     for (DataSegment segment : segments) {
       if (!dataSource.equals(segment.getDataSource())) {
-        throw new IllegalArgumentException("Segments to commit must all belong to the same datasource");
+        throw InvalidInput.exception("Segments to commit must all belong to the same datasource");
       }
     }
+
+    return dataSource;
   }
 
   private static Set<DataSegment> findNonOvershadowedSegments(Set<DataSegment> segments)
@@ -2052,7 +2046,6 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
 
   private List<DataSegmentPlus> retrieveSegmentsById(
       SqlSegmentsMetadataTransaction transaction,
-      String datasource,
       Set<String> segmentIds
   )
   {
@@ -2061,9 +2054,9 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     }
 
     if (schemaPersistEnabled) {
-      return transaction.findSegmentsWithSchema(datasource, segmentIds);
+      return transaction.findSegmentsWithSchema(segmentIds);
     } else {
-      return transaction.findSegments(datasource, segmentIds);
+      return transaction.findSegments(segmentIds);
     }
   }
 
@@ -2321,10 +2314,12 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
   @Override
   public void updateSegmentMetadata(final Set<DataSegment> segments)
   {
-    retryTransaction(
+    final String dataSource = verifySegmentsToCommit(segments);
+    retryDatasourceTransaction(
+        dataSource,
         transaction -> {
           for (final DataSegment segment : segments) {
-            transaction.updateSegmentPayload(segment.getDataSource(), segment);
+            transaction.updateSegmentPayload(segment);
           }
 
           return 0;
@@ -2426,7 +2421,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
   )
   {
     final Set<SegmentId> overlappingSegmentIds
-        = transaction.findUsedSegmentIds(dataSource, interval);
+        = transaction.findUsedSegmentIds(interval);
     // Map from version -> interval -> segmentId with the smallest partitionNum
     Map<String, Map<Interval, SegmentId>> versionIntervalToSmallestSegmentId = new HashMap<>();
     for (SegmentId segmentId : overlappingSegmentIds) {
@@ -2479,12 +2474,20 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
   }
 
   @Override
-  public DataSegment retrieveSegmentForId(final String id, boolean includeUnused)
+  public DataSegment retrieveSegmentForId(final String dataSource, final String segmentId)
   {
-    return retryTransaction(
-        transaction -> includeUnused
-                       ? transaction.findSegment(id)
-                       : transaction.findUsedSegment(id)
+    return retryDatasourceTransaction(
+        dataSource,
+        transaction -> transaction.findSegment(segmentId)
+    );
+  }
+
+  @Override
+  public DataSegment retrieveUsedSegmentForId(String dataSource, String segmentId)
+  {
+    return retryDatasourceTransaction(
+        dataSource,
+        transaction -> transaction.findUsedSegment(segmentId)
     );
   }
 
@@ -2508,8 +2511,9 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
   @Override
   public List<PendingSegmentRecord> getPendingSegments(String datasource, Interval interval)
   {
-    return inReadOnlyTransaction(
-        transaction -> transaction.findPendingSegmentsOverlappingInterval(datasource, interval)
+    return inReadOnlyDatasourceTransaction(
+        datasource,
+        transaction -> transaction.findPendingSegmentsOverlappingInterval(interval)
     );
   }
 
@@ -2613,21 +2617,23 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     return upgradedToSegmentIds;
   }
 
-  private <T> T retryTransaction(SegmentTransactionCallback<T> callback)
+  private <T> T retryDatasourceTransaction(String dataSource, SegmentTransactionCallback<T> callback)
   {
     return connector.retryTransaction(
-        (handle, transactionStatus) ->
-            callback.inTransaction(transactionFactory.createTransaction(handle, transactionStatus)),
+        (handle, transactionStatus) -> callback.inTransaction(
+            transactionFactory.createTransactionForDatasource(dataSource, handle, transactionStatus)
+        ),
         3,
         getSqlMetadataMaxRetry()
     );
   }
 
-  private <T> T inReadOnlyTransaction(SegmentTransactionCallback<T> callback)
+  private <T> T inReadOnlyDatasourceTransaction(String dataSource, SegmentTransactionCallback<T> callback)
   {
     return connector.inReadOnlyTransaction(
-        (handle, transactionStatus) ->
-            callback.inTransaction(transactionFactory.createTransaction(handle, transactionStatus))
+        (handle, transactionStatus) -> callback.inTransaction(
+            transactionFactory.createTransactionForDatasource(dataSource, handle, transactionStatus)
+        )
     );
   }
 
@@ -2635,48 +2641,6 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
   private interface SegmentTransactionCallback<T>
   {
     T inTransaction(SqlSegmentsMetadataTransaction transaction) throws Exception;
-  }
-
-  private static class PendingSegmentsRecord
-  {
-    private final String sequenceName;
-    private final byte[] payload;
-
-    /**
-     * The columns expected in the result set are:
-     * <ol>
-     *   <li>sequence_name</li>
-     *   <li>payload</li>
-     * </ol>
-     */
-    static PendingSegmentsRecord fromResultSet(ResultSet resultSet)
-    {
-      try {
-        return new PendingSegmentsRecord(
-            resultSet.getString(1),
-            resultSet.getBytes(2)
-        );
-      }
-      catch (SQLException e) {
-        throw new RuntimeException(e);
-      }
-    }
-
-    PendingSegmentsRecord(String sequenceName, byte[] payload)
-    {
-      this.payload = payload;
-      this.sequenceName = sequenceName;
-    }
-
-    public byte[] getPayload()
-    {
-      return payload;
-    }
-
-    public String getSequenceName()
-    {
-      return sequenceName;
-    }
   }
 
   public static class DataStoreMetadataUpdateResult

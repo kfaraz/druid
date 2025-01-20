@@ -256,6 +256,10 @@ public class SqlSegmentsMetadataQuery
     );
   }
 
+  /**
+   * Retrieves IDs of used segments that belong to the datasource and overlap
+   * the given interval.
+   */
   public Set<SegmentId> retrieveUsedSegmentIds(
       final String dataSource,
       final Interval interval
@@ -276,36 +280,34 @@ public class SqlSegmentsMetadataQuery
       );
     }
 
-    return connector.inReadOnlyTransaction(
-        (handle, status) -> {
-          final Query<Map<String, Object>> sql = handle
-              .createQuery(StringUtils.format(sb.toString(), dbTables.getSegmentsTable()))
-              .setFetchSize(connector.getStreamingFetchSize())
-              .bind("used", true)
-              .bind("dataSource", dataSource);
+    final Query<Map<String, Object>> sql = handle
+        .createQuery(StringUtils.format(sb.toString(), dbTables.getSegmentsTable()))
+        .setFetchSize(connector.getStreamingFetchSize())
+        .bind("used", true)
+        .bind("dataSource", dataSource);
 
-          if (compareAsString) {
-            bindIntervalsToQuery(sql, Collections.singletonList(interval));
-          }
+    if (compareAsString) {
+      bindIntervalsToQuery(sql, Collections.singletonList(interval));
+    }
 
-          final Set<SegmentId> segmentIds = new HashSet<>();
-          try (final ResultIterator<String> iterator = sql.map((index, r, ctx) -> r.getString(1)).iterator()) {
-            while (iterator.hasNext()) {
-              final String id = iterator.next();
-              final SegmentId segmentId = SegmentId.tryParse(dataSource, id);
-              if (segmentId == null) {
-                throw DruidException.defensive(
-                    "Failed to parse SegmentId for id[%s] and dataSource[%s].",
-                    id, dataSource
-                );
-              }
-              if (IntervalMode.OVERLAPS.apply(interval, segmentId.getInterval())) {
-                segmentIds.add(segmentId);
-              }
-            }
-          }
-          return segmentIds;
-        });
+    final Set<SegmentId> segmentIds = new HashSet<>();
+    try (final ResultIterator<String> iterator = sql.map((index, r, ctx) -> r.getString(1)).iterator()) {
+      while (iterator.hasNext()) {
+        final String id = iterator.next();
+        final SegmentId segmentId = SegmentId.tryParse(dataSource, id);
+        if (segmentId == null) {
+          throw DruidException.defensive(
+              "Failed to parse SegmentId for id[%s] and dataSource[%s].",
+              id, dataSource
+          );
+        }
+        if (IntervalMode.OVERLAPS.apply(interval, segmentId.getInterval())) {
+          segmentIds.add(segmentId);
+        }
+      }
+    }
+    return segmentIds;
+
   }
 
   public List<DataSegmentPlus> retrieveSegmentsById(
