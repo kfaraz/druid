@@ -22,7 +22,9 @@ package org.apache.druid.metadata.segment;
 import org.apache.druid.discovery.DruidLeaderSelector;
 import org.apache.druid.error.InternalServerError;
 import org.apache.druid.java.util.common.parsers.CloseableIterator;
+import org.apache.druid.metadata.PendingSegmentRecord;
 import org.apache.druid.metadata.segment.cache.SegmentsMetadataCache;
+import org.apache.druid.segment.realtime.appenderator.SegmentIdWithShardSpec;
 import org.apache.druid.server.http.DataSegmentPlus;
 import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.timeline.SegmentId;
@@ -161,7 +163,7 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
   }
 
   @Override
-  public void insertSegments(Set<DataSegmentPlus> segments) throws Exception
+  public void insertSegments(Set<DataSegmentPlus> segments)
   {
     verifyStillLeaderWithSameTerm();
     delegate.insertSegments(segments);
@@ -172,7 +174,7 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
   }
 
   @Override
-  public void insertSegmentsWithMetadata(Set<DataSegmentPlus> segments) throws Exception
+  public void insertSegmentsWithMetadata(Set<DataSegmentPlus> segments)
   {
     verifyStillLeaderWithSameTerm();
     delegate.insertSegmentsWithMetadata(segments);
@@ -184,6 +186,72 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
 
   @Override
   public int markSegmentsUnused(String dataSource, Interval interval)
+  {
+    // TODO
+    return 0;
+  }
+
+  @Override
+  public void updateSegmentPayload(String dataSource, DataSegment segment)
+  {
+    // TODO
+  }
+
+  @Override
+  public List<SegmentIdWithShardSpec> findPendingSegmentIds(
+      String dataSource,
+      String sequenceName,
+      String sequencePreviousId
+  )
+  {
+    // TODO
+    return List.of();
+  }
+
+  @Override
+  public List<SegmentIdWithShardSpec> findPendingSegmentIds(String dataSource, String sequenceName, Interval interval)
+  {
+    // TODO
+    return List.of();
+  }
+
+  @Override
+  public List<PendingSegmentRecord> findPendingSegments(String dataSource, Interval interval)
+  {
+    // TODO
+    return List.of();
+  }
+
+  @Override
+  public List<PendingSegmentRecord> findPendingSegments(String dataSource, String taskAllocatorId)
+  {
+    // TODO
+    return List.of();
+  }
+
+  @Override
+  public void insertPendingSegment(
+      String dataSource,
+      PendingSegmentRecord pendingSegment,
+      boolean skipSegmentLineageCheck
+  )
+  {
+
+  }
+
+  @Override
+  public int insertPendingSegments(
+      String dataSource,
+      List<PendingSegmentRecord> pendingSegments,
+      boolean skipSegmentLineageCheck
+  )
+  {
+    // TODO
+    return 0;
+  }
+
+  @Override
+  public int deletePendingSegments(String dataSource, List<String> segmentIdsToDelete)
   {
     // TODO
     return 0;

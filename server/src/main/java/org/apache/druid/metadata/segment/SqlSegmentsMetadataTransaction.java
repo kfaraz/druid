@@ -20,6 +20,8 @@
 package org.apache.druid.metadata.segment;
 
 import org.apache.druid.java.util.common.parsers.CloseableIterator;
+import org.apache.druid.metadata.PendingSegmentRecord;
+import org.apache.druid.segment.realtime.appenderator.SegmentIdWithShardSpec;
 import org.apache.druid.server.http.DataSegmentPlus;
 import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.timeline.SegmentId;
@@ -79,9 +81,41 @@ public interface SqlSegmentsMetadataTransaction
   /**
    * Inserts the given segments into the metadata store.
    */
-  void insertSegments(Set<DataSegmentPlus> segments) throws Exception;
+  void insertSegments(Set<DataSegmentPlus> segments);
 
-  void insertSegmentsWithMetadata(Set<DataSegmentPlus> segments) throws Exception;
+  void insertSegmentsWithMetadata(Set<DataSegmentPlus> segments);
 
   int markSegmentsUnused(String dataSource, Interval interval);
+
+  void updateSegmentPayload(String dataSource, DataSegment segment);
+
+  List<SegmentIdWithShardSpec> findPendingSegmentIds(
+      String dataSource,
+      String sequenceName,
+      String sequencePreviousId
+  );
+
+  List<SegmentIdWithShardSpec> findPendingSegmentIds(
+      String dataSource,
+      String sequenceName,
+      Interval interval
+  );
+
+  List<PendingSegmentRecord> findPendingSegments(String dataSource, Interval interval);
+
+  List<PendingSegmentRecord> findPendingSegments(String dataSource, String taskAllocatorId);
+
+  void insertPendingSegment(
+      String dataSource,
+      PendingSegmentRecord pendingSegment,
+      boolean skipSegmentLineageCheck
+  );
+
+  int insertPendingSegments(
+      String dataSource,
+      List<PendingSegmentRecord> pendingSegments,
+      boolean skipSegmentLineageCheck
+  );
+
+  int deletePendingSegments(String dataSource, List<String> segmentIdsToDelete);
 }

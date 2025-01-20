@@ -33,6 +33,7 @@ import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.jackson.JacksonUtils;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.java.util.common.parsers.CloseableIterator;
+import org.apache.druid.segment.realtime.appenderator.SegmentIdWithShardSpec;
 import org.apache.druid.server.http.DataSegmentPlus;
 import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.timeline.SegmentId;
@@ -599,6 +600,132 @@ public class SqlSegmentsMetadataQuery
     return null;
   }
 
+  public List<SegmentIdWithShardSpec> getPendingSegmentIds(
+      final String dataSource,
+      final String sequenceName,
+      final String sequencePreviousId
+  )
+  {
+    final String sql = StringUtils.format(
+        "SELECT payload FROM %s WHERE "
+        + "dataSource = :dataSource AND "
+        + "sequence_name = :sequence_name AND "
+        + "sequence_prev_id = :sequence_prev_id",
+        dbTables.getPendingSegmentsTable()
+    );
+    return handle
+        .createQuery(sql)
+        .bind("dataSource", dataSource)
+        .bind("sequence_name", sequenceName)
+        .bind("sequence_prev_id", sequencePreviousId)
+        .map(
+            (index, r, ctx) -> JacksonUtils.readValue(
+                jsonMapper,
+                r.getBytes("payload"),
+                SegmentIdWithShardSpec.class
+            )
+        )
+        .list();
+  }
+
+  public List<SegmentIdWithShardSpec> getPendingSegmentIds(
+      final String dataSource,
+      final String sequenceName,
+      final Interval interval
+  )
+  {
+    final String sql = StringUtils.format(
+        "SELECT payload FROM %s WHERE "
+        + "dataSource = :dataSource AND "
+        + "sequence_name = :sequence_name AND "
+        + "start = :start AND "
+        + "%2$send%2$s = :end",
+        dbTables.getPendingSegmentsTable(),
+        connector.getQuoteString()
+    );
+    return handle
+        .createQuery(sql)
+        .bind("dataSource", dataSource)
+        .bind("sequence_name", sequenceName)
+        .bind("start", interval.getStart().toString())
+        .bind("end", interval.getEnd().toString())
+        .map(
+            (index, r, ctx) -> JacksonUtils.readValue(
+                jsonMapper,
+                r.getBytes("payload"),
+                SegmentIdWithShardSpec.class
+            )
+        )
+        .list();
+  }
+
+  /**
+   * Fetches all the pending segments, whose interval overlaps with the given search interval, from the metadata store.
+   */
+  public List<PendingSegmentRecord> getPendingSegmentsForInterval(
+      final String dataSource,
+      final Interval interval
+  )
+  {
+    final boolean compareIntervalEndpointsAsStrings = Intervals.canCompareEndpointsAsStrings(interval);
+
+    String sql = "SELECT payload, sequence_name, sequence_prev_id, task_allocator_id, upgraded_from_segment_id"
+                 + " FROM " + dbTables.getPendingSegmentsTable()
+                 + " WHERE dataSource = :dataSource";
+    if (compareIntervalEndpointsAsStrings) {
+      sql = sql
+            + " AND start < :end"
+            + StringUtils.format(" AND %1$send%1$s > :start", connector.getQuoteString());
+    }
+
+    Query<Map<String, Object>> query = handle.createQuery(sql)
+                                             .bind("dataSource", dataSource);
+    if (compareIntervalEndpointsAsStrings) {
+      query = query.bind("start", interval.getStart().toString())
+                   .bind("end", interval.getEnd().toString());
+    }
+
+    final ResultIterator<PendingSegmentRecord> pendingSegmentIterator =
+        query.map((index, r, ctx) -> PendingSegmentRecord.fromResultSet(r, jsonMapper))
+             .iterator();
+    final ImmutableList.Builder<PendingSegmentRecord> pendingSegments = ImmutableList.builder();
+    while (pendingSegmentIterator.hasNext()) {
+      final PendingSegmentRecord pendingSegment = pendingSegmentIterator.next();
+      if (compareIntervalEndpointsAsStrings || pendingSegment.getId().getInterval().overlaps(interval)) {
+        pendingSegments.add(pendingSegment);
+      }
+    }
+    pendingSegmentIterator.close();
+    return pendingSegments.build();
+  }
+
+  public List<PendingSegmentRecord> getPendingSegmentsForTaskAllocatorId(
+      final String dataSource,
+      final String taskAllocatorId
+  )
+  {
+    String sql = "SELECT payload, sequence_name, sequence_prev_id, task_allocator_id, upgraded_from_segment_id"
+                 + " FROM " + dbTables.getPendingSegmentsTable()
+                 + " WHERE dataSource = :dataSource AND task_allocator_id = :task_allocator_id";
+
+    Query<Map<String, Object>> query = handle.createQuery(sql)
+                                             .bind("dataSource", dataSource)
+                                             .bind("task_allocator_id", taskAllocatorId);
+
+    final ResultIterator<PendingSegmentRecord> pendingSegmentRecords =
+        query.map((index, r, ctx) -> PendingSegmentRecord.fromResultSet(r, jsonMapper))
+             .iterator();
+
+    final List<PendingSegmentRecord> pendingSegments = new ArrayList<>();
+    while (pendingSegmentRecords.hasNext()) {
+      pendingSegments.add(pendingSegmentRecords.next());
+    }
+
+    pendingSegmentRecords.close();
+
+    return pendingSegments;
+  }
+
   /**
    * Get the condition for the interval and match mode.
    * @param intervals - intervals to fetch the segments for
@@ -1030,7 +1157,7 @@ public class SqlSegmentsMetadataQuery
    *
    * @implNote JDBI 3.x has better support for binding {@code IN} clauses directly.
    */
-  static String getParameterizedInConditionForColumn(final String columnName, final List<String> values)
+  public static String getParameterizedInConditionForColumn(final String columnName, final List<String> values)
   {
     if (values == null) {
       return "";
@@ -1055,7 +1182,7 @@ public class SqlSegmentsMetadataQuery
    *
    * @see #getParameterizedInConditionForColumn(String, List)
    */
-  static void bindColumnValuesToQueryWithInCondition(
+  public static void bindColumnValuesToQueryWithInCondition(
       final String columnName,
       final List<String> values,
       final SQLStatement<?> query
