@@ -17,18 +17,38 @@
  * under the License.
  */
 
-package org.apache.druid.metadata.segment.cache;
+package org.apache.druid.metadata.segment;
 
-import org.apache.druid.metadata.segment.DatasourceReadTransaction;
+import org.apache.druid.metadata.PendingSegmentRecord;
+import org.apache.druid.server.http.DataSegmentPlus;
 import org.apache.druid.timeline.DataSegment;
-import org.apache.druid.timeline.SegmentId;
-import org.apache.druid.timeline.SegmentTimeline;
 import org.joda.time.Interval;
 
-import java.util.Map;
+import java.util.List;
 import java.util.Set;
 
-public interface SegmentsMetadataReadOnlyCache
+public interface DatasourceWriteTransaction
 {
+  /**
+   * Inserts the given segments into the metadata store.
+   */
+  void insertSegments(Set<DataSegmentPlus> segments);
 
+  void insertSegmentsWithMetadata(Set<DataSegmentPlus> segments);
+
+  int markSegmentsUnused(Interval interval);
+
+  void updateSegmentPayload(DataSegment segment);
+
+  void insertPendingSegment(
+      PendingSegmentRecord pendingSegment,
+      boolean skipSegmentLineageCheck
+  );
+
+  int insertPendingSegments(
+      List<PendingSegmentRecord> pendingSegments,
+      boolean skipSegmentLineageCheck
+  );
+
+  int deletePendingSegments(List<String> segmentIdsToDelete);
 }

@@ -93,44 +93,42 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
     delegate.setRollbackOnly();
   }
 
+  // READ METHODS
+
   @Override
   public Set<String> findExistingSegmentIds(Set<DataSegment> segments)
   {
-    return metadataCache.findExistingSegmentIds(dataSource, segments);
+    return readCache().findExistingSegmentIds(segments);
   }
 
   @Override
-  public Set<SegmentId> findUsedSegmentIds(Interval interval)
+  public Set<SegmentId> findUsedSegmentIdsOverlapping(Interval interval)
   {
-    return metadataCache.findUsedSegmentIds(dataSource, interval);
+    return readCache().findUsedSegmentIdsOverlapping(interval);
   }
 
   @Override
   public List<DataSegmentPlus> findSegments(Set<String> segmentIds)
   {
-    // TODO
-    return null;
+    return readCache().findSegments(segmentIds);
   }
 
   @Override
   public List<DataSegmentPlus> findSegmentsWithSchema(Set<String> segmentIds)
   {
-    // TODO
-    return List.of();
+    return readCache().findSegmentsWithSchema(segmentIds);
   }
 
   @Override
   public CloseableIterator<DataSegment> findUsedSegments(List<Interval> intervals)
   {
-    // TODO: implement this
-    return null;
+    return readCache().findUsedSegments(intervals);
   }
 
   @Override
   public Set<DataSegmentPlus> findUsedSegmentsPlus(List<Interval> intervals)
   {
-    // TODO: implement this
-    return null;
+    return readCache().findUsedSegmentsPlus(intervals);
   }
 
   @Override
@@ -141,57 +139,19 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
       @Nullable DateTime maxUsedStatusLastUpdatedTime
   )
   {
-    // TODO
-    return null;
+    return readCache().findUnusedSegments(interval, versions, limit, maxUsedStatusLastUpdatedTime);
   }
 
   @Override
   public DataSegment findSegment(String segmentId)
   {
-    // TODO
-    return null;
+    return readCache().findSegment(segmentId);
   }
 
   @Override
   public DataSegment findUsedSegment(String segmentId)
   {
-    // TODO
-    return null;
-  }
-
-  @Override
-  public void insertSegments(Set<DataSegmentPlus> segments)
-  {
-    verifyStillLeaderWithSameTerm();
-    delegate.insertSegments(segments);
-
-    if (isLeaderWithSameTerm() && !segments.isEmpty()) {
-      metadataCache.addSegments(getDataSourceName(segments), segments);
-    }
-  }
-
-  @Override
-  public void insertSegmentsWithMetadata(Set<DataSegmentPlus> segments)
-  {
-    verifyStillLeaderWithSameTerm();
-    delegate.insertSegmentsWithMetadata(segments);
-
-    if (isLeaderWithSameTerm() && !segments.isEmpty()) {
-      metadataCache.addSegments(getDataSourceName(segments), segments);
-    }
-  }
-
-  @Override
-  public int markSegmentsUnused(Interval interval)
-  {
-    // TODO
-    return 0;
-  }
-
-  @Override
-  public void updateSegmentPayload(DataSegment segment)
-  {
-    // TODO
+    return readCache().findUsedSegment(segmentId);
   }
 
   @Override
@@ -215,7 +175,7 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
   }
 
   @Override
-  public List<PendingSegmentRecord> findPendingSegmentsOverlappingInterval(Interval interval)
+  public List<PendingSegmentRecord> findPendingSegmentsOverlapping(Interval interval)
   {
     // TODO
     return List.of();
@@ -233,6 +193,43 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
   {
     // TODO
     return List.of();
+  }
+
+  // WRITE METHODS
+
+  @Override
+  public void insertSegments(Set<DataSegmentPlus> segments)
+  {
+    verifyStillLeaderWithSameTerm();
+    delegate.insertSegments(segments);
+
+    if (isLeaderWithSameTerm() && !segments.isEmpty()) {
+      writeCache().insertSegments(segments);
+    }
+  }
+
+  @Override
+  public void insertSegmentsWithMetadata(Set<DataSegmentPlus> segments)
+  {
+    verifyStillLeaderWithSameTerm();
+    delegate.insertSegmentsWithMetadata(segments);
+
+    if (isLeaderWithSameTerm() && !segments.isEmpty()) {
+      writeCache().insertSegmentsWithMetadata(segments);
+    }
+  }
+
+  @Override
+  public int markSegmentsUnused(Interval interval)
+  {
+    // TODO
+    return 0;
+  }
+
+  @Override
+  public void updateSegmentPayload(DataSegment segment)
+  {
+    // TODO
   }
 
   @Override
@@ -261,8 +258,13 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
     return 0;
   }
 
-  private static String getDataSourceName(Set<DataSegmentPlus> segments)
+  private DatasourceReadTransaction readCache()
   {
-    return segments.stream().findFirst().map(s -> s.getDataSegment().getDataSource()).orElse(null);
+    return metadataCache.readDatasource(dataSource);
+  }
+
+  private DatasourceWriteTransaction writeCache()
+  {
+    return metadataCache.writeDatasource(dataSource);
   }
 }

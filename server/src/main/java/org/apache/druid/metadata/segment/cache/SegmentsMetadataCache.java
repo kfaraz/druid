@@ -19,9 +19,8 @@
 
 package org.apache.druid.metadata.segment.cache;
 
-import org.apache.druid.server.http.DataSegmentPlus;
-
-import java.util.Set;
+import org.apache.druid.metadata.segment.DatasourceReadTransaction;
+import org.apache.druid.metadata.segment.DatasourceWriteTransaction;
 
 /**
  * TODO:
@@ -44,11 +43,16 @@ import java.util.Set;
  * -[ ] Write integration tests
  * -[ ] Write a benchmark
  */
-public interface SegmentsMetadataCache extends SegmentsMetadataReadOnlyCache
+public interface SegmentsMetadataCache
 {
   void start();
 
   void stop();
 
-  void addSegments(String dataSource, Set<DataSegmentPlus> segments);
+  boolean isReady();
+
+  DatasourceReadTransaction readDatasource(String dataSource);
+
+  DatasourceWriteTransaction writeDatasource(String dataSource);
+
 }

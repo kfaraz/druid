@@ -703,7 +703,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
       int currentPartitionNumber = maxSegmentId.getShardSpec().getPartitionNum();
 
       final List<PendingSegmentRecord> overlappingPendingSegments
-          = transaction.findPendingSegmentsOverlappingInterval(replaceInterval);
+          = transaction.findPendingSegmentsOverlapping(replaceInterval);
 
       for (PendingSegmentRecord overlappingPendingSegment : overlappingPendingSegments) {
         final SegmentIdWithShardSpec pendingSegmentId = overlappingPendingSegment.getId();
@@ -1281,7 +1281,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     // A pending segment having a higher partitionId must also be considered
     // to avoid clashes when inserting the pending segment created here.
     final Set<SegmentIdWithShardSpec> pendingSegments =
-        transaction.findPendingSegmentsOverlappingInterval(interval)
+        transaction.findPendingSegmentsOverlapping(interval)
                    .stream()
                    .map(PendingSegmentRecord::getId)
                    .collect(Collectors.toSet());
@@ -1478,7 +1478,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     // A pending segment having a higher partitionId must also be considered
     // to avoid clashes when inserting the pending segment created here.
     final Set<SegmentIdWithShardSpec> pendings =
-        transaction.findPendingSegmentsOverlappingInterval(interval)
+        transaction.findPendingSegmentsOverlapping(interval)
                    .stream()
                    .map(PendingSegmentRecord::getId)
                    .collect(Collectors.toSet());
@@ -2421,7 +2421,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
   )
   {
     final Set<SegmentId> overlappingSegmentIds
-        = transaction.findUsedSegmentIds(interval);
+        = transaction.findUsedSegmentIdsOverlapping(interval);
     // Map from version -> interval -> segmentId with the smallest partitionNum
     Map<String, Map<Interval, SegmentId>> versionIntervalToSmallestSegmentId = new HashMap<>();
     for (SegmentId segmentId : overlappingSegmentIds) {
@@ -2513,7 +2513,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
   {
     return inReadOnlyDatasourceTransaction(
         datasource,
-        transaction -> transaction.findPendingSegmentsOverlappingInterval(interval)
+        transaction -> transaction.findPendingSegmentsOverlapping(interval)
     );
   }
 

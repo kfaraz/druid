@@ -36,14 +36,11 @@ import org.apache.druid.metadata.MetadataStorageTablesConfig;
 import org.apache.druid.metadata.SQLMetadataConnector;
 import org.apache.druid.metadata.SegmentsMetadataManagerConfig;
 import org.apache.druid.metadata.SqlSegmentsMetadataQuery;
+import org.apache.druid.metadata.segment.DatasourceReadTransaction;
+import org.apache.druid.metadata.segment.DatasourceWriteTransaction;
 import org.apache.druid.query.DruidMetrics;
-import org.apache.druid.server.http.DataSegmentPlus;
-import org.apache.druid.timeline.DataSegment;
-import org.apache.druid.timeline.SegmentId;
-import org.apache.druid.timeline.SegmentTimeline;
 import org.joda.time.DateTime;
 import org.joda.time.Duration;
-import org.joda.time.Interval;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -54,7 +51,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Collectors;
 
 public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
 {
@@ -126,11 +122,6 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
     // T1: sees cache as ready
     // T2: stops the cache
     // T1: tries to read some value from the cache and fails
-    // Question: Should leader term validation logic live in the cache itself?
-    // It could simplify certain operations
-    // But then every method called on the cache will require the expected leader term to be passed to it?
-    // I am not sure if that is such a great idea
-    // I think it makes more sense to have that info at the transaction level or something
 
     // Should start-stop wait on everything else?
     // When does stop happen?
@@ -149,45 +140,17 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
   }
 
   @Override
-  public Set<String> findExistingSegmentIds(String dataSource, Set<DataSegment> segments)
+  public DatasourceReadTransaction readDatasource(String dataSource)
   {
     verifyCacheIsReady();
-    if (segments.isEmpty()) {
-      return Set.of();
-    }
-
-    Set<String> segmentIdsToFind = segments.stream()
-                                           .map(s -> s.getId().toString())
-                                           .collect(Collectors.toSet());
-
-    DatasourceSegmentCache cache = datasourceToSegmentCache.get(dataSource);
-    return cache == null ? Set.of() : cache.getSegmentIdsIn(segmentIdsToFind);
+    return datasourceToSegmentCache.getOrDefault(dataSource, DatasourceSegmentCache.empty());
   }
 
   @Override
-  public Set<SegmentId> findUsedSegmentIds(String dataSource, Interval interval)
+  public DatasourceWriteTransaction writeDatasource(String dataSource)
   {
     verifyCacheIsReady();
-
-    DatasourceSegmentCache cache = datasourceToSegmentCache.get(dataSource);
-    return cache == null ? Set.of() : cache.getUsedSegmentIdsOverlapping(interval);
-  }
-
-  @Override
-  public void addSegments(String dataSource, Set<DataSegmentPlus> segments)
-  {
-    verifyCacheIsReady();
-
-    datasourceToSegmentCache
-        .computeIfAbsent(dataSource, ds -> new DatasourceSegmentCache())
-        .addSegments(segments);
-  }
-
-  @Override
-  public Map<String, SegmentTimeline> getDataSourceToUsedSegmentTimeline()
-  {
-    verifyCacheIsReady();
-    return Map.of();
+    return datasourceToSegmentCache.computeIfAbsent(dataSource, ds -> new DatasourceSegmentCache());
   }
 
   private void verifyCacheIsReady()
@@ -339,8 +302,7 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
   private void emitMetric(String metric, long value)
   {
     emitter.emit(
-        ServiceMetricEvent.builder()
-                          .setMetric(METRIC_PREFIX + metric, value)
+        ServiceMetricEvent.builder().setMetric(METRIC_PREFIX + metric, value)
     );
   }
 

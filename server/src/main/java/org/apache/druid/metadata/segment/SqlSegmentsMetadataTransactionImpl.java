@@ -121,7 +121,7 @@ public class SqlSegmentsMetadataTransactionImpl implements SqlSegmentsMetadataTr
   }
 
   @Override
-  public Set<SegmentId> findUsedSegmentIds(Interval interval)
+  public Set<SegmentId> findUsedSegmentIdsOverlapping(Interval interval)
   {
     return query.retrieveUsedSegmentIds(dataSource, interval);
   }
@@ -261,7 +261,7 @@ public class SqlSegmentsMetadataTransactionImpl implements SqlSegmentsMetadataTr
   }
 
   @Override
-  public List<PendingSegmentRecord> findPendingSegmentsOverlappingInterval(Interval interval)
+  public List<PendingSegmentRecord> findPendingSegmentsOverlapping(Interval interval)
   {
     return query.retrievePendingSegmentsOverlappingInterval(dataSource, interval);
   }

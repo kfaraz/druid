@@ -280,7 +280,13 @@ public class TestIndexerMetadataStorageCoordinator implements IndexerMetadataSto
   }
 
   @Override
-  public DataSegment retrieveSegmentForId(final String id, boolean includeUnused)
+  public DataSegment retrieveSegmentForId(String dataSource, String segmentId)
+  {
+    return null;
+  }
+
+  @Override
+  public DataSegment retrieveUsedSegmentForId(String dataSource, String segmentId)
   {
     return null;
   }

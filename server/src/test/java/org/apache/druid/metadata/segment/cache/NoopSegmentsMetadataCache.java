@@ -19,14 +19,8 @@
 
 package org.apache.druid.metadata.segment.cache;
 
-import org.apache.druid.server.http.DataSegmentPlus;
-import org.apache.druid.timeline.DataSegment;
-import org.apache.druid.timeline.SegmentId;
-import org.apache.druid.timeline.SegmentTimeline;
-import org.joda.time.Interval;
-
-import java.util.Map;
-import java.util.Set;
+import org.apache.druid.metadata.segment.DatasourceReadTransaction;
+import org.apache.druid.metadata.segment.DatasourceWriteTransaction;
 
 public class NoopSegmentsMetadataCache implements SegmentsMetadataCache
 {
@@ -43,32 +37,20 @@ public class NoopSegmentsMetadataCache implements SegmentsMetadataCache
   }
 
   @Override
-  public void addSegments(String dataSource, Set<DataSegmentPlus> segments)
-  {
-
-  }
-
-  @Override
   public boolean isReady()
   {
     return false;
   }
 
   @Override
-  public Set<String> findExistingSegmentIds(String dataSource, Set<DataSegment> segments)
+  public DatasourceReadTransaction readDatasource(String dataSource)
   {
-    return Set.of();
+    throw new UnsupportedOperationException();
   }
 
   @Override
-  public Set<SegmentId> findUsedSegmentIds(String dataSource, Interval interval)
+  public DatasourceWriteTransaction writeDatasource(String dataSource)
   {
-    return Set.of();
-  }
-
-  @Override
-  public Map<String, SegmentTimeline> getDataSourceToUsedSegmentTimeline()
-  {
-    return Map.of();
+    throw new UnsupportedOperationException();
   }
 }
