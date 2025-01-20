@@ -28,7 +28,7 @@ import org.apache.druid.indexing.overlord.DataSourceMetadata;
 import org.apache.druid.indexing.overlord.SegmentPublishResult;
 import org.apache.druid.java.util.common.Intervals;
 import org.apache.druid.java.util.common.Pair;
-import org.apache.druid.metadata.segment.SqlSegmentsMetadataTransaction;
+import org.apache.druid.metadata.segment.SegmentsMetadataTransaction;
 import org.apache.druid.metadata.segment.SqlSegmentsMetadataTransactionFactory;
 import org.apache.druid.metadata.segment.cache.NoopSegmentsMetadataCache;
 import org.apache.druid.segment.SchemaPayload;
@@ -108,7 +108,7 @@ public class IndexerSqlMetadataStorageCoordinatorSchemaPersistenceTest extends
     {
       @Override
       protected DataStoreMetadataUpdateResult updateDataSourceMetadataWithHandle(
-          SqlSegmentsMetadataTransaction transaction,
+          SegmentsMetadataTransaction transaction,
           String dataSource,
           DataSourceMetadata startMetadata,
           DataSourceMetadata endMetadata

@@ -29,7 +29,7 @@ import org.skife.jdbi.v2.Handle;
 import org.skife.jdbi.v2.TransactionStatus;
 
 /**
- * Factory for {@link SqlSegmentsMetadataTransaction}s. If the
+ * Factory for {@link SegmentsMetadataTransaction}s. If the
  * {@link SegmentsMetadataCache} is enabled and ready, the transaction may
  * read/write from the cache as applicable.
  */
@@ -57,13 +57,13 @@ public class SqlSegmentsMetadataTransactionFactory
     this.segmentsMetadataCache = segmentsMetadataCache;
   }
 
-  public SqlSegmentsMetadataTransaction createTransactionForDatasource(
+  public SegmentsMetadataTransaction createTransactionForDatasource(
       String dataSource,
       Handle handle,
       TransactionStatus transactionStatus
   )
   {
-    final SqlSegmentsMetadataTransaction metadataTransaction = new SqlSegmentsMetadataTransactionImpl(
+    final SegmentsMetadataTransaction metadataTransaction = new SqlSegmentsMetadataTransaction(
         dataSource,
         handle,
         transactionStatus,

@@ -37,14 +37,14 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * A {@link SqlSegmentsMetadataTransaction} that performs reads using the cache
+ * A {@link SegmentsMetadataTransaction} that performs reads using the cache
  * and sends writes first to the metadata store and then the cache (if the
  * metadata store persist succeeds).
  */
-public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadataTransaction
+public class SqlSegmentsMetadataCachedTransaction implements SegmentsMetadataTransaction
 {
   private final String dataSource;
-  private final SqlSegmentsMetadataTransaction delegate;
+  private final SegmentsMetadataTransaction delegate;
   private final SegmentsMetadataCache metadataCache;
   private final DruidLeaderSelector leaderSelector;
 
@@ -52,7 +52,7 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
 
   public SqlSegmentsMetadataCachedTransaction(
       String dataSource,
-      SqlSegmentsMetadataTransaction delegate,
+      SegmentsMetadataTransaction delegate,
       SegmentsMetadataCache metadataCache,
       DruidLeaderSelector leaderSelector
   )
@@ -79,6 +79,16 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
   private boolean isLeaderWithSameTerm()
   {
     return leaderSelector.isLeader() && startTerm == leaderSelector.localTerm();
+  }
+
+  private DatasourceReadTransaction readCache()
+  {
+    return metadataCache.readDatasource(dataSource);
+  }
+
+  private DatasourceWriteTransaction writeCache()
+  {
+    return metadataCache.writeDatasource(dataSource);
   }
 
   @Override
@@ -108,6 +118,13 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
   }
 
   @Override
+  public Set<String> findUnusedSegmentIdsWithExactIntervalAndVersion(Interval interval, String version)
+  {
+    // TODO: we need to start caching some info of unused segments to empower this method
+    return delegate.findUnusedSegmentIdsWithExactIntervalAndVersion(interval, version);
+  }
+
+  @Override
   public List<DataSegmentPlus> findSegments(Set<String> segmentIds)
   {
     // Read from metadata store since unused segment payloads are not cached
@@ -122,9 +139,9 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
   }
 
   @Override
-  public CloseableIterator<DataSegment> findUsedSegments(List<Interval> intervals)
+  public CloseableIterator<DataSegment> findUsedSegmentsOverlappingAnyOf(List<Interval> intervals)
   {
-    return readCache().findUsedSegments(intervals);
+    return readCache().findUsedSegmentsOverlappingAnyOf(intervals);
   }
 
   @Override
@@ -134,9 +151,9 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
   }
 
   @Override
-  public Set<DataSegmentPlus> findUsedSegmentsPlus(List<Interval> intervals)
+  public Set<DataSegmentPlus> findUsedSegmentsPlusOverlappingAnyOf(List<Interval> intervals)
   {
-    return readCache().findUsedSegmentsPlus(intervals);
+    return readCache().findUsedSegmentsPlusOverlappingAnyOf(intervals);
   }
 
   @Override
@@ -243,6 +260,19 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
   }
 
   @Override
+  public int deleteSegments(Set<DataSegment> segments)
+  {
+    verifyStillLeaderWithSameTerm();
+    int deletedCount = delegate.deleteSegments(segments);
+
+    if (isLeaderWithSameTerm()) {
+      writeCache().deleteSegments(segments);
+    }
+
+    return deletedCount;
+  }
+
+  @Override
   public void updateSegmentPayload(DataSegment segment)
   {
     // TODO
@@ -268,19 +298,27 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
   }
 
   @Override
+  public int deleteAllPendingSegments()
+  {
+    return 0;
+  }
+
+  @Override
   public int deletePendingSegments(List<String> segmentIdsToDelete)
   {
     // TODO
     return 0;
   }
 
-  private DatasourceReadTransaction readCache()
+  @Override
+  public int deletePendingSegments(String taskAllocatorId)
   {
-    return metadataCache.readDatasource(dataSource);
+    return 0;
   }
 
-  private DatasourceWriteTransaction writeCache()
+  @Override
+  public int deletePendingSegmentsCreatedIn(Interval interval)
   {
-    return metadataCache.writeDatasource(dataSource);
+    return 0;
   }
 }

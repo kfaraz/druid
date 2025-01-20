@@ -17,18 +17,25 @@
  * under the License.
  */
 
-package org.apache.druid.metadata.segment.cache;
+package org.apache.druid.metadata.segment;
 
-import org.apache.druid.metadata.segment.DatasourceReadTransaction;
-import org.apache.druid.timeline.DataSegment;
-import org.apache.druid.timeline.SegmentId;
-import org.apache.druid.timeline.SegmentTimeline;
-import org.joda.time.Interval;
+import org.skife.jdbi.v2.Handle;
 
-import java.util.Map;
-import java.util.Set;
-
-public interface SegmentsMetadataReadOnlyCache
+/**
+ * Represents a single transaction involving read/write of segment metadata into
+ * the metadata store. A transaction is associated with a single instance of a
+ * {@link Handle} and is meant to be short-lived.
+ */
+public interface SegmentsMetadataTransaction
+    extends DatasourceReadTransaction, DatasourceWriteTransaction
 {
+  /**
+   * @return The JDBI handle used in this transaction
+   */
+  Handle getHandle();
 
+  /**
+   * Marks this transaction to be rolled back.
+   */
+  void setRollbackOnly();
 }

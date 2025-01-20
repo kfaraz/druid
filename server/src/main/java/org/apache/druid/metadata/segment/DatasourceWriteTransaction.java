@@ -41,6 +41,8 @@ public interface DatasourceWriteTransaction
    */
   int markSegmentsUnused(Interval interval);
 
+  int deleteSegments(Set<DataSegment> segments);
+
   void updateSegmentPayload(DataSegment segment);
 
   void insertPendingSegment(
@@ -53,5 +55,11 @@ public interface DatasourceWriteTransaction
       boolean skipSegmentLineageCheck
   );
 
+  int deleteAllPendingSegments();
+
   int deletePendingSegments(List<String> segmentIdsToDelete);
+
+  int deletePendingSegments(String taskAllocatorId);
+
+  int deletePendingSegmentsCreatedIn(Interval interval);
 }

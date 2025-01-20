@@ -46,17 +46,19 @@ public interface DatasourceReadTransaction
    */
   Set<SegmentId> findUsedSegmentIdsOverlapping(Interval interval);
 
+  Set<String> findUnusedSegmentIdsWithExactIntervalAndVersion(Interval interval, String version);
+
   /**
    * Finds used segments that overlap with any of the given intervals.
    */
-  CloseableIterator<DataSegment> findUsedSegments(List<Interval> intervals);
+  CloseableIterator<DataSegment> findUsedSegmentsOverlappingAnyOf(List<Interval> intervals);
 
   List<DataSegment> findUsedSegments(Set<String> segmentIds);
 
   /**
    * Finds used segments that overlap with any of the given intervals.
    */
-  Set<DataSegmentPlus> findUsedSegmentsPlus(List<Interval> intervals);
+  Set<DataSegmentPlus> findUsedSegmentsPlusOverlappingAnyOf(List<Interval> intervals);
 
   DataSegment findSegment(String segmentId);
 

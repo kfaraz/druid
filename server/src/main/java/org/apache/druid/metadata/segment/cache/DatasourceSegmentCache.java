@@ -65,7 +65,7 @@ class DatasourceSegmentCache
   private final Map<String, SegmentState> idToSegmentState = new HashMap<>();
 
   /**
-   * Allows lookup of segments by interval.
+   * Allows lookup of visible segments for a given interval.
    */
   private final SegmentTimeline usedSegmentTimeline = SegmentTimeline.forSegments(Set.of());
 
@@ -135,7 +135,7 @@ class DatasourceSegmentCache
   {
     final DataSegment segment = segmentPlus.getDataSegment();
     final SegmentState newState = new SegmentState(
-        segment.getId().toString(),
+        getId(segment),
         segment.getDataSource(),
         Boolean.TRUE.equals(segmentPlus.getUsed()),
         segmentPlus.getUsedStatusLastUpdatedDate()
@@ -209,7 +209,7 @@ class DatasourceSegmentCache
   {
     return withReadLock(
         () -> segments.stream()
-                      .map(s -> s.getId().toString())
+                      .map(DatasourceSegmentCache::getId)
                       .filter(idToSegmentState::containsKey)
                       .collect(Collectors.toSet())
     );
@@ -218,21 +218,26 @@ class DatasourceSegmentCache
   @Override
   public Set<SegmentId> findUsedSegmentIdsOverlapping(Interval interval)
   {
-    return withReadLock(
-        () -> idToUsedSegment.values()
-                             .stream()
-                             .map(DataSegmentPlus::getDataSegment)
-                             .filter(s -> s.getInterval().overlaps(interval))
-                             .map(DataSegment::getId)
-                             .collect(Collectors.toSet())
-    );
+    return findUsedSegmentsPlusOverlappingAnyOf(List.of(interval))
+        .stream()
+        .map(s -> s.getDataSegment().getId())
+        .collect(Collectors.toSet());
   }
 
   @Override
-  public CloseableIterator<DataSegment> findUsedSegments(List<Interval> intervals)
+  public Set<String> findUnusedSegmentIdsWithExactIntervalAndVersion(Interval interval, String version)
+  {
+    throw DruidException.defensive("Unsupported: Unused segments are not cached");
+  }
+
+  @Override
+  public CloseableIterator<DataSegment> findUsedSegmentsOverlappingAnyOf(List<Interval> intervals)
   {
     return CloseableIterators.withEmptyBaggage(
-        findUsedSegmentsPlus(intervals).stream().map(DataSegmentPlus::getDataSegment).iterator()
+        findUsedSegmentsPlusOverlappingAnyOf(intervals)
+            .stream()
+            .map(DataSegmentPlus::getDataSegment)
+            .iterator()
     );
   }
 
@@ -249,9 +254,8 @@ class DatasourceSegmentCache
   }
 
   @Override
-  public Set<DataSegmentPlus> findUsedSegmentsPlus(List<Interval> intervals)
+  public Set<DataSegmentPlus> findUsedSegmentsPlusOverlappingAnyOf(List<Interval> intervals)
   {
-    // TODO: can probably use the timeline here
     return withReadLock(
         () -> idToUsedSegment.values()
                              .stream()
@@ -335,7 +339,7 @@ class DatasourceSegmentCache
       for (DataSegmentPlus segmentPlus : segments) {
         final DataSegment segment = segmentPlus.getDataSegment();
         final SegmentState state = new SegmentState(
-            segment.getId().toString(),
+            getId(segment),
             segment.getDataSource(),
             Boolean.TRUE.equals(segmentPlus.getUsed()),
             segmentPlus.getUsedStatusLastUpdatedDate()
@@ -361,11 +365,11 @@ class DatasourceSegmentCache
   {
     // TODO: find a way to have the same updated time as was persisted to the metadata store
     final DateTime updateTime = DateTimes.nowUtc();
-    try (CloseableIterator<DataSegment> segmentIterator = findUsedSegments(List.of(interval))) {
+    try (CloseableIterator<DataSegment> segmentIterator = findUsedSegmentsOverlappingAnyOf(List.of(interval))) {
       while (segmentIterator.hasNext()) {
         final DataSegment next = segmentIterator.next();
         refreshUnusedSegment(
-            new SegmentState(next.getId().toString(), next.getDataSource(), false, updateTime)
+            new SegmentState(getId(next), next.getDataSource(), false, updateTime)
         );
       }
     }
@@ -374,6 +378,15 @@ class DatasourceSegmentCache
     }
 
     return 0;
+  }
+
+  @Override
+  public int deleteSegments(Set<DataSegment> segments)
+  {
+    final Set<String> segmentIdsToDelete = segments.stream()
+                                             .map(DatasourceSegmentCache::getId)
+                                             .collect(Collectors.toSet());
+    return withWriteLock(() -> removeSegmentIds(segmentIdsToDelete));
   }
 
   @Override
@@ -395,7 +408,25 @@ class DatasourceSegmentCache
   }
 
   @Override
+  public int deleteAllPendingSegments()
+  {
+    return 0;
+  }
+
+  @Override
   public int deletePendingSegments(List<String> segmentIdsToDelete)
+  {
+    return 0;
+  }
+
+  @Override
+  public int deletePendingSegments(String taskAllocatorId)
+  {
+    return 0;
+  }
+
+  @Override
+  public int deletePendingSegmentsCreatedIn(Interval interval)
   {
     return 0;
   }
@@ -403,5 +434,10 @@ class DatasourceSegmentCache
   private static boolean anyIntervalOverlaps(List<Interval> intervals, Interval testInterval)
   {
     return intervals.stream().anyMatch(interval -> interval.overlaps(testInterval));
+  }
+
+  private static String getId(DataSegment segment)
+  {
+    return segment.getId().toString();
   }
 }

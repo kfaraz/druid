@@ -35,7 +35,7 @@ import org.apache.druid.java.util.common.Intervals;
 import org.apache.druid.java.util.common.Pair;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.metrics.StubServiceEmitter;
-import org.apache.druid.metadata.segment.SqlSegmentsMetadataTransaction;
+import org.apache.druid.metadata.segment.SegmentsMetadataTransaction;
 import org.apache.druid.metadata.segment.SqlSegmentsMetadataTransactionFactory;
 import org.apache.druid.metadata.segment.cache.NoopSegmentsMetadataCache;
 import org.apache.druid.metadata.segment.cache.SegmentsMetadataCache;
@@ -154,7 +154,7 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
     {
       @Override
       protected DataStoreMetadataUpdateResult updateDataSourceMetadataWithHandle(
-          SqlSegmentsMetadataTransaction transaction,
+          SegmentsMetadataTransaction transaction,
           String dataSource,
           DataSourceMetadata startMetadata,
           DataSourceMetadata endMetadata
@@ -746,7 +746,7 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
     {
       @Override
       protected DataStoreMetadataUpdateResult updateDataSourceMetadataWithHandle(
-          SqlSegmentsMetadataTransaction transaction,
+          SegmentsMetadataTransaction transaction,
           String dataSource,
           DataSourceMetadata startMetadata,
           DataSourceMetadata endMetadata
@@ -3604,12 +3604,16 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
     coordinator.commitSegments(ImmutableSet.of(usedSegmentForExactIntervalAndVersion), null);
 
 
-    List<String> unusedSegmentIdsForIntervalAndVersion =
-        coordinator.retrieveUnusedSegmentIdsForExactIntervalAndVersion(TestDataSource.WIKI, Intervals.of("2024/2025"), "v1");
-    Assert.assertEquals(1, unusedSegmentIdsForIntervalAndVersion.size());
+    Set<String> unusedSegmentIdsForIntervalAndVersion = derbyConnector.retryTransaction(
+        (handle, status) -> transactionFactory
+            .createTransactionForDatasource(TestDataSource.WIKI, handle, status)
+            .findUnusedSegmentIdsWithExactIntervalAndVersion(Intervals.of("2024/2025"), "v1"),
+        3,
+        SQLMetadataConnector.DEFAULT_MAX_TRIES
+    );
     Assert.assertEquals(
-        unusedSegmentForExactIntervalAndVersion.getId().toString(),
-        unusedSegmentIdsForIntervalAndVersion.get(0)
+        Set.of(unusedSegmentForExactIntervalAndVersion.getId().toString()),
+        unusedSegmentIdsForIntervalAndVersion
     );
   }
 

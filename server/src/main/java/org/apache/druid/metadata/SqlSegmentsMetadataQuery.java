@@ -21,6 +21,7 @@ package org.apache.druid.metadata;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterators;
 import com.google.common.collect.Lists;
 import com.google.common.collect.UnmodifiableIterator;
@@ -45,6 +46,7 @@ import org.skife.jdbi.v2.Query;
 import org.skife.jdbi.v2.ResultIterator;
 import org.skife.jdbi.v2.SQLStatement;
 import org.skife.jdbi.v2.Update;
+import org.skife.jdbi.v2.util.StringMapper;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -159,6 +161,35 @@ public class SqlSegmentsMetadataQuery
         dataSource,
         intervals, null, IntervalMode.OVERLAPS, true, null, null, null, null
     );
+  }
+
+  public Set<String> retrieveUnusedSegmentIdsForExactIntervalAndVersion(
+      String dataSource,
+      Interval interval,
+      String version
+  )
+  {
+    final String sql = StringUtils.format(
+        "SELECT id FROM %1$s"
+        + " WHERE used = :used"
+        + " AND dataSource = :dataSource"
+        + " AND version = :version"
+        + " AND start = :start AND %2$send%2$s = :end",
+        dbTables.getSegmentsTable(), connector.getQuoteString()
+    );
+
+    final Query<Map<String, Object>> query = handle
+        .createQuery(sql)
+        .setFetchSize(connector.getStreamingFetchSize())
+        .bind("used", false)
+        .bind("dataSource", dataSource)
+        .bind("version", version)
+        .bind("start", interval.getStart().toString())
+        .bind("end", interval.getEnd().toString());
+
+    try (final ResultIterator<String> iterator = query.map(StringMapper.FIRST).iterator()) {
+      return ImmutableSet.copyOf(iterator);
+    }
   }
 
   /**
@@ -291,7 +322,7 @@ public class SqlSegmentsMetadataQuery
     }
 
     final Set<SegmentId> segmentIds = new HashSet<>();
-    try (final ResultIterator<String> iterator = sql.map((index, r, ctx) -> r.getString(1)).iterator()) {
+    try (final ResultIterator<String> iterator = sql.map(StringMapper.FIRST).iterator()) {
       while (iterator.hasNext()) {
         final String id = iterator.next();
         final SegmentId segmentId = SegmentId.tryParse(dataSource, id);
