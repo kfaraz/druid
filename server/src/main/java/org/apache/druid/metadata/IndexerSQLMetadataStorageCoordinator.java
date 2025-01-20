@@ -706,7 +706,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
       int currentPartitionNumber = maxSegmentId.getShardSpec().getPartitionNum();
 
       final List<PendingSegmentRecord> overlappingPendingSegments
-          = transaction.findPendingSegments(datasource, replaceInterval);
+          = transaction.findPendingSegmentsOverlappingInterval(datasource, replaceInterval);
 
       for (PendingSegmentRecord overlappingPendingSegment : overlappingPendingSegments) {
         final SegmentIdWithShardSpec pendingSegmentId = overlappingPendingSegment.getId();
@@ -925,7 +925,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
       final List<TimelineObjectHolder<String, DataSegment>> existingChunks
   )
   {
-    final List<SegmentIdWithShardSpec> existingPendingSegmentIds = transaction.findPendingSegmentIds(
+    final List<SegmentIdWithShardSpec> existingPendingSegmentIds = transaction.findPendingSegmentIdsWithExactInterval(
         dataSource,
         createRequest.getSequenceName(),
         interval
@@ -981,34 +981,15 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
       Interval interval,
       String usedSegmentVersion,
       List<SegmentCreateRequest> requests
-  ) throws IOException
+  )
   {
-    final Query<Map<String, Object>> query = transaction.getHandle()
-        .createQuery(
-            StringUtils.format(
-                "SELECT sequence_name, payload "
-                + "FROM %s WHERE "
-                + "dataSource = :dataSource AND "
-                + "start = :start AND "
-                + "%2$send%2$s = :end",
-                dbTables.getPendingSegmentsTable(),
-                connector.getQuoteString()
-            )
-        )
-        .bind("dataSource", dataSource)
-        .bind("start", interval.getStart().toString())
-        .bind("end", interval.getEnd().toString());
-
-    final ResultIterator<PendingSegmentsRecord> dbSegments = query
-        .map((index, r, ctx) -> PendingSegmentsRecord.fromResultSet(r))
-        .iterator();
+    final List<PendingSegmentRecord> existingPendingSegments
+        = transaction.findPendingSegmentsWithExactInterval(dataSource, interval);
 
     // Map from sequenceName to segment id
     final Map<String, SegmentIdWithShardSpec> sequenceToSegmentId = new HashMap<>();
-    while (dbSegments.hasNext()) {
-      final PendingSegmentsRecord record = dbSegments.next();
-      final SegmentIdWithShardSpec segmentId =
-          jsonMapper.readValue(record.getPayload(), SegmentIdWithShardSpec.class);
+    for (PendingSegmentRecord record : existingPendingSegments) {
+      final SegmentIdWithShardSpec segmentId = record.getId();
 
       // Consider only the pending segments allocated for the latest used segment version
       if (usedSegmentVersion == null || segmentId.getVersion().equals(usedSegmentVersion)) {
@@ -1309,7 +1290,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     // A pending segment having a higher partitionId must also be considered
     // to avoid clashes when inserting the pending segment created here.
     final Set<SegmentIdWithShardSpec> pendingSegments =
-        transaction.findPendingSegments(dataSource, interval)
+        transaction.findPendingSegmentsOverlappingInterval(dataSource, interval)
                    .stream()
                    .map(PendingSegmentRecord::getId)
                    .collect(Collectors.toSet());
@@ -1506,7 +1487,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     // A pending segment having a higher partitionId must also be considered
     // to avoid clashes when inserting the pending segment created here.
     final Set<SegmentIdWithShardSpec> pendings =
-        transaction.findPendingSegments(dataSource, interval)
+        transaction.findPendingSegmentsOverlappingInterval(dataSource, interval)
                    .stream()
                    .map(PendingSegmentRecord::getId)
                    .collect(Collectors.toSet());
@@ -2528,7 +2509,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
   public List<PendingSegmentRecord> getPendingSegments(String datasource, Interval interval)
   {
     return inReadOnlyTransaction(
-        transaction -> transaction.findPendingSegments(datasource, interval)
+        transaction -> transaction.findPendingSegmentsOverlappingInterval(datasource, interval)
     );
   }
 

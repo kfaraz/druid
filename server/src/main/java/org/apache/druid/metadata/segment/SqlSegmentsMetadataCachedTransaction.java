@@ -209,14 +209,21 @@ public class SqlSegmentsMetadataCachedTransaction implements SqlSegmentsMetadata
   }
 
   @Override
-  public List<SegmentIdWithShardSpec> findPendingSegmentIds(String dataSource, String sequenceName, Interval interval)
+  public List<SegmentIdWithShardSpec> findPendingSegmentIdsWithExactInterval(String dataSource, String sequenceName, Interval interval)
   {
     // TODO
     return List.of();
   }
 
   @Override
-  public List<PendingSegmentRecord> findPendingSegments(String dataSource, Interval interval)
+  public List<PendingSegmentRecord> findPendingSegmentsOverlappingInterval(String dataSource, Interval interval)
+  {
+    // TODO
+    return List.of();
+  }
+
+  @Override
+  public List<PendingSegmentRecord> findPendingSegmentsWithExactInterval(String dataSource, Interval interval)
   {
     // TODO
     return List.of();

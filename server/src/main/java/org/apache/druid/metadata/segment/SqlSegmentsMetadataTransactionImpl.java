@@ -229,29 +229,35 @@ public class SqlSegmentsMetadataTransactionImpl implements SqlSegmentsMetadataTr
       String sequencePreviousId
   )
   {
-    return query.getPendingSegmentIds(dataSource, sequenceName, sequencePreviousId);
+    return query.retrievePendingSegmentIds(dataSource, sequenceName, sequencePreviousId);
   }
 
   @Override
-  public List<SegmentIdWithShardSpec> findPendingSegmentIds(
+  public List<SegmentIdWithShardSpec> findPendingSegmentIdsWithExactInterval(
       String dataSource,
       String sequenceName,
       Interval interval
   )
   {
-    return query.getPendingSegmentIds(dataSource, sequenceName, interval);
+    return query.retrievePendingSegmentIdsWithExactInterval(dataSource, sequenceName, interval);
   }
 
   @Override
-  public List<PendingSegmentRecord> findPendingSegments(String dataSource, Interval interval)
+  public List<PendingSegmentRecord> findPendingSegmentsOverlappingInterval(String dataSource, Interval interval)
   {
-    return query.getPendingSegmentsForInterval(dataSource, interval);
+    return query.retrievePendingSegmentsOverlappingInterval(dataSource, interval);
+  }
+
+  @Override
+  public List<PendingSegmentRecord> findPendingSegmentsWithExactInterval(String dataSource, Interval interval)
+  {
+    return query.retrievePendingSegmentsWithExactInterval(dataSource, interval);
   }
 
   @Override
   public List<PendingSegmentRecord> findPendingSegments(String dataSource, String taskAllocatorId)
   {
-    return query.getPendingSegmentsForTaskAllocatorId(dataSource, taskAllocatorId);
+    return query.retrievePendingSegmentsForTaskAllocatorId(dataSource, taskAllocatorId);
   }
 
   @Override

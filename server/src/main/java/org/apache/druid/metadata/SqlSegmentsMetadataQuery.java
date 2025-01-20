@@ -157,14 +157,7 @@ public class SqlSegmentsMetadataQuery
   {
     return retrieveSegmentsPlus(
         dataSource,
-        intervals,
-        null,
-        IntervalMode.OVERLAPS,
-        true,
-        null,
-        null,
-        null,
-        null
+        intervals, null, IntervalMode.OVERLAPS, true, null, null, null, null
     );
   }
 
@@ -600,7 +593,7 @@ public class SqlSegmentsMetadataQuery
     return null;
   }
 
-  public List<SegmentIdWithShardSpec> getPendingSegmentIds(
+  public List<SegmentIdWithShardSpec> retrievePendingSegmentIds(
       final String dataSource,
       final String sequenceName,
       final String sequencePreviousId
@@ -628,7 +621,7 @@ public class SqlSegmentsMetadataQuery
         .list();
   }
 
-  public List<SegmentIdWithShardSpec> getPendingSegmentIds(
+  public List<SegmentIdWithShardSpec> retrievePendingSegmentIdsWithExactInterval(
       final String dataSource,
       final String sequenceName,
       final Interval interval
@@ -659,23 +652,48 @@ public class SqlSegmentsMetadataQuery
         .list();
   }
 
+  public List<PendingSegmentRecord> retrievePendingSegmentsWithExactInterval(
+      final String dataSource,
+      final Interval interval
+  )
+  {
+    final String sql = StringUtils.format(
+        "SELECT payload, sequence_name, sequence_prev_id, task_allocator_id, upgraded_from_segment_id"
+        + " FROM %1$s WHERE"
+        + " dataSource = :dataSource"
+        + " AND start = :start"
+        + " AND %2$send%2$s = :end",
+        dbTables.getPendingSegmentsTable(), connector.getQuoteString()
+    );
+    return handle
+        .createQuery(sql)
+        .bind("dataSource", dataSource)
+        .bind("start", interval.getStart().toString())
+        .bind("end", interval.getEnd().toString())
+        .map((index, r, ctx) -> PendingSegmentRecord.fromResultSet(r, jsonMapper))
+        .list();
+  }
+
   /**
-   * Fetches all the pending segments, whose interval overlaps with the given search interval, from the metadata store.
+   * Fetches all the pending segments, whose interval overlaps with the given
+   * search interval, from the metadata store.
    */
-  public List<PendingSegmentRecord> getPendingSegmentsForInterval(
+  public List<PendingSegmentRecord> retrievePendingSegmentsOverlappingInterval(
       final String dataSource,
       final Interval interval
   )
   {
     final boolean compareIntervalEndpointsAsStrings = Intervals.canCompareEndpointsAsStrings(interval);
 
-    String sql = "SELECT payload, sequence_name, sequence_prev_id, task_allocator_id, upgraded_from_segment_id"
-                 + " FROM " + dbTables.getPendingSegmentsTable()
-                 + " WHERE dataSource = :dataSource";
+    String sql = StringUtils.format(
+        "SELECT payload, sequence_name, sequence_prev_id, task_allocator_id, upgraded_from_segment_id"
+        + " FROM %1$s"
+        + " WHERE dataSource = :dataSource",
+        dbTables.getPendingSegmentsTable()
+    );
     if (compareIntervalEndpointsAsStrings) {
-      sql = sql
-            + " AND start < :end"
-            + StringUtils.format(" AND %1$send%1$s > :start", connector.getQuoteString());
+      sql += " AND start < :end"
+             + StringUtils.format(" AND %1$send%1$s > :start", connector.getQuoteString());
     }
 
     Query<Map<String, Object>> query = handle.createQuery(sql)
@@ -699,7 +717,7 @@ public class SqlSegmentsMetadataQuery
     return pendingSegments.build();
   }
 
-  public List<PendingSegmentRecord> getPendingSegmentsForTaskAllocatorId(
+  public List<PendingSegmentRecord> retrievePendingSegmentsForTaskAllocatorId(
       final String dataSource,
       final String taskAllocatorId
   )

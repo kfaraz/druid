@@ -95,13 +95,15 @@ public interface SqlSegmentsMetadataTransaction
       String sequencePreviousId
   );
 
-  List<SegmentIdWithShardSpec> findPendingSegmentIds(
+  List<SegmentIdWithShardSpec> findPendingSegmentIdsWithExactInterval(
       String dataSource,
       String sequenceName,
       Interval interval
   );
 
-  List<PendingSegmentRecord> findPendingSegments(String dataSource, Interval interval);
+  List<PendingSegmentRecord> findPendingSegmentsOverlappingInterval(String dataSource, Interval interval);
+
+  List<PendingSegmentRecord> findPendingSegmentsWithExactInterval(String dataSource, Interval interval);
 
   List<PendingSegmentRecord> findPendingSegments(String dataSource, String taskAllocatorId);
 
