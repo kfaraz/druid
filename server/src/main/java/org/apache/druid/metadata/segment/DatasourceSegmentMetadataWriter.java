@@ -22,6 +22,7 @@ package org.apache.druid.metadata.segment;
 import org.apache.druid.metadata.PendingSegmentRecord;
 import org.apache.druid.server.http.DataSegmentPlus;
 import org.apache.druid.timeline.DataSegment;
+import org.joda.time.DateTime;
 import org.joda.time.Interval;
 
 import java.util.List;
@@ -42,7 +43,7 @@ public interface DatasourceSegmentMetadataWriter
   /**
    * Marks the segments fully contained in the given interval as unused.
    */
-  int markSegmentsUnused(Interval interval);
+  int markSegmentsWithinIntervalAsUnused(Interval interval, DateTime updateTime);
 
   int deleteSegments(Set<DataSegment> segments);
 

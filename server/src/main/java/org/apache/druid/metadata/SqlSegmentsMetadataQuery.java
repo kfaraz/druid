@@ -487,9 +487,9 @@ public class SqlSegmentsMetadataQuery
    *
    * @return Number of segments updated.
    */
-  public int markSegmentsUnused(final String dataSource, final Interval interval)
+  public int markSegmentsUnused(final String dataSource, final Interval interval, final DateTime updateTime)
   {
-    return markSegmentsUnused(dataSource, interval, null);
+    return markSegmentsUnused(dataSource, interval, null, updateTime);
   }
 
   /**
@@ -498,7 +498,12 @@ public class SqlSegmentsMetadataQuery
    *
    * @return Number of segments updated.
    */
-  public int markSegmentsUnused(final String dataSource, final Interval interval, @Nullable final List<String> versions)
+  public int markSegmentsUnused(
+      final String dataSource,
+      final Interval interval,
+      @Nullable final List<String> versions,
+      final DateTime updateTime
+  )
   {
     if (versions != null && versions.isEmpty()) {
       return 0;
@@ -522,7 +527,7 @@ public class SqlSegmentsMetadataQuery
           .createStatement(sb.toString())
           .bind("dataSource", dataSource)
           .bind("used", false)
-          .bind("used_status_last_updated", DateTimes.nowUtc().toString());
+          .bind("used_status_last_updated", updateTime.toString());
 
       if (versions != null) {
         bindColumnValuesToQueryWithInCondition("version", versions, stmt);
@@ -554,7 +559,7 @@ public class SqlSegmentsMetadataQuery
           .bind("used", false)
           .bind("start", interval.getStart().toString())
           .bind("end", interval.getEnd().toString())
-          .bind("used_status_last_updated", DateTimes.nowUtc().toString());
+          .bind("used_status_last_updated", updateTime.toString());
 
       if (versions != null) {
         bindColumnValuesToQueryWithInCondition("version", versions, stmt);

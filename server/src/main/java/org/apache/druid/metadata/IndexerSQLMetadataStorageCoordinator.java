@@ -249,7 +249,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
   {
     final Integer numSegmentsMarkedUnused = retryDatasourceTransaction(
         dataSource,
-        transaction -> transaction.markSegmentsUnused(interval)
+        transaction -> transaction.markSegmentsWithinIntervalAsUnused(interval, DateTimes.nowUtc())
     );
 
     log.info(
@@ -655,7 +655,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
       SegmentsMetadataTransaction transaction,
       String datasource,
       Map<Interval, DataSegment> replaceIntervalToMaxId
-  ) throws JsonProcessingException
+  )
   {
     final List<PendingSegmentRecord> upgradedPendingSegments = new ArrayList<>();
 
@@ -749,7 +749,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
         createRequest.getPreviousSegmentId()
     );
     final String usedSegmentVersion = existingChunks.isEmpty() ? null : existingChunks.get(0).getVersion();
-    final CheckExistingSegmentIdResult result = findExistingPendingSegment(
+    final CheckExistingSegmentIdResult result = findPendingSegmentMatchingIntervalAndVersion(
         existingPendingSegmentIds,
         interval,
         createRequest.getSequenceName(),
@@ -890,7 +890,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
         createRequest.getSequenceName(),
         interval
     );
-    final CheckExistingSegmentIdResult result = findExistingPendingSegment(
+    final CheckExistingSegmentIdResult result = findPendingSegmentMatchingIntervalAndVersion(
         existingPendingSegmentIds,
         interval,
         createRequest.getSequenceName(),
@@ -987,7 +987,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
           request.getSequenceName(),
           request.getPreviousSegmentId()
       );
-      CheckExistingSegmentIdResult result = findExistingPendingSegment(
+      CheckExistingSegmentIdResult result = findPendingSegmentMatchingIntervalAndVersion(
           existingPendingSegmentIds,
           interval,
           request.getSequenceName(),
@@ -1000,7 +1000,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     return requestToResult;
   }
 
-  private CheckExistingSegmentIdResult findExistingPendingSegment(
+  private CheckExistingSegmentIdResult findPendingSegmentMatchingIntervalAndVersion(
       final List<SegmentIdWithShardSpec> pendingSegments,
       final Interval interval,
       final String sequenceName,
@@ -2590,7 +2590,6 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     return (handle, status) -> {
       final SegmentsMetadataTransaction transaction =
           transactionFactory.createTransactionForDatasource(dataSource, handle, status);
-
       try {
         return baseCallback.inTransaction(transaction);
       }

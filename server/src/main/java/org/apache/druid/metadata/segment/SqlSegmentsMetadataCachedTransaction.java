@@ -262,13 +262,13 @@ public class SqlSegmentsMetadataCachedTransaction implements SegmentsMetadataTra
   }
 
   @Override
-  public int markSegmentsUnused(Interval interval)
+  public int markSegmentsWithinIntervalAsUnused(Interval interval, DateTime updateTime)
   {
     verifyStillLeaderWithSameTerm();
-    int updatedCount = delegate.markSegmentsUnused(interval);
+    int updatedCount = delegate.markSegmentsWithinIntervalAsUnused(interval, updateTime);
 
     if (isLeaderWithSameTerm()) {
-      cacheWriter().markSegmentsUnused(interval);
+      cacheWriter().markSegmentsWithinIntervalAsUnused(interval, updateTime);
     }
 
     return updatedCount;

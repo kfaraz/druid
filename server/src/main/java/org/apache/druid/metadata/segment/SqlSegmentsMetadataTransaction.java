@@ -252,9 +252,9 @@ public class SqlSegmentsMetadataTransaction implements SegmentsMetadataTransacti
   }
 
   @Override
-  public int markSegmentsUnused(Interval interval)
+  public int markSegmentsWithinIntervalAsUnused(Interval interval, DateTime updateTime)
   {
-    return query.markSegmentsUnused(dataSource, interval);
+    return query.markSegmentsUnused(dataSource, interval, updateTime);
   }
 
   @Override

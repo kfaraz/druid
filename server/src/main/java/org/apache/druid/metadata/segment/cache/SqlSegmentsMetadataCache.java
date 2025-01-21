@@ -184,6 +184,10 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
 
     final AtomicInteger countOfRefreshedUnusedSegments = new AtomicInteger(0);
 
+    // TODO: should we poll all segments here or just poll used
+    //  and then separately poll only the required stuff for unused segments
+    //  because the number of unused segments can be very large
+
     final String getAllIdsSql = "SELECT id, dataSource, used, used_status_last_updated FROM %s";
     connector.inReadOnlyTransaction(
         (handle, status) -> handle
@@ -198,17 +202,17 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
                 final DateTime lastUpdatedTime
                     = updatedColValue == null ? null : DateTimes.of(updatedColValue);
 
-                final SegmentState metadataState
-                    = new SegmentState(segmentId, dataSource, isUsed, lastUpdatedTime);
+                final SegmentState storedState
+                    = new SegmentState(isUsed, lastUpdatedTime);
 
                 final DatasourceSegmentCache cache
                     = datasourceToSegmentCache.computeIfAbsent(dataSource, ds -> new DatasourceSegmentCache());
 
-                if (cache.shouldRefreshSegment(metadataState)) {
-                  if (metadataState.isUsed()) {
+                if (cache.shouldRefreshSegment(segmentId, storedState)) {
+                  if (storedState.isUsed()) {
                     datasourceToRefreshSegmentIds.computeIfAbsent(dataSource, ds -> new HashSet<>())
                                                  .add(segmentId);
-                  } else if (cache.refreshUnusedSegment(metadataState)) {
+                  } else if (cache.refreshUnusedSegment(segmentId, storedState)) {
                     countOfRefreshedUnusedSegments.incrementAndGet();
                     emitDatasourceMetric(dataSource, "refreshed/unused", 1);
                   }
