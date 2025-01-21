@@ -27,7 +27,10 @@ import org.joda.time.Interval;
 import java.util.List;
 import java.util.Set;
 
-public interface DatasourceWriteTransaction
+/**
+ * Performs write operations on the segment metadata of a single datasource.
+ */
+public interface DatasourceSegmentMetadataWriter
 {
   /**
    * Inserts the given segments into the metadata store.

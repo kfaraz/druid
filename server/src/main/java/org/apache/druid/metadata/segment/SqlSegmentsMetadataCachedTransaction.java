@@ -35,6 +35,7 @@ import org.skife.jdbi.v2.Handle;
 import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * A {@link SegmentsMetadataTransaction} that performs reads using the cache
@@ -49,6 +50,8 @@ public class SqlSegmentsMetadataCachedTransaction implements SegmentsMetadataTra
   private final DruidLeaderSelector leaderSelector;
 
   private final int startTerm;
+
+  private final AtomicBoolean isRollingBack = new AtomicBoolean(false);
 
   public SqlSegmentsMetadataCachedTransaction(
       String dataSource,
@@ -81,14 +84,14 @@ public class SqlSegmentsMetadataCachedTransaction implements SegmentsMetadataTra
     return leaderSelector.isLeader() && startTerm == leaderSelector.localTerm();
   }
 
-  private DatasourceReadTransaction readCache()
+  private DatasourceSegmentMetadataReader cacheReader()
   {
-    return metadataCache.readDatasource(dataSource);
+    return metadataCache.readerForDatasource(dataSource);
   }
 
-  private DatasourceWriteTransaction writeCache()
+  private DatasourceSegmentMetadataWriter cacheWriter()
   {
-    return metadataCache.writeDatasource(dataSource);
+    return metadataCache.writerForDatasource(dataSource);
   }
 
   @Override
@@ -103,18 +106,30 @@ public class SqlSegmentsMetadataCachedTransaction implements SegmentsMetadataTra
     delegate.setRollbackOnly();
   }
 
+  @Override
+  public void complete()
+  {
+    if (isRollingBack.get()) {
+      // rollback the changes made to the cache
+    } else {
+      // commit the changes to the cache
+    }
+
+    delegate.complete();
+  }
+
   // READ METHODS
 
   @Override
   public Set<String> findExistingSegmentIds(Set<DataSegment> segments)
   {
-    return readCache().findExistingSegmentIds(segments);
+    return cacheReader().findExistingSegmentIds(segments);
   }
 
   @Override
   public Set<SegmentId> findUsedSegmentIdsOverlapping(Interval interval)
   {
-    return readCache().findUsedSegmentIdsOverlapping(interval);
+    return cacheReader().findUsedSegmentIdsOverlapping(interval);
   }
 
   @Override
@@ -141,19 +156,19 @@ public class SqlSegmentsMetadataCachedTransaction implements SegmentsMetadataTra
   @Override
   public CloseableIterator<DataSegment> findUsedSegmentsOverlappingAnyOf(List<Interval> intervals)
   {
-    return readCache().findUsedSegmentsOverlappingAnyOf(intervals);
+    return cacheReader().findUsedSegmentsOverlappingAnyOf(intervals);
   }
 
   @Override
   public List<DataSegment> findUsedSegments(Set<String> segmentIds)
   {
-    return readCache().findUsedSegments(segmentIds);
+    return cacheReader().findUsedSegments(segmentIds);
   }
 
   @Override
   public Set<DataSegmentPlus> findUsedSegmentsPlusOverlappingAnyOf(List<Interval> intervals)
   {
-    return readCache().findUsedSegmentsPlusOverlappingAnyOf(intervals);
+    return cacheReader().findUsedSegmentsPlusOverlappingAnyOf(intervals);
   }
 
   @Override
@@ -178,7 +193,7 @@ public class SqlSegmentsMetadataCachedTransaction implements SegmentsMetadataTra
   @Override
   public DataSegment findUsedSegment(String segmentId)
   {
-    return readCache().findUsedSegment(segmentId);
+    return cacheReader().findUsedSegment(segmentId);
   }
 
   @Override
@@ -231,7 +246,7 @@ public class SqlSegmentsMetadataCachedTransaction implements SegmentsMetadataTra
     delegate.insertSegments(segments);
 
     if (isLeaderWithSameTerm() && !segments.isEmpty()) {
-      writeCache().insertSegments(segments);
+      cacheWriter().insertSegments(segments);
     }
   }
 
@@ -242,7 +257,7 @@ public class SqlSegmentsMetadataCachedTransaction implements SegmentsMetadataTra
     delegate.insertSegmentsWithMetadata(segments);
 
     if (isLeaderWithSameTerm() && !segments.isEmpty()) {
-      writeCache().insertSegmentsWithMetadata(segments);
+      cacheWriter().insertSegmentsWithMetadata(segments);
     }
   }
 
@@ -253,7 +268,7 @@ public class SqlSegmentsMetadataCachedTransaction implements SegmentsMetadataTra
     int updatedCount = delegate.markSegmentsUnused(interval);
 
     if (isLeaderWithSameTerm()) {
-      writeCache().markSegmentsUnused(interval);
+      cacheWriter().markSegmentsUnused(interval);
     }
 
     return updatedCount;
@@ -266,7 +281,7 @@ public class SqlSegmentsMetadataCachedTransaction implements SegmentsMetadataTra
     int deletedCount = delegate.deleteSegments(segments);
 
     if (isLeaderWithSameTerm()) {
-      writeCache().deleteSegments(segments);
+      cacheWriter().deleteSegments(segments);
     }
 
     return deletedCount;

@@ -32,7 +32,10 @@ import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Set;
 
-public interface DatasourceReadTransaction
+/**
+ * Performs read operations on the segment metadata for a single datasource.
+ */
+public interface DatasourceSegmentMetadataReader
 {
   /**
    * Returns the IDs of segments (out of the given set) which already exist in

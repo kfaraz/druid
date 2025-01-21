@@ -19,8 +19,8 @@
 
 package org.apache.druid.metadata.segment.cache;
 
-import org.apache.druid.metadata.segment.DatasourceReadTransaction;
-import org.apache.druid.metadata.segment.DatasourceWriteTransaction;
+import org.apache.druid.metadata.segment.DatasourceSegmentMetadataReader;
+import org.apache.druid.metadata.segment.DatasourceSegmentMetadataWriter;
 
 public class NoopSegmentsMetadataCache implements SegmentsMetadataCache
 {
@@ -43,13 +43,13 @@ public class NoopSegmentsMetadataCache implements SegmentsMetadataCache
   }
 
   @Override
-  public DatasourceReadTransaction readDatasource(String dataSource)
+  public DatasourceSegmentMetadataReader readerForDatasource(String dataSource)
   {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public DatasourceWriteTransaction writeDatasource(String dataSource)
+  public DatasourceSegmentMetadataWriter writerForDatasource(String dataSource)
   {
     throw new UnsupportedOperationException();
   }

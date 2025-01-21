@@ -24,8 +24,8 @@ import org.apache.druid.java.util.common.CloseableIterators;
 import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.common.parsers.CloseableIterator;
 import org.apache.druid.metadata.PendingSegmentRecord;
-import org.apache.druid.metadata.segment.DatasourceReadTransaction;
-import org.apache.druid.metadata.segment.DatasourceWriteTransaction;
+import org.apache.druid.metadata.segment.DatasourceSegmentMetadataReader;
+import org.apache.druid.metadata.segment.DatasourceSegmentMetadataWriter;
 import org.apache.druid.segment.realtime.appenderator.SegmentIdWithShardSpec;
 import org.apache.druid.server.http.DataSegmentPlus;
 import org.apache.druid.timeline.DataSegment;
@@ -49,7 +49,7 @@ import java.util.stream.Collectors;
  */
 class DatasourceSegmentCache
     extends BaseCache
-    implements DatasourceReadTransaction, DatasourceWriteTransaction
+    implements DatasourceSegmentMetadataReader, DatasourceSegmentMetadataWriter
 {
   private static final DatasourceSegmentCache EMPTY_INSTANCE = new DatasourceSegmentCache();
 

@@ -27,7 +27,7 @@ import org.skife.jdbi.v2.Handle;
  * {@link Handle} and is meant to be short-lived.
  */
 public interface SegmentsMetadataTransaction
-    extends DatasourceReadTransaction, DatasourceWriteTransaction
+    extends DatasourceSegmentMetadataReader, DatasourceSegmentMetadataWriter
 {
   /**
    * @return The JDBI handle used in this transaction
@@ -38,4 +38,16 @@ public interface SegmentsMetadataTransaction
    * Marks this transaction to be rolled back.
    */
   void setRollbackOnly();
+
+  /**
+   * Completes the transaction by either committing it or rolling it back.
+   * This method must not be called from a {@link Callback}.
+   */
+  void complete();
+
+  @FunctionalInterface
+  interface Callback<T>
+  {
+    T inTransaction(SegmentsMetadataTransaction transaction) throws Exception;
+  }
 }

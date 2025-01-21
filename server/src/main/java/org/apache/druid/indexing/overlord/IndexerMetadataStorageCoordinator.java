@@ -427,14 +427,10 @@ public interface IndexerMetadataStorageCoordinator
   /**
    * Retrieve the segment for a given id from the metadata store. Return null if no such segment exists
    * <br>
-   * The segment {@code id} retrieval also considers the set of unused segments
-   * in the metadata store. Unused segments could be deleted by a kill task at any time and might lead to unexpected behaviour.
+   * The retrieval also considers the set of unused segments in the metadata store.
+   * Unused segments could be deleted by a kill task at any time and might lead to unexpected behaviour.
    * This option exists mainly to provide a consistent view of the metadata, for example, in calls from MSQ controller
    * and worker and would generally not be required.
-   *
-   * @param segmentId The segment id to retrieve
-   *
-   * @return DataSegment used segment corresponding to given id
    */
   DataSegment retrieveSegmentForId(String dataSource, String segmentId);
 

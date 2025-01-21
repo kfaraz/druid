@@ -36,8 +36,8 @@ import org.apache.druid.metadata.MetadataStorageTablesConfig;
 import org.apache.druid.metadata.SQLMetadataConnector;
 import org.apache.druid.metadata.SegmentsMetadataManagerConfig;
 import org.apache.druid.metadata.SqlSegmentsMetadataQuery;
-import org.apache.druid.metadata.segment.DatasourceReadTransaction;
-import org.apache.druid.metadata.segment.DatasourceWriteTransaction;
+import org.apache.druid.metadata.segment.DatasourceSegmentMetadataReader;
+import org.apache.druid.metadata.segment.DatasourceSegmentMetadataWriter;
 import org.apache.druid.query.DruidMetrics;
 import org.joda.time.DateTime;
 import org.joda.time.Duration;
@@ -140,14 +140,14 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
   }
 
   @Override
-  public DatasourceReadTransaction readDatasource(String dataSource)
+  public DatasourceSegmentMetadataReader readerForDatasource(String dataSource)
   {
     verifyCacheIsReady();
     return datasourceToSegmentCache.getOrDefault(dataSource, DatasourceSegmentCache.empty());
   }
 
   @Override
-  public DatasourceWriteTransaction writeDatasource(String dataSource)
+  public DatasourceSegmentMetadataWriter writerForDatasource(String dataSource)
   {
     verifyCacheIsReady();
     return datasourceToSegmentCache.computeIfAbsent(dataSource, ds -> new DatasourceSegmentCache());

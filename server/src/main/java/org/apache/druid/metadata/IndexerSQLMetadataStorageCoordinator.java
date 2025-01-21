@@ -48,7 +48,7 @@ import org.apache.druid.java.util.common.jackson.JacksonUtils;
 import org.apache.druid.java.util.common.lifecycle.LifecycleStart;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.java.util.common.parsers.CloseableIterator;
-import org.apache.druid.metadata.segment.DatasourceWriteTransaction;
+import org.apache.druid.metadata.segment.DatasourceSegmentMetadataWriter;
 import org.apache.druid.metadata.segment.SegmentsMetadataTransaction;
 import org.apache.druid.metadata.segment.SqlSegmentsMetadataTransactionFactory;
 import org.apache.druid.segment.SegmentMetadata;
@@ -75,6 +75,7 @@ import org.joda.time.chrono.ISOChronology;
 import org.skife.jdbi.v2.PreparedBatch;
 import org.skife.jdbi.v2.Query;
 import org.skife.jdbi.v2.ResultIterator;
+import org.skife.jdbi.v2.TransactionCallback;
 import org.skife.jdbi.v2.exceptions.CallbackFailedException;
 
 import javax.annotation.Nullable;
@@ -1619,7 +1620,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
   {
     return retryDatasourceTransaction(
         dataSource,
-        DatasourceWriteTransaction::deleteAllPendingSegments
+        DatasourceSegmentMetadataWriter::deleteAllPendingSegments
     );
   }
 
@@ -2559,30 +2560,48 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     return upgradedToSegmentIds;
   }
 
-  private <T> T retryDatasourceTransaction(String dataSource, DatasourceTransactionCallback<T> callback)
+  private <T> T retryDatasourceTransaction(
+      String dataSource,
+      SegmentsMetadataTransaction.Callback<T> callback
+  )
   {
     return connector.retryTransaction(
-        (handle, transactionStatus) -> callback.inTransaction(
-            transactionFactory.createTransactionForDatasource(dataSource, handle, transactionStatus)
-        ),
+        createTransactionCallback(dataSource, callback),
         3,
         getSqlMetadataMaxRetry()
     );
   }
 
-  private <T> T inReadOnlyDatasourceTransaction(String dataSource, DatasourceTransactionCallback<T> callback)
+  private <T> T inReadOnlyDatasourceTransaction(
+      String dataSource,
+      SegmentsMetadataTransaction.Callback<T> callback
+  )
   {
     return connector.inReadOnlyTransaction(
-        (handle, transactionStatus) -> callback.inTransaction(
-            transactionFactory.createTransactionForDatasource(dataSource, handle, transactionStatus)
-        )
+        createTransactionCallback(dataSource, callback)
     );
   }
 
-  @FunctionalInterface
-  private interface DatasourceTransactionCallback<T>
+  private <T> TransactionCallback<T> createTransactionCallback(
+      String dataSource,
+      SegmentsMetadataTransaction.Callback<T> baseCallback
+  )
   {
-    T inTransaction(SegmentsMetadataTransaction transaction) throws Exception;
+    return (handle, status) -> {
+      final SegmentsMetadataTransaction transaction =
+          transactionFactory.createTransactionForDatasource(dataSource, handle, status);
+
+      try {
+        return baseCallback.inTransaction(transaction);
+      }
+      catch (Exception e) {
+        transaction.setRollbackOnly();
+        throw e;
+      }
+      finally {
+        transaction.complete();
+      }
+    };
   }
 
   public static class DataStoreMetadataUpdateResult

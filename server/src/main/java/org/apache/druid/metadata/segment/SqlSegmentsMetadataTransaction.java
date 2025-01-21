@@ -99,6 +99,14 @@ public class SqlSegmentsMetadataTransaction implements SegmentsMetadataTransacti
   }
 
   @Override
+  public void complete()
+  {
+    // Do nothing here, the JDBI Handle will commit or rollback the transaction as needed
+  }
+
+  // READ METHODS
+
+  @Override
   public Set<String> findExistingSegmentIds(Set<DataSegment> segments)
   {
     final Set<String> existingSegmentIds = new HashSet<>();
@@ -208,6 +216,8 @@ public class SqlSegmentsMetadataTransaction implements SegmentsMetadataTransacti
       throw DruidException.defensive(e, "Error while reading unused segments");
     }
   }
+
+  // WRITE METHODS
 
   @Override
   public void insertSegments(Set<DataSegmentPlus> segments)

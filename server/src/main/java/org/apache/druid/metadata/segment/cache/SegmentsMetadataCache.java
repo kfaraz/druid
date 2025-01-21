@@ -19,14 +19,18 @@
 
 package org.apache.druid.metadata.segment.cache;
 
-import org.apache.druid.metadata.segment.DatasourceReadTransaction;
-import org.apache.druid.metadata.segment.DatasourceWriteTransaction;
+import org.apache.druid.metadata.segment.DatasourceSegmentMetadataReader;
+import org.apache.druid.metadata.segment.DatasourceSegmentMetadataWriter;
 
 /**
  * TODO:
  * -[x] Handle all cases of cache vs metadata store
  * -[x] Perform read writes to the cache only if it is READY
- * -[ ] Add APIs in cache to read/update
+ * -[x] Add APIs in cache to read/update
+ * -[ ] Figure out the best datastructure to cache pending segments
+ * -[ ] Add transaction API to return timeline and/or timeline holders
+ * -[ ] What about rollback strategy? If any command has failed, the transaction must be rolled back.
+ * We would need to undo the changes done so far to the cache. So, a better thing to do would be just not commit anything.
  * -[ ] Mark as used / unused should happen within TaskLockbox.giant()
  * -[x] Wire up cache in IndexerSQLMetadataStorageCoordinator
  * -[x] Just using a handle doesn't ensure a transaction. Make sure the read + write
@@ -51,8 +55,8 @@ public interface SegmentsMetadataCache
 
   boolean isReady();
 
-  DatasourceReadTransaction readDatasource(String dataSource);
+  DatasourceSegmentMetadataReader readerForDatasource(String dataSource);
 
-  DatasourceWriteTransaction writeDatasource(String dataSource);
+  DatasourceSegmentMetadataWriter writerForDatasource(String dataSource);
 
 }
