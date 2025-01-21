@@ -27,7 +27,7 @@ import org.apache.druid.metadata.segment.DatasourceSegmentMetadataWriter;
  * -[x] Handle all cases of cache vs metadata store
  * -[x] Perform read writes to the cache only if it is READY
  * -[x] Add APIs in cache to read/update
- * -[ ] Figure out the best datastructure to cache pending segments
+ * -[x] Figure out the best datastructure to cache pending segments
  * -[ ] Add transaction API to return timeline and/or timeline holders
  * -[ ] What about rollback strategy? If any command has failed, the transaction must be rolled back.
  * We would need to undo the changes done so far to the cache. So, a better thing to do would be just not commit anything.

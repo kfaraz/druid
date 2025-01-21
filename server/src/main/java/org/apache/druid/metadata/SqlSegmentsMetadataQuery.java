@@ -760,9 +760,12 @@ public class SqlSegmentsMetadataQuery
       final String taskAllocatorId
   )
   {
-    String sql = "SELECT payload, sequence_name, sequence_prev_id, task_allocator_id, upgraded_from_segment_id"
-                 + " FROM " + dbTables.getPendingSegmentsTable()
-                 + " WHERE dataSource = :dataSource AND task_allocator_id = :task_allocator_id";
+    final String sql = StringUtils.format(
+        "SELECT payload, sequence_name, sequence_prev_id, task_allocator_id, upgraded_from_segment_id"
+        + " FROM %1$s"
+        + " WHERE dataSource = :dataSource AND task_allocator_id = :task_allocator_id",
+        dbTables.getPendingSegmentsTable()
+    );
 
     Query<Map<String, Object>> query = handle.createQuery(sql)
                                              .bind("dataSource", dataSource)

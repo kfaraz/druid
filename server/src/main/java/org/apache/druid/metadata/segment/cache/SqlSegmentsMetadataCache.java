@@ -33,6 +33,7 @@ import org.apache.druid.java.util.emitter.EmittingLogger;
 import org.apache.druid.java.util.emitter.service.ServiceEmitter;
 import org.apache.druid.java.util.emitter.service.ServiceMetricEvent;
 import org.apache.druid.metadata.MetadataStorageTablesConfig;
+import org.apache.druid.metadata.PendingSegmentRecord;
 import org.apache.druid.metadata.SQLMetadataConnector;
 import org.apache.druid.metadata.SegmentsMetadataManagerConfig;
 import org.apache.druid.metadata.SqlSegmentsMetadataQuery;
@@ -42,6 +43,7 @@ import org.apache.druid.query.DruidMetrics;
 import org.joda.time.DateTime;
 import org.joda.time.Duration;
 
+import javax.annotation.Nullable;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -74,8 +76,8 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
   private final AtomicReference<CacheState> currentCacheState
       = new AtomicReference<>(CacheState.STOPPED);
 
-  private final ConcurrentHashMap<String, DatasourceSegmentCache> datasourceToSegmentCache
-      = new ConcurrentHashMap<>();
+  private final ConcurrentHashMap<String, DatasourceSegmentCache>
+      datasourceToSegmentCache = new ConcurrentHashMap<>();
   private final AtomicReference<DateTime> pollFinishTime = new AtomicReference<>();
 
   @Inject
@@ -198,15 +200,12 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
                 final String segmentId = r.getString("id");
                 final boolean isUsed = r.getBoolean("used");
                 final String dataSource = r.getString("dataSource");
-                final String updatedColValue = r.getString("used_status_last_updated");
-                final DateTime lastUpdatedTime
-                    = updatedColValue == null ? null : DateTimes.of(updatedColValue);
+                final DateTime lastUpdatedTime = nullSafeDate(r.getString("used_status_last_updated"));
 
-                final SegmentState storedState
-                    = new SegmentState(isUsed, lastUpdatedTime);
+                final SegmentState storedState = new SegmentState(isUsed, lastUpdatedTime);
 
-                final DatasourceSegmentCache cache
-                    = datasourceToSegmentCache.computeIfAbsent(dataSource, ds -> new DatasourceSegmentCache());
+                final DatasourceSegmentCache cache =
+                    datasourceToSegmentCache.computeIfAbsent(dataSource, ds -> new DatasourceSegmentCache());
 
                 if (cache.shouldRefreshSegment(segmentId, storedState)) {
                   if (storedState.isUsed()) {
@@ -235,6 +234,10 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
     }
 
     // TODO: handle changes made to the metadata store between these two database calls
+    //    there doesn't seem to be much point to lock the cache during this period
+    //    so go and fetch the segments and then refresh them
+    //    it is possible that the cache is now updated and the refresh is not needed after all
+    //    so the refresh should be idempotent
 
     // Remove unknown segment IDs from cache
     // This is safe to do since updates are always made first to metadata store and then to cache
@@ -248,6 +251,7 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
             "Removed [%d] unknown segment IDs from cache of datasource[%s].",
             numSegmentsRemoved, dataSource
         );
+        emitDatasourceMetric(dataSource, "deleted/unknown", numSegmentsRemoved);
       }
     });
 
@@ -282,7 +286,12 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
       );
     }
 
-    // TODO: poll pending segments
+    if (isStopped()) {
+      tearDown();
+      return;
+    }
+
+    pollPendingSegments();
 
     emitMetric("poll/time", sincePollStart.millisElapsed());
     pollFinishTime.set(DateTimes.nowUtc());
@@ -296,6 +305,43 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
       final long nextPollDelay = Math.max(pollDuration.getMillis() - sincePollStart.millisElapsed(), 0);
       pollExecutor.schedule(this::pollSegments, nextPollDelay, TimeUnit.MILLISECONDS);
     }
+  }
+
+  private void pollPendingSegments()
+  {
+    final String sql = StringUtils.format(
+        "SELECT payload, sequence_name, sequence_prev_id, upgraded_from_segment_id"
+        + " task_allocator_id, created_date FROM %1$s",
+        tablesConfig.get().getPendingSegmentsTable()
+    );
+
+    connector.inReadOnlyTransaction(
+        (handle, status) -> handle
+            .createQuery(sql)
+            .setFetchSize(connector.getStreamingFetchSize())
+            .map((index, r, ctx) -> {
+              try {
+                final PendingSegmentRecord record = PendingSegmentRecord.fromResultSet(r, jsonMapper);
+                final DateTime createdDate = nullSafeDate(r.getString("created_date"));
+
+                // TODO: use the created date
+
+                final DatasourceSegmentCache cache = datasourceToSegmentCache.computeIfAbsent(
+                    record.getId().getDataSource(),
+                    ds -> new DatasourceSegmentCache()
+                );
+
+                if (cache.shouldRefreshPendingSegment(record)) {
+                  cache.insertPendingSegment(record, false);
+                }
+
+                return 0;
+              }
+              catch (Exception e) {
+                return 1;
+              }
+            })
+    );
   }
 
   private String getSegmentsTable()
@@ -317,6 +363,12 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
                           .setDimension(DruidMetrics.DATASOURCE, datasource)
                           .setMetric(METRIC_PREFIX + metric, value)
     );
+  }
+
+  @Nullable
+  private static DateTime nullSafeDate(String date)
+  {
+    return date == null ? null : DateTimes.of(date);
   }
 
 }

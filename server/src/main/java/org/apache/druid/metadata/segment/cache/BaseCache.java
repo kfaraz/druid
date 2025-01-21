@@ -23,7 +23,7 @@ import com.google.common.base.Supplier;
 
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-public class BaseCache
+public abstract class BaseCache
 {
   private final ReentrantReadWriteLock stateLock;
 
@@ -51,14 +51,6 @@ public class BaseCache
     }
   }
 
-  public void withReadLock(Action action)
-  {
-    withReadLock(() -> {
-      action.perform();
-      return 0;
-    });
-  }
-
   public <T> T withReadLock(Supplier<T> action)
   {
     stateLock.readLock().lock();
@@ -70,6 +62,7 @@ public class BaseCache
     }
   }
 
+  @FunctionalInterface
   public interface Action
   {
     void perform();

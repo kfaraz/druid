@@ -115,6 +115,9 @@ public class SqlSegmentsMetadataCachedTransaction implements SegmentsMetadataTra
       // commit the changes to the cache
     }
 
+    // release the lock on the cache
+    // What if we don't acquire any lock?
+
     delegate.complete();
   }
 

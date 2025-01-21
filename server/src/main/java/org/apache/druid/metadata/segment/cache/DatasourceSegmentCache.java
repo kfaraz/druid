@@ -45,7 +45,7 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 /**
- * TODO: implement all remaining methods
+ * Datasource-level cache for segments and pending segments.
  */
 class DatasourceSegmentCache
     extends BaseCache
@@ -94,6 +94,11 @@ class DatasourceSegmentCache
     });
   }
 
+  boolean isEmpty()
+  {
+    return withReadLock(() -> idToSegmentState.isEmpty() && intervalToPendingSegments.isEmpty());
+  }
+
   /**
    * Checks if a segment needs to be refreshed. A refresh is required if the
    * cache has no known state for the given segment or if the metadata store
@@ -106,6 +111,18 @@ class DatasourceSegmentCache
       return cachedState == null
              || cachedState.getLastUpdatedTime().isBefore(metadataState.getLastUpdatedTime());
     });
+  }
+
+  /**
+   * Checks if a pending segment needs to be refreshed in the cache.
+   */
+  boolean shouldRefreshPendingSegment(PendingSegmentRecord record)
+  {
+    final SegmentIdWithShardSpec segmentId = record.getId();
+    return withReadLock(
+        () -> intervalToPendingSegments.getOrDefault(segmentId.getInterval(), Map.of())
+                                       .containsKey(segmentId.toString())
+    );
   }
 
   boolean refreshUnusedSegment(String segmentId, SegmentState newState)
@@ -428,13 +445,26 @@ class DatasourceSegmentCache
   @Override
   public void insertPendingSegment(PendingSegmentRecord pendingSegment, boolean skipSegmentLineageCheck)
   {
-
+    insertPendingSegments(List.of(pendingSegment), skipSegmentLineageCheck);
   }
 
   @Override
   public int insertPendingSegments(List<PendingSegmentRecord> pendingSegments, boolean skipSegmentLineageCheck)
   {
-    return 0;
+    return withWriteLock(() -> {
+      int insertedCount = 0;
+      for (PendingSegmentRecord record : pendingSegments) {
+        final SegmentIdWithShardSpec segmentId = record.getId();
+        PendingSegmentRecord oldValue =
+            intervalToPendingSegments.computeIfAbsent(segmentId.getInterval(), interval -> new HashMap<>())
+                                     .putIfAbsent(segmentId.toString(), record);
+        if (oldValue == null) {
+          ++insertedCount;
+        }
+      }
+
+      return insertedCount;
+    });
   }
 
   @Override
@@ -450,18 +480,40 @@ class DatasourceSegmentCache
   @Override
   public int deletePendingSegments(List<String> segmentIdsToDelete)
   {
-    return 0;
+    final Set<String> remainingIdsToDelete = new HashSet<>(segmentIdsToDelete);
+
+    withWriteLock(() -> intervalToPendingSegments.forEach(
+        (interval, pendingSegments) -> {
+          final Set<String> deletedIds =
+              remainingIdsToDelete.stream()
+                                  .map(pendingSegments::remove)
+                                  .filter(Objects::nonNull)
+                                  .map(record -> record.getId().toString())
+                                  .collect(Collectors.toSet());
+
+          remainingIdsToDelete.removeAll(deletedIds);
+        }
+    ));
+
+    return segmentIdsToDelete.size() - remainingIdsToDelete.size();
   }
 
   @Override
   public int deletePendingSegments(String taskAllocatorId)
   {
-    return 0;
+    return withWriteLock(() -> {
+      List<String> idsToDelete = findPendingSegmentsMatching(
+          record -> taskAllocatorId.equals(record.getTaskAllocatorId())
+      ).stream().map(record -> record.getId().toString()).collect(Collectors.toList());
+
+      return deletePendingSegments(idsToDelete);
+    });
   }
 
   @Override
   public int deletePendingSegmentsCreatedIn(Interval interval)
   {
+    // TODO
     return 0;
   }
 
