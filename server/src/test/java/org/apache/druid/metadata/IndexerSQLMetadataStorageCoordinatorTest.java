@@ -3385,10 +3385,7 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
   @Test
   public void testRetrieveUsedSegmentsAndCreatedDates()
   {
-    coordinator.commitSegments(
-        Set.of(defaultSegment),
-        new SegmentSchemaMapping(CentralizedDatasourceSchemaConfig.SCHEMA_VERSION)
-    );
+    coordinator.commitSegments(Set.of(defaultSegment), null);
 
     List<Pair<DataSegment, String>> resultForIntervalOnTheLeft =
         coordinator.retrieveUsedSegmentsAndCreatedDates(defaultSegment.getDataSource(), Collections.singletonList(Intervals.of("2000/2001")));
