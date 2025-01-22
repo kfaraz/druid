@@ -46,6 +46,9 @@ import java.util.stream.Collectors;
 
 /**
  * Datasource-level cache for segments and pending segments.
+ *
+ * TODO: track the created date for each pending segment as it might be needed
+ *  for delete.
  */
 class DatasourceSegmentCache
     extends BaseCache
@@ -249,6 +252,8 @@ class DatasourceSegmentCache
   @Override
   public Set<String> findUnusedSegmentIdsWithExactIntervalAndVersion(Interval interval, String version)
   {
+    // TODO: implement this or may be add a variant of this method to find the
+    //  max unused segment ID for an exact interval and version
     throw DruidException.defensive("Unsupported: Unused segments are not cached");
   }
 
@@ -381,9 +386,10 @@ class DatasourceSegmentCache
   // WRITE METHODS
 
   @Override
-  public void insertSegments(Set<DataSegmentPlus> segments)
+  public int insertSegments(Set<DataSegmentPlus> segments)
   {
-    withWriteLock(() -> {
+    return withWriteLock(() -> {
+      int numInsertedSegments = 0;
       for (DataSegmentPlus segmentPlus : segments) {
         final DataSegment segment = segmentPlus.getDataSegment();
         final String segmentId = getId(segment);
@@ -392,38 +398,45 @@ class DatasourceSegmentCache
             segmentPlus.getUsedStatusLastUpdatedDate()
         );
 
-        if (state.isUsed()) {
-          refreshUsedSegment(segmentPlus);
-        } else {
-          refreshUnusedSegment(segmentId, state);
+        final boolean updated = state.isUsed()
+                                ? refreshUsedSegment(segmentPlus)
+                                : refreshUnusedSegment(segmentId, state);
+        if (updated) {
+          ++numInsertedSegments;
         }
       }
+
+      return numInsertedSegments;
     });
   }
 
   @Override
-  public void insertSegmentsWithMetadata(Set<DataSegmentPlus> segments)
+  public int insertSegmentsWithMetadata(Set<DataSegmentPlus> segments)
   {
-    insertSegments(segments);
+    return insertSegments(segments);
   }
 
   @Override
   public int markSegmentsWithinIntervalAsUnused(Interval interval, DateTime updateTime)
   {
+    int updatedCount = 0;
     try (CloseableIterator<DataSegment> segmentIterator
              = findUsedSegmentsOverlappingAnyOf(List.of(interval))) {
       while (segmentIterator.hasNext()) {
-        refreshUnusedSegment(
+        boolean updated = refreshUnusedSegment(
             getId(segmentIterator.next()),
             new SegmentState(false, updateTime)
         );
+        if (updated) {
+          ++updatedCount;
+        }
       }
     }
     catch (IOException e) {
       throw DruidException.defensive("Error while updating segments in cache");
     }
 
-    return 0;
+    return updatedCount;
   }
 
   @Override
@@ -437,15 +450,16 @@ class DatasourceSegmentCache
   }
 
   @Override
-  public void updateSegmentPayload(DataSegment segment)
+  public boolean updateSegmentPayload(DataSegment segment)
   {
+    // Segment payload updates are not supported since we don't know if the segment is used or unused
     throw DruidException.defensive("Unsupported: Segment payload updates are not supported in the cache");
   }
 
   @Override
-  public void insertPendingSegment(PendingSegmentRecord pendingSegment, boolean skipSegmentLineageCheck)
+  public boolean insertPendingSegment(PendingSegmentRecord pendingSegment, boolean skipSegmentLineageCheck)
   {
-    insertPendingSegments(List.of(pendingSegment), skipSegmentLineageCheck);
+    return insertPendingSegments(List.of(pendingSegment), skipSegmentLineageCheck) > 0;
   }
 
   @Override
@@ -533,7 +547,8 @@ class DatasourceSegmentCache
 
   private static boolean anyIntervalOverlaps(List<Interval> intervals, Interval testInterval)
   {
-    return intervals.stream().anyMatch(interval -> interval.overlaps(testInterval));
+    return intervals.isEmpty()
+           || intervals.stream().anyMatch(interval -> interval.overlaps(testInterval));
   }
 
   private static String getId(DataSegment segment)

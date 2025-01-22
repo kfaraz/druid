@@ -49,6 +49,7 @@ import org.skife.jdbi.v2.Update;
 import org.skife.jdbi.v2.util.StringMapper;
 
 import javax.annotation.Nullable;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -346,14 +347,29 @@ public class SqlSegmentsMetadataQuery
       Set<String> segmentIds
   )
   {
+    try (CloseableIterator<DataSegmentPlus> iterator
+             = retrieveSegmentsByIdIterator(datasource, segmentIds)) {
+      return ImmutableList.copyOf(iterator);
+    }
+    catch (IOException e) {
+      throw DruidException.defensive(e, "Error while retrieving segments from metadata store");
+    }
+  }
+
+  public CloseableIterator<DataSegmentPlus> retrieveSegmentsByIdIterator(
+      String datasource,
+      Set<String> segmentIds
+  )
+  {
     final List<List<String>> partitionedSegmentIds
         = Lists.partition(new ArrayList<>(segmentIds), 100);
 
-    final List<DataSegmentPlus> fetchedSegments = new ArrayList<>(segmentIds.size());
+    final List<CloseableIterator<DataSegmentPlus>> fetchedSegments
+        = new ArrayList<>(partitionedSegmentIds.size());
     for (List<String> partition : partitionedSegmentIds) {
-      fetchedSegments.addAll(retrieveSegmentBatchById(datasource, partition, false));
+      fetchedSegments.add(retrieveSegmentBatchById(datasource, partition, false));
     }
-    return fetchedSegments;
+    return CloseableIterators.concat(fetchedSegments);
   }
 
   public List<DataSegmentPlus> retrieveSegmentsWithSchemaById(
@@ -364,21 +380,29 @@ public class SqlSegmentsMetadataQuery
     final List<List<String>> partitionedSegmentIds
         = Lists.partition(new ArrayList<>(segmentIds), 100);
 
-    final List<DataSegmentPlus> fetchedSegments = new ArrayList<>(segmentIds.size());
+    final List<CloseableIterator<DataSegmentPlus>> fetchedSegments
+        = new ArrayList<>(partitionedSegmentIds.size());
     for (List<String> partition : partitionedSegmentIds) {
-      fetchedSegments.addAll(retrieveSegmentBatchById(datasource, partition, true));
+      fetchedSegments.add(retrieveSegmentBatchById(datasource, partition, true));
     }
-    return fetchedSegments;
+
+    try (CloseableIterator<DataSegmentPlus> iterator
+             = CloseableIterators.concat(fetchedSegments)) {
+      return ImmutableList.copyOf(iterator);
+    }
+    catch (IOException e) {
+      throw DruidException.defensive(e, "Error while retrieving segments with schema from metadata store.");
+    }
   }
 
-  private List<DataSegmentPlus> retrieveSegmentBatchById(
+  private CloseableIterator<DataSegmentPlus> retrieveSegmentBatchById(
       String datasource,
       List<String> segmentIds,
       boolean includeSchemaInfo
   )
   {
     if (segmentIds.isEmpty()) {
-      return Collections.emptyList();
+      return CloseableIterators.withEmptyBaggage(Collections.emptyIterator());
     }
 
     ResultIterator<DataSegmentPlus> resultIterator;
@@ -438,7 +462,7 @@ public class SqlSegmentsMetadataQuery
           .iterator();
     }
 
-    return Lists.newArrayList(resultIterator);
+    return CloseableIterators.wrap(resultIterator, resultIterator);
   }
 
   /**

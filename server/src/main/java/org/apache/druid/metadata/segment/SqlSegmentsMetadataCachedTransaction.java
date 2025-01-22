@@ -36,6 +36,7 @@ import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
 
 /**
  * A {@link SegmentsMetadataTransaction} that performs reads using the cache
@@ -66,9 +67,9 @@ public class SqlSegmentsMetadataCachedTransaction implements SegmentsMetadataTra
     this.leaderSelector = leaderSelector;
 
     if (leaderSelector.isLeader()) {
-      throw InternalServerError.exception("Not leader anymore");
-    } else {
       this.startTerm = leaderSelector.localTerm();
+    } else {
+      throw InternalServerError.exception("Not leader anymore");
     }
   }
 
@@ -109,10 +110,19 @@ public class SqlSegmentsMetadataCachedTransaction implements SegmentsMetadataTra
   @Override
   public void complete()
   {
+    // TODO: complete this implementation
+
     if (isRollingBack.get()) {
       // rollback the changes made to the cache
     } else {
       // commit the changes to the cache
+      // or may be we can commit right at the end
+      // since I don't think we ever read what we have just written
+      // so it should be okay to postpone the writes until the very end
+      // since reads from cache are going to be fast, it should be okay to hold
+      // a write lock for the entire duration of the transaction
+
+      // Is there any alternative? That is also consistent?
     }
 
     // release the lock on the cache
@@ -205,8 +215,7 @@ public class SqlSegmentsMetadataCachedTransaction implements SegmentsMetadataTra
       String sequencePreviousId
   )
   {
-    // TODO
-    return List.of();
+    return cacheReader().findPendingSegmentIds(sequenceName, sequencePreviousId);
   }
 
   @Override
@@ -215,94 +224,70 @@ public class SqlSegmentsMetadataCachedTransaction implements SegmentsMetadataTra
       Interval interval
   )
   {
-    // TODO
-    return List.of();
+    return cacheReader().findPendingSegmentIdsWithExactInterval(sequenceName, interval);
   }
 
   @Override
   public List<PendingSegmentRecord> findPendingSegmentsOverlapping(Interval interval)
   {
-    // TODO
-    return List.of();
+    return cacheReader().findPendingSegmentsOverlapping(interval);
   }
 
   @Override
   public List<PendingSegmentRecord> findPendingSegmentsWithExactInterval(Interval interval)
   {
-    // TODO
-    return List.of();
+    return cacheReader().findPendingSegmentsWithExactInterval(interval);
   }
 
   @Override
   public List<PendingSegmentRecord> findPendingSegments(String taskAllocatorId)
   {
-    // TODO
-    return List.of();
+    return cacheReader().findPendingSegments(taskAllocatorId);
   }
 
   // WRITE METHODS
 
   @Override
-  public void insertSegments(Set<DataSegmentPlus> segments)
+  public int insertSegments(Set<DataSegmentPlus> segments)
   {
-    verifyStillLeaderWithSameTerm();
-    delegate.insertSegments(segments);
-
-    if (isLeaderWithSameTerm() && !segments.isEmpty()) {
-      cacheWriter().insertSegments(segments);
-    }
+    return performWriteAction(writer -> writer.insertSegments(segments));
   }
 
   @Override
-  public void insertSegmentsWithMetadata(Set<DataSegmentPlus> segments)
+  public int insertSegmentsWithMetadata(Set<DataSegmentPlus> segments)
   {
-    verifyStillLeaderWithSameTerm();
-    delegate.insertSegmentsWithMetadata(segments);
-
-    if (isLeaderWithSameTerm() && !segments.isEmpty()) {
-      cacheWriter().insertSegmentsWithMetadata(segments);
-    }
+    return performWriteAction(writer -> writer.insertSegmentsWithMetadata(segments));
   }
 
   @Override
   public int markSegmentsWithinIntervalAsUnused(Interval interval, DateTime updateTime)
   {
-    verifyStillLeaderWithSameTerm();
-    int updatedCount = delegate.markSegmentsWithinIntervalAsUnused(interval, updateTime);
-
-    if (isLeaderWithSameTerm()) {
-      cacheWriter().markSegmentsWithinIntervalAsUnused(interval, updateTime);
-    }
-
-    return updatedCount;
+    return performWriteAction(
+        writer -> writer.markSegmentsWithinIntervalAsUnused(interval, updateTime)
+    );
   }
 
   @Override
   public int deleteSegments(Set<DataSegment> segments)
   {
-    verifyStillLeaderWithSameTerm();
-    int deletedCount = delegate.deleteSegments(segments);
-
-    if (isLeaderWithSameTerm()) {
-      cacheWriter().deleteSegments(segments);
-    }
-
-    return deletedCount;
+    return performWriteAction(writer -> writer.deleteSegments(segments));
   }
 
   @Override
-  public void updateSegmentPayload(DataSegment segment)
+  public boolean updateSegmentPayload(DataSegment segment)
   {
-    // TODO
+    return performWriteAction(writer -> writer.updateSegmentPayload(segment));
   }
 
   @Override
-  public void insertPendingSegment(
+  public boolean insertPendingSegment(
       PendingSegmentRecord pendingSegment,
       boolean skipSegmentLineageCheck
   )
   {
-
+    return performWriteAction(
+        writer -> writer.insertPendingSegment(pendingSegment, skipSegmentLineageCheck)
+    );
   }
 
   @Override
@@ -311,32 +296,52 @@ public class SqlSegmentsMetadataCachedTransaction implements SegmentsMetadataTra
       boolean skipSegmentLineageCheck
   )
   {
-    // TODO
-    return 0;
+    return performWriteAction(
+        writer -> writer.insertPendingSegments(pendingSegments, skipSegmentLineageCheck)
+    );
   }
 
   @Override
   public int deleteAllPendingSegments()
   {
-    return 0;
+    return performWriteAction(
+        DatasourceSegmentMetadataWriter::deleteAllPendingSegments
+    );
   }
 
   @Override
   public int deletePendingSegments(List<String> segmentIdsToDelete)
   {
-    // TODO
-    return 0;
+    return performWriteAction(
+        writer -> writer.deletePendingSegments(segmentIdsToDelete)
+    );
   }
 
   @Override
   public int deletePendingSegments(String taskAllocatorId)
   {
-    return 0;
+    return performWriteAction(
+        writer -> writer.deletePendingSegments(taskAllocatorId)
+    );
   }
 
   @Override
   public int deletePendingSegmentsCreatedIn(Interval interval)
   {
-    return 0;
+    return performWriteAction(
+        writer -> writer.deletePendingSegmentsCreatedIn(interval)
+    );
+  }
+
+  private <T> T performWriteAction(Function<DatasourceSegmentMetadataWriter, T> action)
+  {
+    verifyStillLeaderWithSameTerm();
+    final T result = action.apply(delegate);
+
+    if (isLeaderWithSameTerm()) {
+      action.apply(cacheWriter());
+    }
+
+    return result;
   }
 }

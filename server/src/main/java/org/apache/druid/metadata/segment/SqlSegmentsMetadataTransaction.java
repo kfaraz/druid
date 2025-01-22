@@ -220,9 +220,9 @@ public class SqlSegmentsMetadataTransaction implements SegmentsMetadataTransacti
   // WRITE METHODS
 
   @Override
-  public void insertSegments(Set<DataSegmentPlus> segments)
+  public int insertSegments(Set<DataSegmentPlus> segments)
   {
-    insertSegmentsInBatches(
+    return insertSegmentsInBatches(
         dataSource,
         segments,
         "INSERT INTO %1$s "
@@ -235,9 +235,9 @@ public class SqlSegmentsMetadataTransaction implements SegmentsMetadataTransacti
   }
 
   @Override
-  public void insertSegmentsWithMetadata(Set<DataSegmentPlus> segments)
+  public int insertSegmentsWithMetadata(Set<DataSegmentPlus> segments)
   {
-    insertSegmentsInBatches(
+    return insertSegmentsInBatches(
         dataSource,
         segments,
         "INSERT INTO %1$s "
@@ -276,14 +276,16 @@ public class SqlSegmentsMetadataTransaction implements SegmentsMetadataTransacti
   }
 
   @Override
-  public void updateSegmentPayload(DataSegment segment)
+  public boolean updateSegmentPayload(DataSegment segment)
   {
     final String sql = "UPDATE %s SET payload = :payload WHERE id = :id";
-    handle
+    int updatedCount = handle
         .createStatement(StringUtils.format(sql, dbTables.getSegmentsTable()))
         .bind("id", segment.getId().toString())
         .bind("payload", getJsonBytes(segment))
         .execute();
+
+    return updatedCount > 0;
   }
 
   @Override
@@ -323,14 +325,14 @@ public class SqlSegmentsMetadataTransaction implements SegmentsMetadataTransacti
   }
 
   @Override
-  public void insertPendingSegment(
+  public boolean insertPendingSegment(
       PendingSegmentRecord pendingSegment,
       boolean skipSegmentLineageCheck
   )
   {
     final SegmentIdWithShardSpec segmentId = pendingSegment.getId();
     final Interval interval = segmentId.getInterval();
-    handle.createStatement(getSqlToInsertPendingSegment())
+    int updatedCount = handle.createStatement(getSqlToInsertPendingSegment())
           .bind("id", segmentId.toString())
           .bind("dataSource", dataSource)
           .bind("created_date", DateTimes.nowUtc().toString())
@@ -346,6 +348,8 @@ public class SqlSegmentsMetadataTransaction implements SegmentsMetadataTransacti
           .bind("task_allocator_id", pendingSegment.getTaskAllocatorId())
           .bind("upgraded_from_segment_id", pendingSegment.getUpgradedFromSegmentId())
           .execute();
+
+    return updatedCount > 0;
   }
 
   @Override
@@ -461,7 +465,7 @@ public class SqlSegmentsMetadataTransaction implements SegmentsMetadataTransacti
     return query.execute();
   }
 
-  private void insertSegmentsInBatches(
+  private int insertSegmentsInBatches(
       final String dataSource,
       final Set<DataSegmentPlus> segments,
       String insertSql
@@ -481,6 +485,7 @@ public class SqlSegmentsMetadataTransaction implements SegmentsMetadataTransacti
         StringUtils.format(insertSql, dbTables.getSegmentsTable(), connector.getQuoteString())
     );
 
+    int numInsertedSegments = 0;
     for (List<DataSegmentPlus> partition : partitionedSegments) {
       for (DataSegmentPlus segmentPlus : partition) {
         final DataSegment segment = segmentPlus.getDataSegment();
@@ -510,7 +515,9 @@ public class SqlSegmentsMetadataTransaction implements SegmentsMetadataTransacti
 
       final List<DataSegment> failedInserts = new ArrayList<>();
       for (int i = 0; i < partition.size(); ++i) {
-        if (affectedRows[i] != 1) {
+        if (affectedRows[i] == 1) {
+          ++numInsertedSegments;
+        } else {
           failedInserts.add(partition.get(i).getDataSegment());
         }
       }
@@ -521,6 +528,8 @@ public class SqlSegmentsMetadataTransaction implements SegmentsMetadataTransacti
         );
       }
     }
+
+    return numInsertedSegments;
   }
 
   private String getSqlToInsertPendingSegment()

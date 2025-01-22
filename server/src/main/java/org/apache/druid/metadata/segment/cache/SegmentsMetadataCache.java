@@ -24,25 +24,15 @@ import org.apache.druid.metadata.segment.DatasourceSegmentMetadataWriter;
 
 /**
  * TODO:
- * -[x] Handle all cases of cache vs metadata store
- * -[x] Perform read writes to the cache only if it is READY
- * -[x] Add APIs in cache to read/update
- * -[x] Figure out the best datastructure to cache pending segments
+ * -[ ] Finish polling of pending segments properly
+ * -[ ] Implement rollback and commit for cached transaction
+ * -[ ] Acquire read/write lock on datasource cache when transaction starts.
+ * -[ ] Add different factory methods to create read vs write transaction
+ * -[ ] Write a basic unit test to verify that things are working as expected
+ * -[ ] Wire up cache in OverlordCompactionScheduler and SqlSegmentsMetadataManager,
+ * otherwise we will end up having two copies of the segment timeline and stuff
+ * The timeline inside the cache can replace the SegmentTimeline of SqlSegmentsMetadataManager
  * -[ ] Add transaction API to return timeline and/or timeline holders
- * -[ ] What about rollback strategy? If any command has failed, the transaction must be rolled back.
- * We would need to undo the changes done so far to the cache. So, a better thing to do would be just not commit anything.
- * -[ ] Mark as used / unused should happen within TaskLockbox.giant()
- * -[x] Wire up cache in IndexerSQLMetadataStorageCoordinator
- * -[x] Just using a handle doesn't ensure a transaction. Make sure the read + write
- * stuff happens in a transaction wherever applicable
- * -[ ] Poll and cache pending segments too
- * -[ ] How to ensure that cache is not updated while some read is happening.
- * - We cannot acquire TaskLockbox.giant as that would significantly slow down read operations.
- * - I think read from cache would be fast anyway. We just need to ensure that we read a consistent state
- * - and I think that would be ensured by the lock inside the DatasourceSegmentCache.
- * - BUT we want the lock to be held for the ENTIRE DURATION of the transaction,
- * not just while we are doing the actual read operation.
- * -[ ] Wire up cache in OverlordCompactionScheduler
  * -[ ] Write unit tests
  * -[ ] Write integration tests
  * -[ ] Write a benchmark

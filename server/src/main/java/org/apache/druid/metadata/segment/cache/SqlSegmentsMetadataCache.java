@@ -29,6 +29,7 @@ import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.concurrent.ScheduledExecutorFactory;
 import org.apache.druid.java.util.common.lifecycle.LifecycleStart;
 import org.apache.druid.java.util.common.lifecycle.LifecycleStop;
+import org.apache.druid.java.util.common.parsers.CloseableIterator;
 import org.apache.druid.java.util.emitter.EmittingLogger;
 import org.apache.druid.java.util.emitter.service.ServiceEmitter;
 import org.apache.druid.java.util.emitter.service.ServiceMetricEvent;
@@ -40,10 +41,15 @@ import org.apache.druid.metadata.SqlSegmentsMetadataQuery;
 import org.apache.druid.metadata.segment.DatasourceSegmentMetadataReader;
 import org.apache.druid.metadata.segment.DatasourceSegmentMetadataWriter;
 import org.apache.druid.query.DruidMetrics;
+import org.apache.druid.server.http.DataSegmentPlus;
 import org.joda.time.DateTime;
 import org.joda.time.Duration;
+import org.skife.jdbi.v2.ResultIterator;
 
 import javax.annotation.Nullable;
+import java.io.IOException;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -107,7 +113,7 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
     if (isCacheEnabled && currentCacheState.compareAndSet(CacheState.STOPPED, CacheState.STARTING)) {
       // Clean up any stray entries in the cache left over due to race conditions
       tearDown();
-      pollExecutor.schedule(this::pollSegments, pollDuration.getMillis(), TimeUnit.MILLISECONDS);
+      pollExecutor.schedule(this::pollMetadataStore, pollDuration.getMillis(), TimeUnit.MILLISECONDS);
     }
   }
 
@@ -173,7 +179,7 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
     datasourceToSegmentCache.clear();
   }
 
-  private void pollSegments()
+  private void pollMetadataStore()
   {
     final Stopwatch sincePollStart = Stopwatch.createStarted();
     if (isStopped()) {
@@ -181,117 +187,35 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
       return;
     }
 
-    final Map<String, Set<String>> datasourceToKnownSegmentIds = new HashMap<>();
     final Map<String, Set<String>> datasourceToRefreshSegmentIds = new HashMap<>();
-
-    final AtomicInteger countOfRefreshedUnusedSegments = new AtomicInteger(0);
-
-    // TODO: should we poll all segments here or just poll used
-    //  and then separately poll only the required stuff for unused segments
-    //  because the number of unused segments can be very large
-
-    final String getAllIdsSql = "SELECT id, dataSource, used, used_status_last_updated FROM %s";
-    connector.inReadOnlyTransaction(
-        (handle, status) -> handle
-            .createQuery(StringUtils.format(getAllIdsSql, getSegmentsTable()))
-            .setFetchSize(connector.getStreamingFetchSize())
-            .map((index, r, ctx) -> {
-              try {
-                final String segmentId = r.getString("id");
-                final boolean isUsed = r.getBoolean("used");
-                final String dataSource = r.getString("dataSource");
-                final DateTime lastUpdatedTime = nullSafeDate(r.getString("used_status_last_updated"));
-
-                final SegmentState storedState = new SegmentState(isUsed, lastUpdatedTime);
-
-                final DatasourceSegmentCache cache =
-                    datasourceToSegmentCache.computeIfAbsent(dataSource, ds -> new DatasourceSegmentCache());
-
-                if (cache.shouldRefreshSegment(segmentId, storedState)) {
-                  if (storedState.isUsed()) {
-                    datasourceToRefreshSegmentIds.computeIfAbsent(dataSource, ds -> new HashSet<>())
-                                                 .add(segmentId);
-                  } else if (cache.refreshUnusedSegment(segmentId, storedState)) {
-                    countOfRefreshedUnusedSegments.incrementAndGet();
-                    emitDatasourceMetric(dataSource, "refreshed/unused", 1);
-                  }
-                }
-
-                datasourceToKnownSegmentIds.computeIfAbsent(dataSource, ds -> new HashSet<>())
-                                           .add(segmentId);
-                return 0;
-              }
-              catch (Exception e) {
-                log.makeAlert(e, "Failed to read segments from metadata store.").emit();
-                // Do not throw an exception so that polling continues
-                return 1;
-              }
-            })
-    );
-
-    if (countOfRefreshedUnusedSegments.get() > 0) {
-      log.info("Refreshed total [%d] unused segments from metadata store.", countOfRefreshedUnusedSegments.get());
-    }
+    final Map<String, Set<String>> datasourceToKnownSegmentIds
+        = retrieveAllSegmentIds(datasourceToRefreshSegmentIds);
 
     // TODO: handle changes made to the metadata store between these two database calls
     //    there doesn't seem to be much point to lock the cache during this period
     //    so go and fetch the segments and then refresh them
     //    it is possible that the cache is now updated and the refresh is not needed after all
     //    so the refresh should be idempotent
+    if (isStopped()) {
+      tearDown();
+      return;
+    }
 
-    // Remove unknown segment IDs from cache
-    // This is safe to do since updates are always made first to metadata store and then to cache
-    datasourceToSegmentCache.forEach((dataSource, cache) -> {
-      final Set<String> unknownSegmentIds = cache.getSegmentIdsNotIn(
-          datasourceToKnownSegmentIds.getOrDefault(dataSource, Set.of())
-      );
-      final int numSegmentsRemoved = cache.removeSegmentIds(unknownSegmentIds);
-      if (numSegmentsRemoved > 0) {
-        log.info(
-            "Removed [%d] unknown segment IDs from cache of datasource[%s].",
-            numSegmentsRemoved, dataSource
-        );
-        emitDatasourceMetric(dataSource, "deleted/unknown", numSegmentsRemoved);
-      }
-    });
+    removeUnknownSegmentIdsFromCache(datasourceToKnownSegmentIds);
 
     if (isStopped()) {
       tearDown();
       return;
     }
 
-    final AtomicInteger countOfRefreshedUsedSegments = new AtomicInteger(0);
-    datasourceToRefreshSegmentIds.forEach((dataSource, segmentIds) -> {
-      long numUpdatedUsedSegments = connector.inReadOnlyTransaction((handle, status) -> {
-        final DatasourceSegmentCache cache
-            = datasourceToSegmentCache.computeIfAbsent(dataSource, ds -> new DatasourceSegmentCache());
-
-        return SqlSegmentsMetadataQuery
-            .forHandle(handle, connector, tablesConfig.get(), jsonMapper)
-            .retrieveSegmentsById(dataSource, segmentIds)
-            .stream()
-            .map(cache::refreshUsedSegment)
-            .filter(updated -> updated)
-            .count();
-      });
-
-      emitDatasourceMetric(dataSource, "refresh/used", numUpdatedUsedSegments);
-      countOfRefreshedUsedSegments.addAndGet((int) numUpdatedUsedSegments);
-    });
-
-    if (countOfRefreshedUsedSegments.get() > 0) {
-      log.info(
-          "Refreshed total [%d] used segments from metadata store.",
-          countOfRefreshedUnusedSegments.get()
-      );
-    }
+    retrieveAndRefreshUsedSegmentsForIds(datasourceToRefreshSegmentIds);
 
     if (isStopped()) {
       tearDown();
       return;
     }
 
-    pollPendingSegments();
+    retrieveAndRefreshAllPendingSegments();
 
     emitMetric("poll/time", sincePollStart.millisElapsed());
     pollFinishTime.set(DateTimes.nowUtc());
@@ -303,11 +227,115 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
 
       // Schedule the next poll
       final long nextPollDelay = Math.max(pollDuration.getMillis() - sincePollStart.millisElapsed(), 0);
-      pollExecutor.schedule(this::pollSegments, nextPollDelay, TimeUnit.MILLISECONDS);
+      pollExecutor.schedule(this::pollMetadataStore, nextPollDelay, TimeUnit.MILLISECONDS);
     }
   }
 
-  private void pollPendingSegments()
+  /**
+   * Retrieves all the segment IDs (used and unused) from the metadata store.
+   *
+   * @return Map from datasource name to set of all segment IDs present in the
+   * metadata store for that datasource.
+   */
+  private Map<String, Set<String>> retrieveAllSegmentIds(
+      Map<String, Set<String>> datasourceToRefreshSegmentIds
+  )
+  {
+    final Map<String, Set<String>> datasourceToKnownSegmentIds = new HashMap<>();
+    final AtomicInteger countOfRefreshedUnusedSegments = new AtomicInteger(0);
+
+    // TODO: should we poll all segments here or just poll used
+    //  and then separately poll only the required stuff for unused segments
+    //  because the number of unused segments can be very large
+
+    final String sql = StringUtils.format(
+        "SELECT id, dataSource, used, used_status_last_updated FROM %s",
+        getSegmentsTable()
+    );
+
+    connector.inReadOnlyTransaction((handle, status) -> {
+      try (
+          ResultIterator<SegmentRecord> iterator =
+              handle.createQuery(sql)
+                    .map((index, r, ctx) -> SegmentRecord.fromResultSet(r))
+                    .iterator()
+      ) {
+        while (iterator.hasNext()) {
+          final SegmentRecord record = iterator.next();
+          final DatasourceSegmentCache cache = datasourceToSegmentCache.computeIfAbsent(
+              record.dataSource,
+              ds -> new DatasourceSegmentCache()
+          );
+
+          if (cache.shouldRefreshSegment(record.segmentId, record.state)) {
+            if (record.state.isUsed()) {
+              datasourceToRefreshSegmentIds.computeIfAbsent(record.dataSource, ds -> new HashSet<>())
+                                           .add(record.segmentId);
+            } else if (cache.refreshUnusedSegment(record.segmentId, record.state)) {
+              countOfRefreshedUnusedSegments.incrementAndGet();
+              emitDatasourceMetric(record.dataSource, "refreshed/unused", 1);
+            }
+          }
+
+          datasourceToKnownSegmentIds.computeIfAbsent(record.dataSource, ds -> new HashSet<>())
+                                     .add(record.segmentId);
+        }
+
+        return 0;
+      } catch (Exception e) {
+        log.makeAlert(e, "Error while retrieving segment IDs from metadata store.");
+        return 1;
+      }
+    });
+
+    if (countOfRefreshedUnusedSegments.get() > 0) {
+      log.info("Refreshed total [%d] unused segments from metadata store.", countOfRefreshedUnusedSegments.get());
+    }
+
+    return datasourceToKnownSegmentIds;
+  }
+
+  private void retrieveAndRefreshUsedSegmentsForIds(
+      Map<String, Set<String>> datasourceToRefreshSegmentIds
+  )
+  {
+    final AtomicInteger countOfRefreshedUsedSegments = new AtomicInteger(0);
+    datasourceToRefreshSegmentIds.forEach((dataSource, segmentIds) -> {
+      final DatasourceSegmentCache cache
+          = datasourceToSegmentCache.computeIfAbsent(dataSource, ds -> new DatasourceSegmentCache());
+
+      int numUpdatedUsedSegments = 0;
+      try (
+          CloseableIterator<DataSegmentPlus> iterator = connector.inReadOnlyTransaction(
+              (handle, status) -> SqlSegmentsMetadataQuery
+                  .forHandle(handle, connector, tablesConfig.get(), jsonMapper)
+                  .retrieveSegmentsByIdIterator(dataSource, segmentIds)
+          )
+      ) {
+        while (iterator.hasNext()) {
+          if (cache.refreshUsedSegment(iterator.next())) {
+            ++numUpdatedUsedSegments;
+          }
+        }
+      }
+      catch (IOException e) {
+        log.makeAlert(e, "Error retrieving segments for datasource[%s] from metadata store.", dataSource)
+           .emit();
+      }
+
+      emitDatasourceMetric(dataSource, "refresh/used", numUpdatedUsedSegments);
+      countOfRefreshedUsedSegments.addAndGet(numUpdatedUsedSegments);
+    });
+
+    if (countOfRefreshedUsedSegments.get() > 0) {
+      log.info(
+          "Refreshed total [%d] used segments from metadata store.",
+          countOfRefreshedUsedSegments.get()
+      );
+    }
+  }
+
+  private void retrieveAndRefreshAllPendingSegments()
   {
     final String sql = StringUtils.format(
         "SELECT payload, sequence_name, sequence_prev_id, upgraded_from_segment_id"
@@ -344,6 +372,27 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
     );
   }
 
+  /**
+   * This is safe to do since updates are always made first to metadata store
+   * and then to cache.
+   */
+  private void removeUnknownSegmentIdsFromCache(Map<String, Set<String>> datasourceToKnownSegmentIds)
+  {
+    datasourceToSegmentCache.forEach((dataSource, cache) -> {
+      final Set<String> unknownSegmentIds = cache.getSegmentIdsNotIn(
+          datasourceToKnownSegmentIds.getOrDefault(dataSource, Set.of())
+      );
+      final int numSegmentsRemoved = cache.removeSegmentIds(unknownSegmentIds);
+      if (numSegmentsRemoved > 0) {
+        log.info(
+            "Removed [%d] unknown segment IDs from cache of datasource[%s].",
+            numSegmentsRemoved, dataSource
+        );
+        emitDatasourceMetric(dataSource, "deleted/unknown", numSegmentsRemoved);
+      }
+    });
+  }
+
   private String getSegmentsTable()
   {
     return tablesConfig.get().getSegmentsTable();
@@ -369,6 +418,37 @@ public class SqlSegmentsMetadataCache implements SegmentsMetadataCache
   private static DateTime nullSafeDate(String date)
   {
     return date == null ? null : DateTimes.of(date);
+  }
+
+  private static class SegmentRecord
+  {
+    private final String segmentId;
+    private final String dataSource;
+    private final SegmentState state;
+
+    SegmentRecord(String segmentId, String dataSource, SegmentState state)
+    {
+      this.segmentId = segmentId;
+      this.dataSource = dataSource;
+      this.state = state;
+    }
+
+    @Nullable
+    static SegmentRecord fromResultSet(ResultSet r)
+    {
+      try {
+        final String segmentId = r.getString("id");
+        final boolean isUsed = r.getBoolean("used");
+        final String dataSource = r.getString("dataSource");
+        final DateTime lastUpdatedTime = nullSafeDate(r.getString("used_status_last_updated"));
+
+        final SegmentState storedState = new SegmentState(isUsed, lastUpdatedTime);
+
+        return new SegmentRecord(segmentId, dataSource, storedState);
+      } catch (SQLException e) {
+        return null;
+      }
+    }
   }
 
 }

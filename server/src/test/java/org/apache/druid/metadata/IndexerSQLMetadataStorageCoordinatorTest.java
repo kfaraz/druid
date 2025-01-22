@@ -71,10 +71,12 @@ import org.joda.time.DateTime;
 import org.joda.time.Interval;
 import org.junit.After;
 import org.junit.Assert;
+import org.junit.Assume;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -90,6 +92,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
+@RunWith(Parameterized.class)
 public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadataStorageCoordinatorTestBase
 {
   @Rule
@@ -99,6 +102,20 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
   private SegmentsMetadataCache segmentsMetadataCache;
   private StubServiceEmitter emitter;
   private SqlSegmentsMetadataTransactionFactory transactionFactory;
+  private BlockingExecutorService cachePollExecutor;
+
+  private final boolean useSegmentCache;
+
+  @Parameterized.Parameters(name = "useSegmentCache = {0}")
+  public static Object[][] testParameters()
+  {
+    return new Object[][]{{true}, {false}};
+  }
+
+  public IndexerSQLMetadataStorageCoordinatorTest(boolean useSegmentCache)
+  {
+    this.useSegmentCache = useSegmentCache;
+  }
 
   @Before
   public void setUp()
@@ -120,21 +137,28 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
 
     emitter = new StubServiceEmitter();
     leaderSelector = new TestDruidLeaderSelector();
+
+    cachePollExecutor = new BlockingExecutorService("test-cache-poll-exec");
     segmentsMetadataCache = new SqlSegmentsMetadataCache(
         mapper,
-        () -> new SegmentsMetadataManagerConfig(null, false),
+        () -> new SegmentsMetadataManagerConfig(null, true),
         derbyConnectorRule.metadataTablesConfigSupplier(),
         derbyConnector,
         (corePoolSize, nameFormat) -> new WrappingScheduledExecutorService(
             nameFormat,
-            new BlockingExecutorService(nameFormat),
+            cachePollExecutor,
             false
         ),
         emitter
     );
 
     leaderSelector.becomeLeader();
-    segmentsMetadataCache.start();
+
+    // Get the cache ready if required
+    if (useSegmentCache) {
+      segmentsMetadataCache.start();
+      cachePollExecutor.finishNextPendingTask();
+    }
 
     transactionFactory = new SqlSegmentsMetadataTransactionFactory(
         mapper,
@@ -178,6 +202,13 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
   {
     segmentsMetadataCache.stop();
     leaderSelector.stopBeingLeader();
+  }
+
+  void refreshCache()
+  {
+    if (useSegmentCache) {
+      cachePollExecutor.finishNextPendingTask();
+    }
   }
 
   @Test
@@ -868,7 +899,7 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
   @Test
   public void testRetrieveUsedSegmentForId()
   {
-    segmentSchemaTestUtils.insertUsedSegments(ImmutableSet.of(defaultSegment), Collections.emptyMap());
+    coordinator.commitSegments(Set.of(defaultSegment), null);
     Assert.assertEquals(
         defaultSegment,
         coordinator.retrieveUsedSegmentForId(defaultSegment.getDataSource(), defaultSegment.getId().toString())
@@ -878,7 +909,7 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
   @Test
   public void testRetrieveSegmentForId()
   {
-    segmentSchemaTestUtils.insertUsedSegments(ImmutableSet.of(defaultSegment), Collections.emptyMap());
+    coordinator.commitSegments(Set.of(defaultSegment), null);
     markAllSegmentsUnused(ImmutableSet.of(defaultSegment), DateTimes.nowUtc());
     Assert.assertEquals(
         defaultSegment,
@@ -2129,11 +2160,12 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
     );
   }
 
-  // Known Issue: https://github.com/apache/druid/issues/12860
-  @Ignore
   @Test
   public void testLargeIntervalWithStringComparison()
   {
+    // Known Issue when not using cache: https://github.com/apache/druid/issues/12860
+    Assume.assumeTrue(useSegmentCache);
+
     coordinator.commitSegments(
         ImmutableSet.of(
             hugeTimeRangeSegment4
@@ -2233,6 +2265,8 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
   @Test
   public void testUpdateSegmentsInMetaDataStorage()
   {
+    Assume.assumeFalse(useSegmentCache);
+
     // Published segments to MetaDataStorage
     coordinator.commitSegments(SEGMENTS, new SegmentSchemaMapping(CentralizedDatasourceSchemaConfig.SCHEMA_VERSION));
 
@@ -2471,7 +2505,7 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
         9,
         100
     );
-    Assert.assertTrue(segmentSchemaTestUtils.insertUsedSegments(ImmutableSet.of(segment), Collections.emptyMap()));
+    coordinator.commitSegments(Set.of(segment), null);
     List<String> ids = retrieveUsedSegmentIds(derbyConnectorRule.metadataTablesConfigSupplier().get());
     Assert.assertEquals("ds_2017-01-01T00:00:00.000Z_2017-02-01T00:00:00.000Z_version_new", ids.get(0));
 
@@ -2492,6 +2526,7 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
 
     // now drop the used segment previously loaded:
     markAllSegmentsUnused(ImmutableSet.of(segment), DateTimes.nowUtc());
+    refreshCache();
 
     // and final load, this reproduces an issue that could happen with multiple streaming appends,
     // followed by a reindex, followed by a drop, and more streaming data coming in for same interval
@@ -2552,7 +2587,7 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
         9,
         100
     );
-    Assert.assertTrue(segmentSchemaTestUtils.insertUsedSegments(ImmutableSet.of(segment), Collections.emptyMap()));
+    coordinator.commitSegments(Set.of(segment), null);
     List<String> ids = retrieveUsedSegmentIds(derbyConnectorRule.metadataTablesConfigSupplier().get());
     Assert.assertEquals("ds_2017-01-01T00:00:00.000Z_2017-02-01T00:00:00.000Z_A", ids.get(0));
 
@@ -2581,7 +2616,7 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
         9,
         100
     );
-    Assert.assertTrue(segmentSchemaTestUtils.insertUsedSegments(ImmutableSet.of(segment), Collections.emptyMap()));
+    coordinator.commitSegments(Set.of(segment), null);
     ids = retrieveUsedSegmentIds(derbyConnectorRule.metadataTablesConfigSupplier().get());
     Assert.assertEquals("ds_2017-01-01T00:00:00.000Z_2017-02-01T00:00:00.000Z_A_1", ids.get(1));
 
@@ -2614,7 +2649,7 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
     // pendings: A: 0,1,2
     // used segments A: 0,1,2
     // unused segments:
-    Assert.assertTrue(segmentSchemaTestUtils.insertUsedSegments(ImmutableSet.of(segment), Collections.emptyMap()));
+    coordinator.commitSegments(Set.of(segment), null);
     ids = retrieveUsedSegmentIds(derbyConnectorRule.metadataTablesConfigSupplier().get());
     Assert.assertEquals("ds_2017-01-01T00:00:00.000Z_2017-02-01T00:00:00.000Z_A_2", ids.get(2));
 
@@ -2632,7 +2667,7 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
         9,
         100
     );
-    Assert.assertTrue(segmentSchemaTestUtils.insertUsedSegments(ImmutableSet.of(compactedSegment), Collections.emptyMap()));
+    coordinator.commitSegments(Set.of(compactedSegment), null);
     ids = retrieveUsedSegmentIds(derbyConnectorRule.metadataTablesConfigSupplier().get());
     Assert.assertEquals("ds_2017-01-01T00:00:00.000Z_2017-02-01T00:00:00.000Z_B", ids.get(3));
     // 3) When overshadowing, segments are still marked as "used" in the segments table
@@ -2662,6 +2697,7 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
     // 5) reverted compaction (by marking B_0 as unused)
     // Revert compaction a manual metadata update which is basically the following two steps:
     markAllSegmentsUnused(ImmutableSet.of(compactedSegment), DateTimes.nowUtc()); // <- drop compacted segment
+    refreshCache();
     //        pending: version = A, id = 0,1,2
     //                 version = B, id = 1
     //
@@ -2708,7 +2744,7 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
     //
     //        used segment: version = A, id = 0,1,2,3
     //        unused segment: version = B, id = 0
-    Assert.assertTrue(segmentSchemaTestUtils.insertUsedSegments(ImmutableSet.of(segment), Collections.emptyMap()));
+    coordinator.commitSegments(Set.of(segment), null);
     ids = retrieveUsedSegmentIds(derbyConnectorRule.metadataTablesConfigSupplier().get());
     Assert.assertEquals("ds_2017-01-01T00:00:00.000Z_2017-02-01T00:00:00.000Z_A_3", ids.get(3));
 
@@ -2870,7 +2906,8 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
         9,
         100
     );
-    Assert.assertTrue(segmentSchemaTestUtils.insertUsedSegments(ImmutableSet.of(segment), Collections.emptyMap()));
+
+    coordinator.commitSegments(Set.of(segment), null);
     List<String> ids = retrieveUsedSegmentIds(derbyConnectorRule.metadataTablesConfigSupplier().get());
     Assert.assertEquals("ds_2017-01-01T00:00:00.000Z_2017-02-01T00:00:00.000Z_A", ids.get(0));
 
@@ -3348,7 +3385,10 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
   @Test
   public void testRetrieveUsedSegmentsAndCreatedDates()
   {
-    segmentSchemaTestUtils.insertUsedSegments(ImmutableSet.of(defaultSegment), Collections.emptyMap());
+    coordinator.commitSegments(
+        Set.of(defaultSegment),
+        new SegmentSchemaMapping(CentralizedDatasourceSchemaConfig.SCHEMA_VERSION)
+    );
 
     List<Pair<DataSegment, String>> resultForIntervalOnTheLeft =
         coordinator.retrieveUsedSegmentsAndCreatedDates(defaultSegment.getDataSource(), Collections.singletonList(Intervals.of("2000/2001")));
@@ -3387,8 +3427,20 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
   @Test
   public void testRetrieveUsedSegmentsAndCreatedDatesFetchesEternityForAnyInterval()
   {
-
-    segmentSchemaTestUtils.insertUsedSegments(ImmutableSet.of(eternitySegment, firstHalfEternityRangeSegment, secondHalfEternityRangeSegment), Collections.emptyMap());
+    // Ensure that overlapping segments do not have the same version
+    // Otherwise they cannot be added to a timeline
+    coordinator.commitSegments(
+        Set.of(DataSegment.builder(eternitySegment).version("v1").build()),
+        null
+    );
+    // Commit these segments separately so that the older one is not overshadowed
+    coordinator.commitSegments(
+        Set.of(
+            DataSegment.builder(firstHalfEternityRangeSegment).version("v2").build(),
+            DataSegment.builder(secondHalfEternityRangeSegment).version("v3").build()
+        ),
+        null
+    );
 
     List<Pair<DataSegment, String>> resultForRandomInterval =
         coordinator.retrieveUsedSegmentsAndCreatedDates(defaultSegment.getDataSource(), Collections.singletonList(defaultSegment.getInterval()));
@@ -3501,6 +3553,7 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
 
     // Mark the tombstone as unused
     markAllSegmentsUnused(tombstones, DateTimes.nowUtc());
+    refreshCache();
 
     final Collection<DataSegment> allUsedSegments = coordinator.retrieveAllUsedSegments(
         TestDataSource.WIKI,
@@ -3796,7 +3849,7 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
           0,
           100
       );
-      insertUsedSegments(Collections.singleton(firstSegment), Collections.emptyMap());
+      coordinator.commitSegments(Set.of(firstSegment), null);
       for (int j = 1; j < numSegmentsPerInterval; j++) {
         nextSegments.add(
             new DataSegment(
@@ -3813,7 +3866,7 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
             )
         );
       }
-      insertUsedSegments(nextSegments, Collections.emptyMap());
+      coordinator.commitSegments(nextSegments, null);
     }
 
     final Set<SegmentIdWithShardSpec> expected = new HashSet<>();

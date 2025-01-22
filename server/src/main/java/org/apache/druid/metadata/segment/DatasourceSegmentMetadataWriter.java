@@ -36,9 +36,9 @@ public interface DatasourceSegmentMetadataWriter
   /**
    * Inserts the given segments into the metadata store.
    */
-  void insertSegments(Set<DataSegmentPlus> segments);
+  int insertSegments(Set<DataSegmentPlus> segments);
 
-  void insertSegmentsWithMetadata(Set<DataSegmentPlus> segments);
+  int insertSegmentsWithMetadata(Set<DataSegmentPlus> segments);
 
   /**
    * Marks the segments fully contained in the given interval as unused.
@@ -47,9 +47,9 @@ public interface DatasourceSegmentMetadataWriter
 
   int deleteSegments(Set<DataSegment> segments);
 
-  void updateSegmentPayload(DataSegment segment);
+  boolean updateSegmentPayload(DataSegment segment);
 
-  void insertPendingSegment(
+  boolean insertPendingSegment(
       PendingSegmentRecord pendingSegment,
       boolean skipSegmentLineageCheck
   );
