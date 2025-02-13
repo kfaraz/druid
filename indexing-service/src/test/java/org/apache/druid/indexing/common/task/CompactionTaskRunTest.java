@@ -32,7 +32,6 @@ import org.apache.druid.client.coordinator.CoordinatorClient;
 import org.apache.druid.client.coordinator.NoopCoordinatorClient;
 import org.apache.druid.client.indexing.ClientCompactionTaskGranularitySpec;
 import org.apache.druid.client.indexing.ClientCompactionTaskTransformSpec;
-import org.apache.druid.client.indexing.NoopOverlordClient;
 import org.apache.druid.data.input.impl.CSVParseSpec;
 import org.apache.druid.data.input.impl.DimensionSchema;
 import org.apache.druid.data.input.impl.DimensionsSpec;
@@ -70,6 +69,7 @@ import org.apache.druid.query.aggregation.CountAggregatorFactory;
 import org.apache.druid.query.aggregation.LongSumAggregatorFactory;
 import org.apache.druid.query.dimension.DefaultDimensionSpec;
 import org.apache.druid.query.filter.SelectorDimFilter;
+import org.apache.druid.rpc.indexing.NoopOverlordClient;
 import org.apache.druid.rpc.indexing.OverlordClient;
 import org.apache.druid.segment.AutoTypeColumnSchema;
 import org.apache.druid.segment.ColumnSelectorFactory;
@@ -172,12 +172,13 @@ public class CompactionTaskRunTest extends IngestionTestBase
       "2014-01-01T02:00:30Z,c|d|e,3\n"
   );
 
-  @Parameterized.Parameters(name = "{0}")
+  @Parameterized.Parameters(name = "lockGranularity={0}, useSegmentMetadataCache={1}")
   public static Iterable<Object[]> constructorFeeder()
   {
     return ImmutableList.of(
-        new Object[]{LockGranularity.TIME_CHUNK},
-        new Object[]{LockGranularity.SEGMENT}
+        new Object[]{LockGranularity.TIME_CHUNK, true},
+        new Object[]{LockGranularity.TIME_CHUNK, false},
+        new Object[]{LockGranularity.SEGMENT, true}
     );
   }
 
@@ -191,8 +192,9 @@ public class CompactionTaskRunTest extends IngestionTestBase
   private ExecutorService exec;
   private File localDeepStorage;
 
-  public CompactionTaskRunTest(LockGranularity lockGranularity)
+  public CompactionTaskRunTest(LockGranularity lockGranularity, boolean useSegmentMetadataCache)
   {
+    super(useSegmentMetadataCache);
     testUtils = new TestUtils();
     overlordClient = new NoopOverlordClient();
     coordinatorClient = new NoopCoordinatorClient()

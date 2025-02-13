@@ -237,8 +237,7 @@ public class IndexIONullColumnsCompatibilityTest extends InitializedNullHandling
           dims,
           segmentBitmapSerdeFactory.getBitmapFactory(),
           columns,
-          smooshedFiles,
-          lazy
+          smooshedFiles
       )
       {
         @Override
@@ -273,7 +272,7 @@ public class IndexIONullColumnsCompatibilityTest extends InitializedNullHandling
       ColumnDescriptor serde = mapper.readValue(
           IndexIO.SERIALIZER_UTILS.readString(byteBuffer), ColumnDescriptor.class
       );
-      return serde.read(byteBuffer, columnConfig, smooshedFiles);
+      return serde.read(byteBuffer, columnConfig, smooshedFiles, null);
     }
   }
 }

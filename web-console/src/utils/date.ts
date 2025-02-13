@@ -17,6 +17,8 @@
  */
 
 import type { DateRange, NonNullDateRange } from '@blueprintjs/datetime';
+import { fromDate, toTimeZone } from '@internationalized/date';
+import type { Timezone } from 'chronoshift';
 
 const CURRENT_YEAR = new Date().getUTCFullYear();
 
@@ -27,11 +29,21 @@ export function isNonNullRange(range: DateRange): range is NonNullDateRange {
 export function dateToIsoDateString(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
-
-export function prettyFormatIsoDate(isoDate: string | Date): string {
+export function prettyFormatIsoDateWithMsIfNeeded(isoDate: string | Date): string {
   return (typeof isoDate === 'string' ? isoDate : isoDate.toISOString())
     .replace('T', ' ')
-    .replace(/\.\d\d\dZ$/, '');
+    .replace('Z', '')
+    .replace('.000', '');
+}
+
+export function prettyFormatIsoDate(isoDate: string | Date): string {
+  return prettyFormatIsoDateWithMsIfNeeded(isoDate).replace(/\.\d\d\d/, '');
+}
+
+export function toIsoStringInTimezone(date: Date, timezone: Timezone): string {
+  if (timezone.isUTC()) return date.toISOString();
+  const zonedDate = toTimeZone(fromDate(date, 'Etc/UTC'), timezone.toString());
+  return zonedDate.toString().replace(/[+-]\d\d:\d\d\[.+$/, '');
 }
 
 export function utcToLocalDate(utcDate: Date): Date {
@@ -75,9 +87,10 @@ export function localDateRangeToInterval(localRange: DateRange): string {
   }`;
 }
 
-export function ceilToUtcDay(date: Date): Date {
-  date = new Date(date.valueOf());
-  date.setUTCHours(0, 0, 0, 0);
-  date.setUTCDate(date.getUTCDate() + 1);
-  return date;
+export function maxDate(a: Date, b: Date): Date {
+  return a > b ? a : b;
+}
+
+export function minDate(a: Date, b: Date): Date {
+  return a < b ? a : b;
 }

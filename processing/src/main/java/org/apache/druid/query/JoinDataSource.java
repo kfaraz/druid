@@ -54,9 +54,9 @@ import org.apache.druid.segment.join.filter.JoinFilterPreAnalysis;
 import org.apache.druid.segment.join.filter.JoinFilterPreAnalysisKey;
 import org.apache.druid.segment.join.filter.JoinableClauses;
 import org.apache.druid.segment.join.filter.rewrite.JoinFilterRewriteConfig;
-import org.apache.druid.utils.JvmUtils;
 
 import javax.annotation.Nullable;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -65,7 +65,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -96,6 +95,7 @@ public class JoinDataSource implements DataSource
   private final DimFilter leftFilter;
   @Nullable
   private final JoinableFactoryWrapper joinableFactoryWrapper;
+  private final JoinAlgorithm joinAlgorithm;
   private static final Logger log = new Logger(JoinDataSource.class);
   private final DataSourceAnalysis analysis;
 
@@ -106,7 +106,8 @@ public class JoinDataSource implements DataSource
       JoinConditionAnalysis conditionAnalysis,
       JoinType joinType,
       @Nullable DimFilter leftFilter,
-      @Nullable JoinableFactoryWrapper joinableFactoryWrapper
+      @Nullable JoinableFactoryWrapper joinableFactoryWrapper,
+      JoinAlgorithm joinAlgorithm
   )
   {
     this.left = Preconditions.checkNotNull(left, "left");
@@ -116,6 +117,7 @@ public class JoinDataSource implements DataSource
     this.joinType = Preconditions.checkNotNull(joinType, "joinType");
     this.leftFilter = validateLeftFilter(left, leftFilter);
     this.joinableFactoryWrapper = joinableFactoryWrapper;
+    this.joinAlgorithm = JoinAlgorithm.BROADCAST.equals(joinAlgorithm) ? null : joinAlgorithm;
 
     this.analysis = this.getAnalysisForDataSource();
   }
@@ -132,7 +134,8 @@ public class JoinDataSource implements DataSource
       @JsonProperty("joinType") JoinType joinType,
       @Nullable @JsonProperty("leftFilter") DimFilter leftFilter,
       @JacksonInject ExprMacroTable macroTable,
-      @Nullable @JacksonInject JoinableFactoryWrapper joinableFactoryWrapper
+      @Nullable @JacksonInject JoinableFactoryWrapper joinableFactoryWrapper,
+      @Nullable @JsonProperty("joinAlgorithm") JoinAlgorithm joinAlgorithm
   )
   {
     return new JoinDataSource(
@@ -146,7 +149,8 @@ public class JoinDataSource implements DataSource
         ),
         joinType,
         leftFilter,
-        joinableFactoryWrapper
+        joinableFactoryWrapper,
+        joinAlgorithm
     );
   }
 
@@ -160,7 +164,8 @@ public class JoinDataSource implements DataSource
       final JoinConditionAnalysis conditionAnalysis,
       final JoinType joinType,
       final DimFilter leftFilter,
-      @Nullable final JoinableFactoryWrapper joinableFactoryWrapper
+      @Nullable final JoinableFactoryWrapper joinableFactoryWrapper,
+      @Nullable final JoinAlgorithm joinAlgorithm
   )
   {
     return new JoinDataSource(
@@ -170,10 +175,10 @@ public class JoinDataSource implements DataSource
         conditionAnalysis,
         joinType,
         leftFilter,
-        joinableFactoryWrapper
+        joinableFactoryWrapper,
+        joinAlgorithm
     );
   }
-
 
   @Override
   public Set<String> getTableNames()
@@ -253,7 +258,8 @@ public class JoinDataSource implements DataSource
         conditionAnalysis,
         joinType,
         leftFilter,
-        joinableFactoryWrapper
+        joinableFactoryWrapper,
+        joinAlgorithm
     );
   }
 
@@ -294,14 +300,12 @@ public class JoinDataSource implements DataSource
 
   @Override
   public Function<SegmentReference, SegmentReference> createSegmentMapFunction(
-      Query query,
-      AtomicLong cpuTimeAccumulator
+      Query query
   )
   {
     return createSegmentMapFunctionInternal(
         analysis.getJoinBaseTableFilter().map(Filters::toFilter).orElse(null),
         analysis.getPreJoinableClauses(),
-        cpuTimeAccumulator,
         analysis.getBaseQuery().orElse(query)
     );
   }
@@ -320,7 +324,8 @@ public class JoinDataSource implements DataSource
           clause.getCondition(),
           clause.getJoinType(),
           joinBaseFilter,
-          this.joinableFactoryWrapper
+          this.joinableFactoryWrapper,
+          clause.getJoinAlgorithm()
       );
       joinBaseFilter = null;
     }
@@ -363,6 +368,18 @@ public class JoinDataSource implements DataSource
     return analysis;
   }
 
+  @JsonProperty("joinAlgorithm")
+  @JsonInclude(Include.NON_NULL)
+  private JoinAlgorithm getJoinAlgorithmForSerialization()
+  {
+    return joinAlgorithm;
+  }
+
+  public JoinAlgorithm getJoinAlgorithm()
+  {
+    return joinAlgorithm == null ? JoinAlgorithm.BROADCAST : joinAlgorithm;
+  }
+
   @Override
   public boolean equals(Object o)
   {
@@ -378,13 +395,14 @@ public class JoinDataSource implements DataSource
            Objects.equals(rightPrefix, that.rightPrefix) &&
            Objects.equals(conditionAnalysis, that.conditionAnalysis) &&
            Objects.equals(leftFilter, that.leftFilter) &&
+           joinAlgorithm == that.joinAlgorithm &&
            joinType == that.joinType;
   }
 
   @Override
   public int hashCode()
   {
-    return Objects.hash(left, right, rightPrefix, conditionAnalysis, joinType, leftFilter);
+    return Objects.hash(left, right, rightPrefix, conditionAnalysis, joinType, leftFilter, joinAlgorithm);
   }
 
   @Override
@@ -397,6 +415,7 @@ public class JoinDataSource implements DataSource
            ", condition=" + conditionAnalysis +
            ", joinType=" + joinType +
            ", leftFilter=" + leftFilter +
+           ", joinAlgorithm=" + joinAlgorithm +
            '}';
   }
 
@@ -422,86 +441,79 @@ public class JoinDataSource implements DataSource
   private Function<SegmentReference, SegmentReference> createSegmentMapFunctionInternal(
       @Nullable final Filter baseFilter,
       final List<PreJoinableClause> clauses,
-      final AtomicLong cpuTimeAccumulator,
       final Query<?> query
   )
   {
     // compute column correlations here and RHS correlated values
-    return JvmUtils.safeAccumulateThreadCpuTime(
-        cpuTimeAccumulator,
-        () -> {
-          if (clauses.isEmpty()) {
-            return Function.identity();
-          } else {
-            final JoinableClauses joinableClauses = JoinableClauses.createClauses(
-                clauses,
-                joinableFactoryWrapper.getJoinableFactory()
-            );
-            final JoinFilterRewriteConfig filterRewriteConfig = JoinFilterRewriteConfig.forQuery(query);
+    if (clauses.isEmpty()) {
+      return Function.identity();
+    } else {
+      final JoinableClauses joinableClauses = JoinableClauses.createClauses(
+          clauses,
+          joinableFactoryWrapper.getJoinableFactory()
+      );
+      final JoinFilterRewriteConfig filterRewriteConfig = JoinFilterRewriteConfig.forQuery(query);
 
-            // Pick off any join clauses that can be converted into filters.
-            final Set<String> requiredColumns = query.getRequiredColumns();
-            final Filter baseFilterToUse;
-            final List<JoinableClause> clausesToUse;
+      // Pick off any join clauses that can be converted into filters.
+      final Set<String> requiredColumns = query.getRequiredColumns();
+      final Filter baseFilterToUse;
+      final List<JoinableClause> clausesToUse;
 
-            if (requiredColumns != null && filterRewriteConfig.isEnableRewriteJoinToFilter()) {
-              final Pair<List<Filter>, List<JoinableClause>> conversionResult = JoinableFactoryWrapper.convertJoinsToFilters(
-                  joinableClauses.getJoinableClauses(),
-                  requiredColumns,
-                  Ints.checkedCast(Math.min(filterRewriteConfig.getFilterRewriteMaxSize(), Integer.MAX_VALUE))
-              );
+      if (requiredColumns != null && filterRewriteConfig.isEnableRewriteJoinToFilter()) {
+        final Pair<List<Filter>, List<JoinableClause>> conversionResult = JoinableFactoryWrapper.convertJoinsToFilters(
+            joinableClauses.getJoinableClauses(),
+            requiredColumns,
+            Ints.checkedCast(Math.min(filterRewriteConfig.getFilterRewriteMaxSize(), Integer.MAX_VALUE))
+        );
 
-              baseFilterToUse =
-                  Filters.maybeAnd(
-                      Lists.newArrayList(
-                          Iterables.concat(
-                              Collections.singleton(baseFilter),
-                              conversionResult.lhs
-                          )
-                      )
-                  ).orElse(null);
-              clausesToUse = conversionResult.rhs;
-            } else {
-              baseFilterToUse = baseFilter;
-              clausesToUse = joinableClauses.getJoinableClauses();
-            }
-
-            // Analyze remaining join clauses to see if filters on them can be pushed down.
-            final JoinFilterPreAnalysis joinFilterPreAnalysis = JoinFilterAnalyzer.computeJoinFilterPreAnalysis(
-                new JoinFilterPreAnalysisKey(
-                    filterRewriteConfig,
-                    clausesToUse,
-                    query.getVirtualColumns(),
-                    Filters.maybeAnd(Arrays.asList(baseFilterToUse, Filters.toFilter(query.getFilter())))
-                           .orElse(null)
+        baseFilterToUse =
+            Filters.maybeAnd(
+                Lists.newArrayList(
+                    Iterables.concat(
+                        Collections.singleton(baseFilter),
+                        conversionResult.lhs
+                    )
                 )
-            );
-            final Function<SegmentReference, SegmentReference> baseMapFn;
-            // A join data source is not concrete
-            // And isConcrete() of an unnest datasource delegates to its base
-            // Hence, in the case of a Join -> Unnest -> Join
-            // if we just use isConcrete on the left
-            // the segment map function for the unnest would never get called
-            // This calls us to delegate to the segmentMapFunction of the left
-            // only when it is not a JoinDataSource
-            if (left instanceof JoinDataSource) {
-              baseMapFn = Function.identity();
-            } else {
-              baseMapFn = left.createSegmentMapFunction(
-                  query,
-                  cpuTimeAccumulator
-              );
-            }
-            return baseSegment ->
-                new HashJoinSegment(
-                    baseMapFn.apply(baseSegment),
-                    baseFilterToUse,
-                    GuavaUtils.firstNonNull(clausesToUse, ImmutableList.of()),
-                    joinFilterPreAnalysis
-                );
-          }
-        }
-    );
+            ).orElse(null);
+        clausesToUse = conversionResult.rhs;
+      } else {
+        baseFilterToUse = baseFilter;
+        clausesToUse = joinableClauses.getJoinableClauses();
+      }
+
+      // Analyze remaining join clauses to see if filters on them can be pushed down.
+      final JoinFilterPreAnalysis joinFilterPreAnalysis = JoinFilterAnalyzer.computeJoinFilterPreAnalysis(
+          new JoinFilterPreAnalysisKey(
+              filterRewriteConfig,
+              clausesToUse,
+              query.getVirtualColumns(),
+              Filters.maybeAnd(Arrays.asList(baseFilterToUse, Filters.toFilter(query.getFilter())))
+                     .orElse(null)
+          )
+      );
+      final Function<SegmentReference, SegmentReference> baseMapFn;
+      // A join data source is not concrete
+      // And isConcrete() of an unnest datasource delegates to its base
+      // Hence, in the case of a Join -> Unnest -> Join
+      // if we just use isConcrete on the left
+      // the segment map function for the unnest would never get called
+      // This calls us to delegate to the segmentMapFunction of the left
+      // only when it is not a JoinDataSource
+      if (left instanceof JoinDataSource) {
+        baseMapFn = Function.identity();
+      } else {
+        baseMapFn = left.createSegmentMapFunction(
+            query
+        );
+      }
+      return baseSegment ->
+          new HashJoinSegment(
+              baseMapFn.apply(baseSegment),
+              baseFilterToUse,
+              GuavaUtils.firstNonNull(clausesToUse, ImmutableList.of()),
+              joinFilterPreAnalysis
+          );
+    }
   }
 
   /**
@@ -529,7 +541,10 @@ public class JoinDataSource implements DataSource
     // Will need an instanceof check here
     // A future work should look into if the flattenJoin
     // can be refactored to omit these instanceof checks
-    while (current instanceof JoinDataSource || current instanceof UnnestDataSource || current instanceof FilteredDataSource) {
+    while (current instanceof JoinDataSource
+           || current instanceof UnnestDataSource
+           || current instanceof FilteredDataSource
+           || current instanceof RestrictedDataSource) {
       if (current instanceof JoinDataSource) {
         final JoinDataSource joinDataSource = (JoinDataSource) current;
         current = joinDataSource.getLeft();
@@ -539,12 +554,16 @@ public class JoinDataSource implements DataSource
                 joinDataSource.getRightPrefix(),
                 joinDataSource.getRight(),
                 joinDataSource.getJoinType(),
-                joinDataSource.getConditionAnalysis()
+                joinDataSource.getConditionAnalysis(),
+                joinDataSource.getJoinAlgorithm()
             )
         );
       } else if (current instanceof UnnestDataSource) {
         final UnnestDataSource unnestDataSource = (UnnestDataSource) current;
         current = unnestDataSource.getBase();
+      } else if (current instanceof RestrictedDataSource) {
+        final RestrictedDataSource restrictedDataSource = (RestrictedDataSource) current;
+        current = restrictedDataSource.getBase();
       } else {
         final FilteredDataSource filteredDataSource = (FilteredDataSource) current;
         current = filteredDataSource.getBase();

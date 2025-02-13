@@ -42,6 +42,7 @@ import org.apache.druid.guice.LifecycleModule;
 import org.apache.druid.guice.ManageLifecycle;
 import org.apache.druid.guice.QueryRunnerFactoryModule;
 import org.apache.druid.guice.QueryableModule;
+import org.apache.druid.guice.SegmentWranglerModule;
 import org.apache.druid.guice.ServerTypeConfig;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.query.QuerySegmentWalker;
@@ -58,6 +59,7 @@ import org.apache.druid.server.http.SegmentListerResource;
 import org.apache.druid.server.http.SelfDiscoveryResource;
 import org.apache.druid.server.initialization.jetty.JettyServerInitializer;
 import org.apache.druid.server.metrics.QueryCountStatsProvider;
+import org.apache.druid.storage.local.LocalTmpStorageConfig;
 import org.apache.druid.timeline.PruneLastCompactionState;
 import org.eclipse.jetty.server.Server;
 
@@ -99,6 +101,7 @@ public class CliHistorical extends ServerRunnable
         new DruidProcessingModule(),
         new QueryableModule(),
         new QueryRunnerFactoryModule(),
+        new SegmentWranglerModule(),
         new JoinableFactoryModule(),
         new HistoricalServiceModule(),
         binder -> {
@@ -138,6 +141,10 @@ public class CliHistorical extends ServerRunnable
 
           Jerseys.addResource(binder, SelfDiscoveryResource.class);
           LifecycleModule.registerKey(binder, Key.get(SelfDiscoveryResource.class));
+
+          binder.bind(LocalTmpStorageConfig.class)
+                .toProvider(new LocalTmpStorageConfig.DefaultLocalTmpStorageConfigProvider("historical"))
+                .in(LazySingleton.class);
         },
         new LookupModule()
     );

@@ -58,6 +58,8 @@ import java.io.IOException;
  */
 public abstract class BaseWorkerClientImpl implements WorkerClient
 {
+  private static final Logger log = new Logger(BaseWorkerClientImpl.class);
+
   private final ObjectMapper objectMapper;
   private final String contentType;
 
@@ -188,11 +190,9 @@ public abstract class BaseWorkerClientImpl implements WorkerClient
             new RequestBuilder(HttpMethod.GET, "/counters").header(HttpHeaders.ACCEPT, contentType),
             new BytesFullResponseHandler()
         ),
-        holder -> deserialize(holder, new TypeReference<CounterSnapshotsTree>() {})
+        holder -> deserialize(holder, new TypeReference<>() {})
     );
   }
-
-  private static final Logger log = new Logger(BaseWorkerClientImpl.class);
 
   @Override
   public ListenableFuture<Boolean> fetchChannelData(
@@ -216,7 +216,7 @@ public abstract class BaseWorkerClientImpl implements WorkerClient
 
     Futures.addCallback(
         clientFuture,
-        new FutureCallback<FrameFilePartialFetch>()
+        new FutureCallback<>()
         {
           @Override
           public void onSuccess(FrameFilePartialFetch partialFetch)

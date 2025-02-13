@@ -28,7 +28,7 @@
     <parent>
         <groupId>org.apache.druid</groupId>
         <artifactId>druid</artifactId>
-        <version>32.0.0-SNAPSHOT</version>
+        <version>33.0.0-SNAPSHOT</version>
     </parent>
 
     <repositories>
@@ -284,10 +284,7 @@
             <groupId>com.google.inject</groupId>
             <artifactId>guice</artifactId>
         </dependency>
-        <dependency>
-            <groupId>com.google.inject.extensions</groupId>
-            <artifactId>guice-multibindings</artifactId>
-        </dependency>
+
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
@@ -377,7 +374,6 @@
         <dependency>
             <groupId>com.google.inject.extensions</groupId>
             <artifactId>guice-servlet</artifactId>
-            <version>${guice.version}</version>
         </dependency>
         <dependency>
             <groupId>io.confluent</groupId>
@@ -677,7 +673,7 @@
                             </properties>
                             <argLine>
                                 ${jdk.strong.encapsulation.argLine}
-                                -Xmx128m
+                                -Xmx256m
                                 -Duser.timezone=UTC
                                 -Dfile.encoding=UTF-8
                                 -Ddruid.test.config.type=docker
@@ -784,6 +780,7 @@
                                 </property>
                             </properties>
                             <argLine>
+                                ${jdk.strong.encapsulation.argLine}
                                 -Duser.timezone=UTC
                                 -Dfile.encoding=UTF-8
                                 -Ddruid.test.config.type=configFile

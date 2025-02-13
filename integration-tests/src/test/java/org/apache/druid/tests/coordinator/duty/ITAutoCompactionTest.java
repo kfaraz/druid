@@ -152,7 +152,7 @@ public class ITAutoCompactionTest extends AbstractIndexerTest
       intervalsBeforeCompaction.sort(null);
       // 2 segments across 1 days...
       verifySegmentsCount(2);
-      ArrayList<Object> nullList = new ArrayList<Object>();
+      ArrayList<Object> nullList = new ArrayList<>();
       nullList.add(null);
       Map<String, Object> queryAndResultFields = ImmutableMap.of(
           "%%FIELD_TO_QUERY%%", "added",
@@ -248,7 +248,7 @@ public class ITAutoCompactionTest extends AbstractIndexerTest
       intervalsBeforeCompaction.sort(null);
       // 2 segments across 1 days...
       verifySegmentsCount(2);
-      ArrayList<Object> nullList = new ArrayList<Object>();
+      ArrayList<Object> nullList = new ArrayList<>();
       nullList.add(null);
       Map<String, Object> queryAndResultFields = ImmutableMap.of(
           "%%FIELD_TO_QUERY%%", "added",
@@ -351,7 +351,7 @@ public class ITAutoCompactionTest extends AbstractIndexerTest
       intervalsBeforeCompaction.sort(null);
       // 2 segments across 1 days...
       verifySegmentsCount(2);
-      ArrayList<Object> nullList = new ArrayList<Object>();
+      ArrayList<Object> nullList = new ArrayList<>();
       nullList.add(null);
       Map<String, Object> queryAndResultFields = ImmutableMap.of(
           "%%FIELD_TO_QUERY%%", "added",

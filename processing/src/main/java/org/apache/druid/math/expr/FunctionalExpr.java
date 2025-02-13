@@ -100,8 +100,7 @@ class FunctionExpr implements Expr
   @Override
   public boolean canVectorize(InputBindingInspector inspector)
   {
-    return function.canVectorize(inspector, args)
-           || (getOutputType(inspector) != null && inspector.canVectorize(args));
+    return function.canVectorize(inspector, args) || canFallbackVectorize(inspector, args);
   }
 
   @Override
@@ -129,15 +128,11 @@ class FunctionExpr implements Expr
   @Override
   public BindingAnalysis analyzeInputs()
   {
-    BindingAnalysis accumulator = new BindingAnalysis();
-
-    for (Expr arg : args) {
-      accumulator = accumulator.with(arg);
-    }
-    return accumulator.withScalarArguments(function.getScalarInputs(args))
-                      .withArrayArguments(function.getArrayInputs(args))
-                      .withArrayInputs(function.hasArrayInputs())
-                      .withArrayOutput(function.hasArrayOutput());
+    return BindingAnalysis.collectExprs(args)
+                          .withScalarArguments(function.getScalarInputs(args))
+                          .withArrayArguments(function.getArrayInputs(args))
+                          .withArrayInputs(function.hasArrayInputs())
+                          .withArrayOutput(function.hasArrayOutput());
   }
 
   @Override
@@ -195,20 +190,16 @@ class ApplyFunctionExpr implements Expr
     // apply function expressions are examined during expression selector creation, so precompute and cache the
     // binding details of children
     ImmutableList.Builder<BindingAnalysis> argBindingDetailsBuilder = ImmutableList.builder();
-    BindingAnalysis accumulator = new BindingAnalysis();
     for (Expr arg : argsExpr) {
-      BindingAnalysis argDetails = arg.analyzeInputs();
-      argBindingDetailsBuilder.add(argDetails);
-      accumulator = accumulator.with(argDetails);
+      argBindingDetailsBuilder.add(arg.analyzeInputs());
     }
 
     lambdaBindingAnalysis = lambdaExpr.analyzeInputs();
-
-    bindingAnalysis = accumulator.with(lambdaBindingAnalysis)
-                                 .withArrayArguments(function.getArrayInputs(argsExpr))
-                                 .withArrayInputs(true)
-                                 .withArrayOutput(function.hasArrayOutput(lambdaExpr));
     argsBindingAnalyses = argBindingDetailsBuilder.build();
+    bindingAnalysis = BindingAnalysis.collect(argBindingDetailsBuilder.add(lambdaBindingAnalysis).build())
+                                     .withArrayArguments(function.getArrayInputs(argsExpr))
+                                     .withArrayInputs(true)
+                                     .withArrayOutput(function.hasArrayOutput(lambdaExpr));
   }
 
   @Override
@@ -226,7 +217,8 @@ class ApplyFunctionExpr implements Expr
   @Override
   public boolean canVectorize(InputBindingInspector inspector)
   {
-    return canVectorizeNative(inspector) || (getOutputType(inspector) != null && inspector.canVectorize(argsExpr));
+    return canVectorizeNative(inspector) ||
+           (canFallbackVectorize(inspector, argsExpr) && lambdaExpr.canVectorize(inspector));
   }
 
   @Override

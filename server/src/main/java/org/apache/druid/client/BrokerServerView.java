@@ -22,7 +22,6 @@ package org.apache.druid.client;
 import com.google.common.base.Predicate;
 import com.google.common.collect.Ordering;
 import com.google.inject.Inject;
-import org.apache.druid.client.selector.QueryableDruidServer;
 import org.apache.druid.client.selector.ServerSelector;
 import org.apache.druid.client.selector.TierSelectorStrategy;
 import org.apache.druid.guice.ManageLifecycle;
@@ -44,6 +43,7 @@ import org.apache.druid.timeline.SegmentId;
 import org.apache.druid.timeline.VersionedIntervalTimeline;
 import org.apache.druid.timeline.partition.PartitionChunk;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -69,7 +69,7 @@ public class BrokerServerView implements TimelineServerView
   private final Map<SegmentId, ServerSelector> selectors = new HashMap<>();
   private final Map<String, VersionedIntervalTimeline<String, ServerSelector>> timelines = new HashMap<>();
   private final ConcurrentMap<TimelineCallback, Executor> timelineCallbacks = new ConcurrentHashMap<>();
-  private final DirectDruidClientFactory druidClientFactory;
+  private final QueryableDruidServer.Maker druidClientFactory;
   private final TierSelectorStrategy tierSelectorStrategy;
   private final ServiceEmitter emitter;
   private final BrokerSegmentWatcherConfig segmentWatcherConfig;
@@ -79,7 +79,7 @@ public class BrokerServerView implements TimelineServerView
 
   @Inject
   public BrokerServerView(
-      final DirectDruidClientFactory directDruidClientFactory,
+      final QueryableDruidServer.Maker directDruidClientFactory,
       final FilteredServerInventoryView baseView,
       final TierSelectorStrategy tierSelectorStrategy,
       final ServiceEmitter emitter,
@@ -190,6 +190,11 @@ public class BrokerServerView implements TimelineServerView
     initialized.await();
   }
 
+  public QueryableDruidServer.Maker getDruidClientFactory()
+  {
+    return druidClientFactory;
+  }
+
   /**
    * Validates the given BrokerSegmentWatcherConfig.
    * <ul>
@@ -221,7 +226,7 @@ public class BrokerServerView implements TimelineServerView
 
   private QueryableDruidServer addServer(DruidServer server)
   {
-    QueryableDruidServer retVal = new QueryableDruidServer<>(server, druidClientFactory.makeDirectClient(server));
+    QueryableDruidServer retVal = druidClientFactory.make(server);
     QueryableDruidServer exists = clients.put(server.getName(), retVal);
     if (exists != null) {
       log.warn("QueryRunner for server[%s] already exists!? Well it's getting replaced", server);
@@ -360,6 +365,7 @@ public class BrokerServerView implements TimelineServerView
     timelineCallbacks.put(callback, exec);
   }
 
+  @SuppressWarnings("unchecked")
   @Override
   public <T> QueryRunner<T> getQueryRunner(DruidServer server)
   {
@@ -369,7 +375,7 @@ public class BrokerServerView implements TimelineServerView
         log.error("No QueryRunner found for server name[%s].", server.getName());
         return null;
       }
-      return queryableDruidServer.getQueryRunner();
+      return (QueryRunner<T>) queryableDruidServer.getQueryRunner();
     }
   }
 
@@ -396,6 +402,19 @@ public class BrokerServerView implements TimelineServerView
           }
       );
     }
+  }
+
+  @Override
+  public List<DruidServerMetadata> getDruidServerMetadatas()
+  {
+    // Override default implementation for better performance.
+    final List<DruidServerMetadata> retVal = new ArrayList<>(clients.size());
+
+    for (final QueryableDruidServer server : clients.values()) {
+      retVal.add(server.getServer().getMetadata());
+    }
+
+    return retVal;
   }
 
   @Override
