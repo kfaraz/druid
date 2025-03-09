@@ -167,6 +167,11 @@ public class SqlSegmentsMetadataQuery
     );
   }
 
+  public CloseableIterator<DataSegmentPlus> retrieveAllUsedSegments()
+  {
+
+  }
+
   /**
    * Determines the highest ID amongst unused segments for the given datasource,
    * interval and version.
