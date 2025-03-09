@@ -525,7 +525,7 @@ public class HeapMemorySegmentMetadataCacheTest
     );
 
     syncCache();
-    serviceEmitter.verifyValue(Metric.DELETED_SEGMENTS, 1L);
+    serviceEmitter.verifyValue(Metric.DELETED_USED_SEGMENTS, 1L);
     serviceEmitter.verifyValue(Metric.PERSISTED_USED_SEGMENTS, 0L);
 
     Assert.assertNull(
@@ -553,7 +553,7 @@ public class HeapMemorySegmentMetadataCacheTest
     );
 
     syncCache();
-    serviceEmitter.verifyValue(Metric.DELETED_SEGMENTS, 1L);
+    serviceEmitter.verifyValue(Metric.DELETED_USED_SEGMENTS, 1L);
     serviceEmitter.verifyValue(Metric.PERSISTED_USED_SEGMENTS, 0L);
 
     Assert.assertNull(
