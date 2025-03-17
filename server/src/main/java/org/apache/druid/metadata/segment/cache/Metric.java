@@ -45,7 +45,7 @@ public class Metric
   public static final String PERSISTED_PENDING_SEGMENTS = "segment/pending/count";
 
   // CACHE METRICS
-  private static final String METRIC_NAME_PREFIX = "segment/metadataCache/";
+  static final String METRIC_NAME_PREFIX = "segment/metadataCache/";
 
   /**
    * Number of transactions performed on the cache for a datasource.
@@ -53,9 +53,29 @@ public class Metric
   public static final String TRANSACTION_COUNT = "transactions";
 
   /**
-   * Time taken in milliseconds for the latest sync with metadata store.
+   * Total time taken in milliseconds for the latest sync with metadata store.
    */
   public static final String SYNC_DURATION_MILLIS = METRIC_NAME_PREFIX + "sync/time";
+
+  /**
+   * Time taken in milliseconds to fetch the segment ids from the metadata store.
+   */
+  public static final String RETRIEVE_SEGMENT_IDS_DURATION_MILLIS = METRIC_NAME_PREFIX + "fetchIds/time";
+
+  /**
+   * Time taken in milliseconds to update all segment IDs in the cache.
+   */
+  public static final String UPDATE_IDS_DURATION_MILLIS = METRIC_NAME_PREFIX + "updateIds/time";
+
+  /**
+   * Time taken in milliseconds to fetch the updated segment payloads from the metadata store.
+   */
+  public static final String RETRIEVE_SEGMENT_PAYLOADS_DURATION_MILLIS = METRIC_NAME_PREFIX + "fetchPayloads/time";
+
+  /**
+   * Time taken in milliseconds to fetch all the pending segments from the metadata store.
+   */
+  public static final String RETRIEVE_PENDING_SEGMENTS_DURATION_MILLIS = METRIC_NAME_PREFIX + "fetchPending/time";
 
   /**
    * Number of segments which are now stale in the cache and need to be refreshed.
@@ -63,9 +83,14 @@ public class Metric
   public static final String STALE_USED_SEGMENTS = METRIC_NAME_PREFIX + "used/stale";
 
   /**
-   * Total number of segments deleted from the cache in the latest sync.
+   * Total number of used segments deleted from the cache in the latest sync.
    */
-  public static final String DELETED_SEGMENTS = METRIC_NAME_PREFIX + "deleted";
+  public static final String DELETED_USED_SEGMENTS = METRIC_NAME_PREFIX + "used/deleted";
+
+  /**
+   * Total number of unused segments deleted from the cache in the latest sync.
+   */
+  public static final String DELETED_UNUSED_SEGMENTS = METRIC_NAME_PREFIX + "unused/deleted";
 
   /**
    * Total number of pending segments deleted from the cache in the latest sync.

@@ -1,0 +1,64 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package org.apache.druid.metadata.segment.cache;
+
+import java.util.Set;
+
+public class SyncResult
+{
+  private final int numUsedSegmentsRemoved;
+  private final int numUnusedSegmentsRemoved;
+  private final int numUnusedSegmentsUpdated;
+  private final Set<String> usedSegmentIdsToRefresh;
+
+  public SyncResult(
+      int numUsedSegmentsRemoved,
+      int numUnusedSegmentsRemoved,
+      int numUnusedSegmentsUpdated,
+      Set<String> usedSegmentIdsToRefresh
+  )
+  {
+    this.numUsedSegmentsRemoved = numUsedSegmentsRemoved;
+    this.numUnusedSegmentsRemoved = numUnusedSegmentsRemoved;
+    this.numUnusedSegmentsUpdated = numUnusedSegmentsUpdated;
+    this.usedSegmentIdsToRefresh = usedSegmentIdsToRefresh;
+  }
+
+  public int getNumUsedSegmentsRemoved()
+  {
+    return numUsedSegmentsRemoved;
+  }
+
+  public int getNumUnusedSegmentsRemoved()
+  {
+    return numUnusedSegmentsRemoved;
+  }
+
+  public int getNumUnusedSegmentsUpdated()
+  {
+    return numUnusedSegmentsUpdated;
+  }
+
+  public Set<String> getUsedSegmentIdsToRefresh()
+  {
+    return usedSegmentIdsToRefresh;
+  }
+
+}

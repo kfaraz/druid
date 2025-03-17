@@ -335,11 +335,11 @@ public class HeapMemoryDatasourceSegmentCacheTest
     Assert.assertEquals(segmentId, cache.findHighestUnusedSegmentId(segment.getInterval(), segment.getVersion()));
 
     // Verify that removing segment does not update the highest ID
-    cache.removeSegmentsForIds(Set.of(segmentId));
+    cache.deleteSegments(Set.of(segmentId));
     Assert.assertEquals(segmentId, cache.findHighestUnusedSegmentId(segment.getInterval(), segment.getVersion()));
 
-    // Verify that only reset updates the highest ID
-    cache.markCacheSynced();
+    // Verify that only sync updates the highest ID
+    cache.syncSegmentIdsWithMetadataStore(List.of(), DateTimes.nowUtc());
     Assert.assertNull(cache.findHighestUnusedSegmentId(segment.getInterval(), segment.getVersion()));
   }
 
@@ -478,9 +478,14 @@ public class HeapMemoryDatasourceSegmentCacheTest
     );
 
     // Remove unpersisted segments and verify that only unpersisted segments
-    // last updated before the sync time are remove
-    cache.removeUnpersistedSegments(
-        Set.of(persistedSegment.getDataSegment().getId()),
+    // last updated before the sync time are removed
+    final SegmentRecord persistedRecord = new SegmentRecord(
+        persistedSegment.getDataSegment().getId(),
+        true,
+        persistedSegment.getUsedStatusLastUpdatedDate()
+    );
+    cache.syncSegmentIdsWithMetadataStore(
+        List.of(persistedRecord),
         syncTime
     );
     Assert.assertEquals(
@@ -523,12 +528,14 @@ public class HeapMemoryDatasourceSegmentCacheTest
         )
     );
 
-    // Remove unpersisted segments and verify that only unpersisted segments
-    // last updated before the sync time are remove
-    cache.removeUnpersistedSegments(
-        Set.of(persistedSegment.getDataSegment().getId()),
-        syncTime
+    // Sync the segment IDs in the cache and verify that only
+    // unpersisted segments last updated before the sync time are removed
+    final SegmentRecord persistedRecord = new SegmentRecord(
+        persistedSegment.getDataSegment().getId(),
+        false,
+        persistedSegment.getUsedStatusLastUpdatedDate()
     );
+    cache.syncSegmentIdsWithMetadataStore(List.of(persistedRecord), syncTime);
     Assert.assertEquals(
         Set.of(
             persistedSegment.getDataSegment().getId().toString(),
@@ -545,7 +552,7 @@ public class HeapMemoryDatasourceSegmentCacheTest
   }
 
   @Test
-  public void testRemoveUnpersistedPendingSegments_removesPendingSegmentCreatedbeforeSyncStart()
+  public void testRemoveUnpersistedPendingSegments_removesPendingSegmentCreatedBeforeSyncStart()
   {
     final DateTime syncTime = DateTimes.nowUtc();
     final String taskAllocator = "allocator1";
