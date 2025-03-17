@@ -26,7 +26,7 @@ import com.google.common.collect.Lists;
 import com.google.inject.Inject;
 import com.google.inject.Injector;
 import com.google.inject.Key;
-import com.google.inject.servlet.GuiceFilter;
+import com.google.inject.servlet.DruidGuiceFilter;
 import org.apache.druid.guice.annotations.Global;
 import org.apache.druid.guice.annotations.Json;
 import org.apache.druid.java.util.common.logger.Logger;
@@ -147,7 +147,8 @@ public class QueryJettyServerInitializer implements JettyServerInitializer
         jsonMapper
     );
 
-    root.addFilter(GuiceFilter.class, "/*", null);
+    final FilterHolder guiceFilterHolder = new FilterHolder(injector.getInstance(DruidGuiceFilter.class));
+    root.addFilter(guiceFilterHolder, "/*", null);
 
     final HandlerList handlerList = new HandlerList();
     // Do not change the order of the handlers that have already been added

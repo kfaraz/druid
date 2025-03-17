@@ -133,7 +133,10 @@ public class ITAutoCompactionTest extends AbstractIndexerTest
   public void setup() throws Exception
   {
     // Set compaction slot to 5
-    updateCompactionTaskSlot(0.5, 10, null);
+    ITRetryUtil.retryUntilTrue(
+        () -> updateCompactionTaskSlot(0.5, 10, null),
+        "Update compaction task slots before test"
+    );
     fullDatasourceName = "wikipedia_index_test_" + UUID.randomUUID() + config.getExtraDatasourceNameSuffix();
   }
 
@@ -2062,7 +2065,7 @@ public class ITAutoCompactionTest extends AbstractIndexerTest
     }
   }
 
-  private void updateCompactionTaskSlot(double compactionTaskSlotRatio, int maxCompactionTaskSlots, Boolean useAutoScaleSlots) throws Exception
+  private boolean updateCompactionTaskSlot(double compactionTaskSlotRatio, int maxCompactionTaskSlots, Boolean useAutoScaleSlots) throws Exception
   {
     compactionResource.updateCompactionTaskSlot(compactionTaskSlotRatio, maxCompactionTaskSlots, useAutoScaleSlots);
     // Verify that the compaction config is updated correctly.
@@ -2072,6 +2075,7 @@ public class ITAutoCompactionTest extends AbstractIndexerTest
     if (useAutoScaleSlots != null) {
       Assert.assertEquals(compactionConfig.isUseAutoScaleSlots(), useAutoScaleSlots.booleanValue());
     }
+    return true;
   }
 
   private void getAndAssertCompactionStatus(
