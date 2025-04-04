@@ -63,8 +63,8 @@ import org.apache.druid.query.aggregation.LongMinAggregatorFactory;
 import org.apache.druid.query.aggregation.PostAggregator;
 import org.apache.druid.query.aggregation.SimpleLongAggregatorFactory;
 import org.apache.druid.query.dimension.DimensionSpec;
-import org.apache.druid.query.filter.AndDimFilter;
 import org.apache.druid.query.filter.DimFilter;
+import org.apache.druid.query.filter.DimFilters;
 import org.apache.druid.query.groupby.GroupByQuery;
 import org.apache.druid.query.groupby.having.DimFilterHavingSpec;
 import org.apache.druid.query.groupby.orderby.DefaultLimitSpec;
@@ -206,6 +206,7 @@ public class DruidQuery
       final PlannerContext plannerContext,
       final RexBuilder rexBuilder,
       final boolean finalizeAggregations,
+      final boolean applyPolicies,
       @Nullable VirtualColumnRegistry virtualColumnRegistry
   )
   {
@@ -302,7 +303,7 @@ public class DruidQuery
     }
 
     return new DruidQuery(
-        dataSource,
+        applyPolicies ? dataSource.withPolicies(plannerContext.getAuthorizationResult().getPolicyMap()) : dataSource,
         plannerContext,
         filter,
         selectProjection,
@@ -846,7 +847,7 @@ public class DruidQuery
       }
       final boolean useIntervalFiltering = canUseIntervalFiltering(filteredDataSource);
       final Filtration baseFiltration = toFiltration(
-          new AndDimFilter(dimFilterList),
+          DimFilters.conjunction(dimFilterList),
           virtualColumnRegistry.getFullRowSignature(),
           useIntervalFiltering
       );

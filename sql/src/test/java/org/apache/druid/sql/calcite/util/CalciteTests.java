@@ -32,6 +32,7 @@ import org.apache.druid.client.DruidServer;
 import org.apache.druid.client.FilteredServerInventoryView;
 import org.apache.druid.client.ServerInventoryView;
 import org.apache.druid.client.ServerView;
+import org.apache.druid.client.TimelineServerView;
 import org.apache.druid.discovery.DiscoveryDruidNode;
 import org.apache.druid.discovery.DruidLeaderClient;
 import org.apache.druid.discovery.DruidNodeDiscovery;
@@ -147,10 +148,10 @@ public class CalciteTests
     public Authorizer getAuthorizer(String name)
     {
       return (authenticationResult, resource, action) -> {
-        boolean isRestrictedTable = resource.getName().equals(RESTRICTED_DATASOURCE);
+        boolean readRestrictedTable = resource.getName().equals(RESTRICTED_DATASOURCE) && action.equals(Action.READ);
 
         if (TEST_SUPERUSER_NAME.equals(authenticationResult.getIdentity())) {
-          return isRestrictedTable ? Access.allowWithRestriction(POLICY_NO_RESTRICTION_SUPERUSER) : Access.OK;
+          return readRestrictedTable ? Access.allowWithRestriction(POLICY_NO_RESTRICTION_SUPERUSER) : Access.OK;
         }
 
         switch (resource.getType()) {
@@ -159,7 +160,7 @@ public class CalciteTests
               case FORBIDDEN_DATASOURCE:
                 return Access.DENIED;
               default:
-                return isRestrictedTable ? Access.allowWithRestriction(POLICY_RESTRICTION) : Access.OK;
+                return readRestrictedTable ? Access.allowWithRestriction(POLICY_RESTRICTION) : Access.OK;
             }
           case ResourceType.VIEW:
             if ("forbiddenView".equals(resource.getName())) {
@@ -191,10 +192,10 @@ public class CalciteTests
     public Authorizer getAuthorizer(String name)
     {
       return (authenticationResult, resource, action) -> {
-        boolean isRestrictedTable = resource.getName().equals(RESTRICTED_DATASOURCE);
+        boolean readRestrictedTable = resource.getName().equals(RESTRICTED_DATASOURCE) && action.equals(Action.READ);
 
         if (TEST_SUPERUSER_NAME.equals(authenticationResult.getIdentity())) {
-          return isRestrictedTable ? Access.allowWithRestriction(POLICY_NO_RESTRICTION_SUPERUSER) : Access.OK;
+          return readRestrictedTable ? Access.allowWithRestriction(POLICY_NO_RESTRICTION_SUPERUSER) : Access.OK;
         }
 
         switch (resource.getType()) {
@@ -202,7 +203,7 @@ public class CalciteTests
             if (FORBIDDEN_DATASOURCE.equals(resource.getName())) {
               return Access.DENIED;
             } else {
-              return isRestrictedTable ? Access.allowWithRestriction(POLICY_RESTRICTION) : Access.OK;
+              return readRestrictedTable ? Access.allowWithRestriction(POLICY_RESTRICTION) : Access.OK;
             }
           case ResourceType.VIEW:
             if ("forbiddenView".equals(resource.getName())) {
@@ -290,7 +291,11 @@ public class CalciteTests
       final QueryRunnerFactoryConglomerate conglomerate
   )
   {
-    return QueryFrameworkUtils.createMockQueryLifecycleFactory(walker, conglomerate);
+    return QueryFrameworkUtils.createMockQueryLifecycleFactory(
+        walker,
+        conglomerate,
+        CalciteTests.TEST_AUTHORIZER_MAPPER
+    );
   }
 
   public static SqlStatementFactory createSqlStatementFactory(
@@ -401,6 +406,15 @@ public class CalciteTests
       final AuthorizerMapper authorizerMapper
   )
   {
+    return createMockSystemSchema(druidSchema, new TestTimelineServerView(walker.getSegments()), authorizerMapper);
+  }
+
+  public static SystemSchema createMockSystemSchema(
+      final DruidSchema druidSchema,
+      final TimelineServerView timelineServerView,
+      final AuthorizerMapper authorizerMapper
+  )
+  {
     final DruidNode coordinatorNode = mockCoordinatorNode();
     FakeDruidNodeDiscoveryProvider provider = mockDruidNodeDiscoveryProvider(coordinatorNode);
 
@@ -474,7 +488,7 @@ public class CalciteTests
             new BrokerSegmentWatcherConfig(),
             BrokerSegmentMetadataCacheConfig.create()
         ),
-        new TestTimelineServerView(walker.getSegments()),
+        timelineServerView,
         new FakeServerInventoryView(),
         authorizerMapper,
         druidLeaderClient,

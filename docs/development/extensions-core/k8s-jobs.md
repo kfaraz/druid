@@ -22,18 +22,21 @@ title: "MM-less Druid in K8s"
   ~ under the License.
   -->
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 Apache Druid Extension to enable using Kubernetes for launching and managing tasks instead of the Middle Managers.  This extension allows you to launch tasks as kubernetes jobs removing the need for your middle manager.  
 
 Consider this an [EXPERIMENTAL](../experimental.md) feature mostly because it has not been tested yet on a wide variety of long-running Druid clusters.
 
 ## How it works
 
-The K8s extension builds a pod spec for each task using the specified pod adapter. All jobs are natively restorable, they are decoupled from the Druid deployment, thus restarting pods or doing upgrades has no affect on tasks in flight.  They will continue to run and when the overlord comes back up it will start tracking them again.  
+The K8s extension builds a pod spec for each task using the specified pod adapter. All jobs are natively restorable, they are decoupled from the Druid deployment, thus restarting pods or doing upgrades has no effect on tasks in flight.  They will continue to run and when the overlord comes back up it will start tracking them again.  
 
 
 ## Configuration
 
-To use this extension please make sure to  [include](../../configuration/extensions.md#loading-extensions)`druid-kubernetes-overlord-extensions` in the extensions load list for your overlord process.
+To use this extension please make sure to [include](../../configuration/extensions.md#loading-extensions) `druid-kubernetes-overlord-extensions` in the extensions load list for your overlord process.
 
 The extension uses `druid.indexer.runner.capacity` to limit the number of k8s jobs in flight. A good initial value for this would be the sum of the total task slots of all the middle managers you were running before switching to K8s based ingestion. The K8s task runner uses one thread per Job that is created, so setting this number too large can cause memory issues on the overlord. Additionally set the variable `druid.indexer.runner.namespace` to the namespace in which you are running druid.
 
@@ -363,6 +366,19 @@ The custom template pod adapter allows you to specify a pod template file per ta
 
 The base pod template must be specified as the runtime property `druid.indexer.runner.k8s.podTemplate.base: /path/to/basePodSpec.yaml`
 
+The below runtime properties need to be passed to the Job's peon process.
+
+```
+druid.port=8100 (what port the peon should run on)
+druid.peon.mode=remote
+druid.service=druid/peon (for metrics reporting)
+druid.indexer.task.baseTaskDir=/druid/data (this should match the argument to the ./peon.sh run command in the PodTemplate)
+druid.indexer.runner.type=k8s
+druid.indexer.task.encapsulatedTask=true
+```
+
+#### Example 1: Using a Pod Template that retrieves values from a ConfigMap 
+
 <details>
 <summary>Example Pod Template that uses the regular druid docker image</summary>
 
@@ -372,7 +388,7 @@ kind: "PodTemplate"
 template:
   metadata:
     annotations:
-      sidecar.istio.io/proxyCPU: "512m" # to handle a injected istio sidecar
+      sidecar.istio.io/proxyCPU: "512m" # to handle an injected istio sidecar
     labels:
       app.kubernetes.io/name: "druid-realtime-backend"
   spec:
@@ -436,28 +452,17 @@ template:
 ```
 </details>
 
-The below runtime properties need to be passed to the Job's peon process.
-
-```
-druid.port=8100 (what port the peon should run on)
-druid.peon.mode=remote
-druid.service=druid/peon (for metrics reporting)
-druid.indexer.task.baseTaskDir=/druid/data (this should match the argument to the ./peon.sh run command in the PodTemplate)
-druid.indexer.runner.type=k8s
-druid.indexer.task.encapsulatedTask=true
-```
-
-Any runtime property or JVM config used by the peon process can also be passed. E.G. below is a example of a ConfigMap that can be used to generate the `nodetype-config-volume` mount in the above template.
+Any runtime property or JVM config used by the peon process can also be passed. E.G. below is an example of a ConfigMap that can be used to generate the `nodetype-config-volume` mount in the above template.
 
 <details>
 <summary>Example ConfigMap</summary>
 
-```
+```yaml
+apiVersion: v1
 kind: ConfigMap
 metadata:
     name: druid-tiny-cluster-peons-config
     namespace: default
-apiVersion: v1
 data:
     jvm.config: |-
         -server
@@ -494,8 +499,107 @@ data:
 ```
 </details>
 
+#### Example 2: Using a ConfigMap to upload the Pod Template file
+
+Alternatively, we can mount the ConfigMap onto Overlord services, and use the ConfigMap to generate the pod template files we want.
+
+<details>
+<summary>Mounting to Overlord deployment</summary>
+
+```yaml
+  volumeMounts:
+    - name: druid-pod-templates
+      mountPath: /path/to/podTemplate/directory
+
+  volumes:
+    - name: druid-pod-templates
+      configMap:
+        name: druid-pod-templates
+```
+</details>
+
+<details>
+<summary>Example ConfigMap that generates the Base Pod Template</summary>
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: druid-pod-templates
+data:
+  basePodSpec.yaml: |-
+    apiVersion: "v1"
+    kind: "PodTemplate"
+    template:
+      metadata:
+        labels:
+          app.kubernetes.io/name: "druid-realtime-backend"
+        annotations:
+          sidecar.istio.io/proxyCPU: "512m"
+      spec:
+        containers:
+        - name: main
+          image: apache/druid:{{DRUIDVERSION}}
+          command:
+            - sh
+            - -c
+            - |
+              /peon.sh /druid/data 1
+          env:
+            - name: druid_port
+              value: 8100
+            - name: druid_plaintextPort
+              value: 8100
+            - name: druid_tlsPort
+              value: 8091
+            - name: druid_peon_mode
+              value: remote
+            - name: druid_service
+              value: "druid/peon"
+            - name: druid_indexer_task_baseTaskDir
+              value: /druid/data
+            - name: druid_indexer_runner_type
+              value: k8s
+            - name: druid_indexer_task_encapsulatedTask
+              value: true
+          ports:
+            - containerPort: 8091
+              name: druid-tls-port
+              protocol: TCP
+            - containerPort: 8100
+              name: druid-port
+              protocol: TCP
+          resources:
+            limits:
+              cpu: "1"
+              memory: 2400M
+            requests:
+              cpu: "1"
+              memory: 2400M
+          restartPolicy: "Never"
+          securityContext:
+            fsGroup: 1000
+            runAsGroup: 1000
+            runAsUser: 1000
+          tolerations:
+            - effect: NoExecute
+              key: node.kubernetes.io/not-ready
+              operator: Exists
+              tolerationSeconds: 300
+            - effect: NoExecute
+              key: node.kubernetes.io/unreachable
+              operator: Exists
+              tolerationSeconds: 300
+
+```
+</details>
+
+#### Lazy Loading of Pod Templates
+
+Whenever the Overlord wants to spin up a Kubernetes task pod, it will first read the relevant pod template file, and then create a task pod according to the specifications of the pod template file. This is helpful when you want to make configuration changes to the task pods (e.g. increase/decrease CPU limit or resources). You can edit the pod template files directly, and the next task pod spun up by the Overlord will reflect these changes in its configurations.
+
 #### Pod template selection
- 
+
 The pod template adapter can select which pod template should be used for a task using the [task runner execution config](#dynamic-config)
 
 ##### Select based on task type
@@ -509,10 +613,10 @@ strategy. To explicitly select this strategy, set the `podTemplateSelectStrategy
 ```
 
 Task specific pod templates can be specified as the runtime property 
-`druid.indexer.runner.k8s.podTemplate.{taskType}: /path/to/taskSpecificPodSpec.yaml` where {taskType} is the name of the
+`druid.indexer.runner.k8s.podTemplate.{taskType}: /path/to/taskSpecificPodSpec.yaml` where `{taskType}` is the name of the
 task type. For example, `index_parallel`.
 
-If you are trying to use the default image's environment variable parsing feature to set runtime properties, you need to add a extra escape underscore when specifying pod templates.
+If you are trying to use the default image's environment variable parsing feature to set runtime properties, you need to add an extra escape underscore when specifying pod templates.
 For example, set the environment variable `druid_indexer_runner_k8s_podTemplate_index__kafka` when you set the runtime property `druid.indexer.runner.k8s.podTemplate.index_kafka`
 
 
@@ -633,26 +737,47 @@ All three examples below are equivalent.
 
 In all the above cases, Druid will match the selector to any value of task type. Druid applies similar logic for `dataSource`. For `context.tags` setting `null` or an empty object `{}` is equivalent. 
 
+#### Running Task Pods in Another Namespace
+
+It is possible to run task pods in a different namespace from the rest of your Druid cluster.
+
+If you are running multiple Druid clusters and would like to have a dedicated namespace for all your task pods, you can make the following changes to the runtime properties for your Overlord deployment:
+
+- `druid.indexer.runner.namespace`: The namespace where the task pods will run. It can be the same as the namespace where your Druid cluster is deployed, or different from it. In the latter case, you need to define the following `overlordNamespace`.
+- `druid.indexer.runner.overlordNamespace`: The namespace where the Overlord resides. This must be defined when tasks are scheduled in different namespace. When `druid.indexer.runner.overlordNamespace` is not provided, Druid will assume that the entire cluster operates within a single namespace and will default to `druid.indexer.runner.namespace`.
+
+Druid will tag Kubernetes jobs with a `druid.overlord.namespace` label. This label helps Druid filter out Kubernetes jobs belonging to other namespaces.
+
+##### Dealing with ZooKeeper Problems
+
+Ensure that when you are running task pods in another namespace, your task pods are able to communicate with ZooKeeper which might be deployed in the same namespace with overlord. If you are using custom pod templates as described below, you can configure `druid.zk.service.host` to your tasks.
+
+##### Dealing with Permissions
+
+Should you require the needed permissions for interacting across Kubernetes namespaces, you can specify a kubeconfig file, and provided the necessary permissions. You can then use the `KUBECONFIG` environment variable to allow your Overlord deployment to find your kubeconfig file. Refer to the [Kubernetes documentation](https://kubernetes.io/docs/concepts/configuration/organize-cluster-access-kubeconfig/) for more information.
+
 ### Properties
-|Property| Possible Values | Description                                                                                                                                                                                                                                      |Default|required|
-|--------|-----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------|--------|
-|`druid.indexer.runner.debugJobs`| `boolean`       | Clean up K8s jobs after tasks complete.                                                                                                                                                                                                          |False|No|
-|`druid.indexer.runner.sidecarSupport`| `boolean`       | Deprecated, specify adapter type as runtime property `druid.indexer.runner.k8s.adapter.type: overlordMultiContainer` instead. If your overlord pod has sidecars, this will attempt to start the task with the same sidecars as the overlord pod. |False|No|
-|`druid.indexer.runner.primaryContainerName`| `String`        | If running with sidecars, the `primaryContainerName` should be that of your druid container like `druid-overlord`.                                                                                                                               |First container in `podSpec` list|No|
-|`druid.indexer.runner.kubexitImage`| `String`        | Used kubexit project to help shutdown sidecars when the main pod completes.  Otherwise jobs with sidecars never terminate.                                                                                                                       |karlkfi/kubexit:latest|No|
-|`druid.indexer.runner.disableClientProxy`| `boolean`       | Use this if you have a global http(s) proxy and you wish to bypass it.                                                                                                                                                                           |false|No|
-|`druid.indexer.runner.maxTaskDuration`| `Duration`      | Max time a task is allowed to run for before getting killed                                                                                                                                                                                      |`PT4H`|No|
-|`druid.indexer.runner.taskCleanupDelay`| `Duration`      | How long do jobs stay around before getting reaped from K8s                                                                                                                                                                                      |`P2D`|No|
-|`druid.indexer.runner.taskCleanupInterval`| `Duration`      | How often to check for jobs to be reaped                                                                                                                                                                                                         |`PT10M`|No|
-|`druid.indexer.runner.taskJoinTimeout`| `Duration`      | Timeout for gathering metadata about existing tasks on startup                                                                                                                                                                                                         |`PT1M`|No|
-|`druid.indexer.runner.K8sjobLaunchTimeout`| `Duration`      | How long to wait to launch a K8s task before marking it as failed, on a resource constrained cluster it may take some time.                                                                                                                      |`PT1H`|No|
-|`druid.indexer.runner.javaOptsArray`| `JsonArray`     | java opts for the task.                                                                                                                                                                                                                          |`-Xmx1g`|No|
-|`druid.indexer.runner.labels`| `JsonObject`    | Additional labels you want to add to peon pod                                                                                                                                                                                                    |`{}`|No|
-|`druid.indexer.runner.annotations`| `JsonObject`    | Additional annotations you want to add to peon pod                                                                                                                                                                                               |`{}`|No|
-|`druid.indexer.runner.peonMonitors`| `JsonArray`     | Overrides `druid.monitoring.monitors`. Use this property if you don't want to inherit monitors from the Overlord.                                                                                                                                |`[]`|No|
-|`druid.indexer.runner.graceTerminationPeriodSeconds`| `Long`          | Number of seconds you want to wait after a sigterm for container lifecycle hooks to complete.  Keep at a smaller value if you want tasks to hold locks for shorter periods.                                                                      |`PT30S` (K8s default)|No|
-|`druid.indexer.runner.capacity`| `Integer`       | Number of concurrent jobs that can be sent to Kubernetes.                                                                                                                                                                                        |`2147483647`|No|
-|`druid.indexer.runner.cpuCoreInMicro`| `Integer`       | Number of CPU micro core for the task.                                                                                                                                                                                                           | `1000`|No|
+| Property | Possible Values | Description | Default | Required |
+| --- | --- | --- | --- | --- |
+| `druid.indexer.runner.namespace` | `String` | If Overlord and task pods are running in different namespaces, specify the Overlord namespace. | - | Yes |
+| `druid.indexer.runner.overlordNamespace` | `String` | Only applicable when using Custom Template Pod Adapter. If Overlord and task pods are running in different namespaces, specify the Overlord namespace. | `druid.indexer.runner.namespace` | No |
+| `druid.indexer.runner.debugJobs` | `boolean` | Clean up K8s jobs after tasks complete. | False | No |
+| `druid.indexer.runner.sidecarSupport` | `boolean` | Deprecated, specify adapter type as runtime property `druid.indexer.runner.k8s.adapter.type: overlordMultiContainer` instead. If your overlord pod has sidecars, this will attempt to start the task with the same sidecars as the overlord pod. | False | No |
+| `druid.indexer.runner.primaryContainerName` | `String` | If running with sidecars, the `primaryContainerName` should be that of your druid container like `druid-overlord`. | First container in `podSpec` list | No |
+| `druid.indexer.runner.kubexitImage` | `String` | Used kubexit project to help shutdown sidecars when the main pod completes. Otherwise, jobs with sidecars never terminate. | karlkfi/kubexit:latest | No |
+| `druid.indexer.runner.disableClientProxy` | `boolean` | Use this if you have a global http(s) proxy and you wish to bypass it. | false | No |
+| `druid.indexer.runner.maxTaskDuration` | `Duration` | Max time a task is allowed to run for before getting killed. | `PT4H` | No |
+| `druid.indexer.runner.taskCleanupDelay` | `Duration` | How long do jobs stay around before getting reaped from K8s. | `P2D` | No |
+| `druid.indexer.runner.taskCleanupInterval` | `Duration` | How often to check for jobs to be reaped. | `PT10M` | No |
+| `druid.indexer.runner.taskJoinTimeout` | `Duration` | Timeout for gathering metadata about existing tasks on startup. | `PT1M` | No |
+| `druid.indexer.runner.K8sjobLaunchTimeout` | `Duration` | How long to wait to launch a K8s task before marking it as failed, on a resource constrained cluster it may take some time. | `PT1H` | No |
+| `druid.indexer.runner.javaOptsArray` | `JsonArray` | java opts for the task. | `-Xmx1g` | No |
+| `druid.indexer.runner.labels` | `JsonObject` | Additional labels you want to add to peon pod. | `{}` | No |
+| `druid.indexer.runner.annotations` | `JsonObject` | Additional annotations you want to add to peon pod. | `{}` | No |
+| `druid.indexer.runner.peonMonitors` | `JsonArray` | Overrides `druid.monitoring.monitors`. Use this property if you don't want to inherit monitors from the Overlord. | `[]` | No |
+| `druid.indexer.runner.graceTerminationPeriodSeconds` | `Long` | Number of seconds you want to wait after a sigterm for container lifecycle hooks to complete. Keep at a smaller value if you want tasks to hold locks for shorter periods. | `PT30S` (K8s default) | No |
+| `druid.indexer.runner.capacity` | `Integer` | Number of concurrent jobs that can be sent to Kubernetes. | `2147483647` | No |
+| `druid.indexer.runner.cpuCoreInMicro` | `Integer` | Number of CPU micro core for the task. | `1000` | No |
 
 ### Metrics added
 
@@ -662,7 +787,7 @@ In all the above cases, Druid will match the selector to any value of task type.
 
 ### Gotchas
 
-- All Druid Pods belonging to one Druid cluster must be inside the same Kubernetes namespace.
+- With the exception of task pods, all Druid Pods belonging to one Druid cluster must be inside the same Kubernetes namespace.
 
 - You must have a role binding for the overlord's service account that provides the needed permissions for interacting with Kubernetes. An example spec could be:
 

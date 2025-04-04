@@ -51,6 +51,7 @@ import org.apache.druid.discovery.LookupNodeService;
 import org.apache.druid.indexer.TaskLocation;
 import org.apache.druid.indexer.TaskState;
 import org.apache.druid.indexer.TaskStatus;
+import org.apache.druid.indexer.granularity.UniformGranularitySpec;
 import org.apache.druid.indexing.common.SegmentCacheManagerFactory;
 import org.apache.druid.indexing.common.TaskLock;
 import org.apache.druid.indexing.common.TaskLockType;
@@ -118,7 +119,6 @@ import org.apache.druid.segment.TestIndex;
 import org.apache.druid.segment.handoff.SegmentHandoffNotifier;
 import org.apache.druid.segment.handoff.SegmentHandoffNotifierFactory;
 import org.apache.druid.segment.indexing.DataSchema;
-import org.apache.druid.segment.indexing.granularity.UniformGranularitySpec;
 import org.apache.druid.segment.join.JoinableFactoryWrapperTest;
 import org.apache.druid.segment.join.NoopJoinableFactory;
 import org.apache.druid.segment.loading.DataSegmentPusher;
@@ -817,7 +817,8 @@ public class TaskLifecycleTest extends InitializedNullHandlingTest
         }
     );
 
-    mdc.setUnusedSegments(expectedUnusedSegments);
+    mdc.commitSegments(Set.copyOf(expectedUnusedSegments), null);
+    expectedUnusedSegments.forEach(segment -> mdc.markSegmentAsUnused(segment.getId()));
 
     // manually create local segments files
     List<File> segmentFiles = new ArrayList<>();
@@ -849,7 +850,7 @@ public class TaskLifecycleTest extends InitializedNullHandlingTest
     final TaskStatus status = runTask(killUnusedSegmentsTask);
     Assert.assertEquals(taskLocation, status.getLocation());
     Assert.assertEquals("merged statusCode", TaskState.SUCCESS, status.getStatusCode());
-    Assert.assertEquals("num segments published", 0, mdc.getPublished().size());
+    Assert.assertEquals("num segments published", 3, mdc.getPublished().size());
     Assert.assertEquals("num segments nuked", 3, mdc.getNuked().size());
     Assert.assertEquals("delete segment batch call count", 2, mdc.getDeleteSegmentsCount());
     Assert.assertTrue(
@@ -914,7 +915,8 @@ public class TaskLifecycleTest extends InitializedNullHandlingTest
         }
     );
 
-    mdc.setUnusedSegments(expectedUnusedSegments);
+    mdc.commitSegments(Set.copyOf(expectedUnusedSegments), null);
+    expectedUnusedSegments.forEach(segment -> mdc.markSegmentAsUnused(segment.getId()));
 
     // manually create local segments files
     List<File> segmentFiles = new ArrayList<>();
@@ -947,7 +949,7 @@ public class TaskLifecycleTest extends InitializedNullHandlingTest
     final TaskStatus status = runTask(killUnusedSegmentsTask);
     Assert.assertEquals(taskLocation, status.getLocation());
     Assert.assertEquals("merged statusCode", TaskState.SUCCESS, status.getStatusCode());
-    Assert.assertEquals("num segments published", 0, mdc.getPublished().size());
+    Assert.assertEquals("num segments published", 3, mdc.getPublished().size());
     Assert.assertEquals("num segments nuked", maxSegmentsToKill, mdc.getNuked().size());
     Assert.assertTrue(
         "expected unused segments get killed",
