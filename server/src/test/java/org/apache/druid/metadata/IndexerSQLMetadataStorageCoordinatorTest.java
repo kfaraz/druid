@@ -147,7 +147,7 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
 
     segmentMetadataCache = new HeapMemorySegmentMetadataCache(
         mapper,
-        () -> new SegmentsMetadataManagerConfig(null, cacheMode),
+        () -> new SegmentsMetadataManagerConfig(null, cacheMode, null),
         derbyConnectorRule.metadataTablesConfigSupplier(),
         derbyConnector,
         (corePoolSize, nameFormat) -> new WrappingScheduledExecutorService(

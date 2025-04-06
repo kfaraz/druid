@@ -1232,16 +1232,15 @@ public class TaskLockbox
   {
     giant.lock();
     try {
-      try {
-        log.info("Removing task[%s] from activeTasks", task.getId());
-        cleanupUpgradeAndPendingSegments(task);
-        unlockAll(task);
+      if (!activeTasks.contains(task.getId())) {
+        return;
       }
-      finally {
-        activeTasks.remove(task.getId());
-      }
+      log.info("Removing task[%s] from activeTasks", task.getId());
+      cleanupUpgradeAndPendingSegments(task);
+      unlockAll(task);
     }
     finally {
+      activeTasks.remove(task.getId());
       giant.unlock();
     }
   }

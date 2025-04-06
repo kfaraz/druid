@@ -128,7 +128,7 @@ public class TaskActionTestKit extends ExternalResource
     segmentSchemaCache = new SegmentSchemaCache(NoopServiceEmitter.instance());
     segmentsMetadataManager = new SqlSegmentsMetadataManager(
         objectMapper,
-        Suppliers.ofInstance(new SegmentsMetadataManagerConfig(null, null)),
+        Suppliers.ofInstance(new SegmentsMetadataManagerConfig(null, null, null)),
         Suppliers.ofInstance(metadataStorageTablesConfig),
         testDerbyConnector,
         segmentSchemaCache,
@@ -188,7 +188,7 @@ public class TaskActionTestKit extends ExternalResource
           : SegmentMetadataCache.UsageMode.NEVER;
     segmentMetadataCache = new HeapMemorySegmentMetadataCache(
         objectMapper,
-        Suppliers.ofInstance(new SegmentsMetadataManagerConfig(Period.seconds(1), cacheMode)),
+        Suppliers.ofInstance(new SegmentsMetadataManagerConfig(Period.seconds(1), cacheMode, null)),
         Suppliers.ofInstance(metadataStorageTablesConfig),
         testDerbyConnector,
         (poolSize, name) -> new WrappingScheduledExecutorService(name, metadataCachePollExec, false),

@@ -22,6 +22,7 @@ package org.apache.druid.metadata;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.apache.druid.common.config.Configs;
+import org.apache.druid.error.InvalidInput;
 import org.apache.druid.metadata.segment.cache.SegmentMetadataCache;
 import org.joda.time.Period;
 
@@ -39,14 +40,25 @@ public class SegmentsMetadataManagerConfig
   @JsonProperty
   private final SegmentMetadataCache.UsageMode useCache;
 
+  @JsonProperty
+  private final UnusedSegmentKillerConfig killUnused;
+
   @JsonCreator
   public SegmentsMetadataManagerConfig(
       @JsonProperty("pollDuration") Period pollDuration,
-      @JsonProperty("useCache") SegmentMetadataCache.UsageMode useCache
+      @JsonProperty("useCache") SegmentMetadataCache.UsageMode useCache,
+      @JsonProperty("killUnused") UnusedSegmentKillerConfig killUnused
   )
   {
     this.pollDuration = Configs.valueOrDefault(pollDuration, Period.minutes(1));
     this.useCache = Configs.valueOrDefault(useCache, SegmentMetadataCache.UsageMode.NEVER);
+    this.killUnused = Configs.valueOrDefault(killUnused, new UnusedSegmentKillerConfig(null));
+
+    if (killUnused.isEnabled() && this.useCache == SegmentMetadataCache.UsageMode.NEVER) {
+      throw InvalidInput.exception(
+          "Segment metadata cache must be enabled to allow killing of unused segments."
+      );
+    }
   }
 
   public SegmentMetadataCache.UsageMode getCacheMode()
@@ -57,5 +69,10 @@ public class SegmentsMetadataManagerConfig
   public Period getPollDuration()
   {
     return pollDuration;
+  }
+
+  public UnusedSegmentKillerConfig getKillUnused()
+  {
+    return killUnused;
   }
 }

@@ -52,6 +52,7 @@ import org.skife.jdbi.v2.util.StringMapper;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
+import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -60,6 +61,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -227,6 +229,74 @@ public class SqlSegmentsMetadataQuery
     try (final ResultIterator<String> iterator = query.map(StringMapper.FIRST).iterator()) {
       return ImmutableSet.copyOf(iterator);
     }
+  }
+
+  /**
+   * Gets unused segment intervals for the specified datasource. There is no
+   * guarantee on the order of intervals in the list or on whether the limited
+   * list contains the earliest or latest intervals present in the datasource.
+   *
+   * @return List of unused segment intervals containing upto {@code limit} entries.
+   */
+  public List<Interval> retrieveUnusedSegmentIntervals(String dataSource, int limit)
+  {
+    final String sql = StringUtils.format(
+        "SELECT start, %2$send%2$s FROM %1$s"
+        + " WHERE dataSource = :dataSource AND used = false"
+        + " GROUP BY 1, 2"
+        + "  %3$s",
+        dbTables.getSegmentsTable(), connector.getQuoteString(), connector.limitClause(limit)
+    );
+
+    final List<Interval> intervals = connector.inReadOnlyTransaction(
+        (handle, status) ->
+            handle.createQuery(sql)
+                  .setFetchSize(connector.getStreamingFetchSize())
+                  .bind("dataSource", dataSource)
+                  .map((index, r, ctx) -> mapToInterval(r, dataSource))
+                  .list()
+    );
+
+    return intervals.stream().filter(Objects::nonNull).collect(Collectors.toList());
+  }
+
+  /**
+   * Retrieves unused segments that exactly match the given interval.
+   *
+   * @param interval       Returned segments must exactly match this interval.
+   * @param maxUpdatedTime Returned segments must have a {@code used_status_last_updated}
+   *                       which is either null or earlier than this value.
+   * @param limit          Maximum number of segments to return
+   */
+  public List<DataSegment> retrieveUnusedSegmentsWithExactInterval(
+      String dataSource,
+      Interval interval,
+      DateTime maxUpdatedTime,
+      int limit
+  )
+  {
+    final String sql = StringUtils.format(
+        "SELECT id, payload FROM %1$s"
+        + " WHERE dataSource = :dataSource AND used = false"
+        + " AND %2$send%2$s = :end AND start = :start"
+        + " AND (used_status_last_updated IS NULL OR used_status_last_updated <= :maxUpdatedTime)"
+        + "  %3$s",
+        dbTables.getSegmentsTable(), connector.getQuoteString(), connector.limitClause(limit)
+    );
+
+    final List<DataSegment> segments = connector.inReadOnlyTransaction(
+        (handle, status) ->
+            handle.createQuery(sql)
+                  .setFetchSize(connector.getStreamingFetchSize())
+                  .bind("dataSource", dataSource)
+                  .bind("start", interval.getStart().toString())
+                  .bind("end", interval.getEnd().toString())
+                  .bind("maxUpdatedTime", maxUpdatedTime.toString())
+                  .map((index, r, ctx) -> mapToSegment(r))
+                  .list()
+    );
+
+    return segments.stream().filter(Objects::nonNull).collect(Collectors.toList());
   }
 
   /**
@@ -1252,6 +1322,35 @@ public class SqlSegmentsMetadataQuery
         return null;
       }
     }).iterator();
+  }
+
+  @Nullable
+  private DataSegment mapToSegment(ResultSet resultSet)
+  {
+    String segmentId = "";
+    try {
+      segmentId = resultSet.getString("id");
+      return JacksonUtils.readValue(jsonMapper, resultSet.getBytes("payload"), DataSegment.class);
+    }
+    catch (Throwable t) {
+      log.error(t, "Could not read segment with ID[%s]", segmentId);
+      return null;
+    }
+  }
+
+  @Nullable
+  private Interval mapToInterval(ResultSet resultSet, String dataSource)
+  {
+    try {
+      return new Interval(
+          DateTimes.of(resultSet.getString("start")),
+          DateTimes.of(resultSet.getString("end"))
+      );
+    }
+    catch (Throwable t) {
+      log.error(t, "Could not read an interval of datasource[%s]", dataSource);
+      return null;
+    }
   }
 
   private UnmodifiableIterator<DataSegment> filterDataSegmentIteratorByInterval(

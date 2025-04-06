@@ -92,6 +92,7 @@ import org.apache.druid.indexing.overlord.config.TaskQueueConfig;
 import org.apache.druid.indexing.overlord.duty.OverlordDuty;
 import org.apache.druid.indexing.overlord.duty.TaskLogAutoCleaner;
 import org.apache.druid.indexing.overlord.duty.TaskLogAutoCleanerConfig;
+import org.apache.druid.indexing.overlord.duty.UnusedSegmentsKiller;
 import org.apache.druid.indexing.overlord.hrtr.HttpRemoteTaskRunnerFactory;
 import org.apache.druid.indexing.overlord.hrtr.HttpRemoteTaskRunnerResource;
 import org.apache.druid.indexing.overlord.http.OverlordCompactionResource;
@@ -260,6 +261,8 @@ public class CliOverlord extends ServerRunnable
             binder.bind(ParallelIndexSupervisorTaskClientProvider.class).toProvider(Providers.of(null));
             binder.bind(ShuffleClient.class).toProvider(Providers.of(null));
             binder.bind(ChatHandlerProvider.class).toProvider(Providers.of(new NoopChatHandlerProvider()));
+
+            CliPeon.bindPeonDataSegmentKiller(binder);
 
             PolyBind.createChoice(
                 binder,
@@ -457,9 +460,9 @@ public class CliOverlord extends ServerRunnable
           private void configureOverlordHelpers(Binder binder)
           {
             JsonConfigProvider.bind(binder, "druid.indexer.logs.kill", TaskLogAutoCleanerConfig.class);
-            Multibinder.newSetBinder(binder, OverlordDuty.class)
-                       .addBinding()
-                       .to(TaskLogAutoCleaner.class);
+            final Multibinder<OverlordDuty> dutyBinder = Multibinder.newSetBinder(binder, OverlordDuty.class);
+            dutyBinder.addBinding().to(TaskLogAutoCleaner.class);
+            dutyBinder.addBinding().to(UnusedSegmentsKiller.class).in(ManageLifecycle.class);
           }
         },
         new IndexingServiceInputSourceModule(),

@@ -45,6 +45,21 @@ import java.util.Set;
 public interface IndexerMetadataStorageCoordinator
 {
   /**
+   * Retrieves the names of all the datasources that have segments (used or
+   * unused) in the metadata store.
+   */
+  Set<String> retrieveAllDatasourceNames();
+
+  /**
+   * Retrieves intervals of the specified datasource that contain any unused segments.
+   * There is no guarantee on the order of intervals in the list or on whether
+   * the limited list contains the earliest or latest intervals of the datasource.
+   *
+   * @return Unsorted list of unused segment intervals containing upto {@code limit} entries.
+   */
+  List<Interval> retrieveUnusedSegmentIntervals(String dataSource, int limit);
+
+  /**
    * Retrieves all published segments that have partial or complete overlap with
    * the given interval and are marked as used.
    */
@@ -140,6 +155,17 @@ public interface IndexerMetadataStorageCoordinator
       @Nullable List<String> versions,
       @Nullable Integer limit,
       @Nullable DateTime maxUsedStatusLastUpdatedTime
+  );
+
+  /**
+   * Retrieves unused segments from the metadata store that match the given
+   * interval exactly.
+   */
+  List<DataSegment> retrieveUnusedSegmentsWithExactInterval(
+      String dataSource,
+      Interval interval,
+      DateTime maxUpdatedTime,
+      int limit
   );
 
   /**
@@ -448,6 +474,9 @@ public interface IndexerMetadataStorageCoordinator
 
   void updateSegmentMetadata(Set<DataSegment> segments);
 
+  /**
+   * Deletes unused segments from the metadata store.
+   */
   void deleteSegments(Set<DataSegment> segments);
 
   /**

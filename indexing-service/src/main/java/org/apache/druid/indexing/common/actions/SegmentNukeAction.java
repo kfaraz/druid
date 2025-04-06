@@ -35,6 +35,9 @@ import org.apache.druid.timeline.DataSegment;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+/**
+ * Permanently deletes unused segments from the metadata store.
+ */
 public class SegmentNukeAction implements TaskAction<Void>
 {
   private final Set<DataSegment> segments;

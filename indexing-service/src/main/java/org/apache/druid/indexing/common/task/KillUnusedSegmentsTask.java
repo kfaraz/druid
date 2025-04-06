@@ -236,9 +236,7 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
         break;
       }
 
-      unusedSegments = toolbox.getTaskActionClient().submit(
-          new RetrieveUnusedSegmentsAction(getDataSource(), getInterval(), getVersions(), nextBatchSize, maxUsedStatusLastUpdatedTime)
-      );
+      unusedSegments = fetchUnusedSegmentsBatch(toolbox, nextBatchSize);
 
       // Fetch locks each time as a revokal could have occurred in between batches
       final NavigableMap<DateTime, List<TaskLock>> taskLockMap
@@ -313,18 +311,22 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
 
     final KillTaskReport.Stats stats =
         new KillTaskReport.Stats(numSegmentsKilled, numBatchesProcessed);
-    toolbox.getTaskReportFileWriter().write(
-        taskId,
-        TaskReport.buildTaskReports(new KillTaskReport(taskId, stats))
-    );
+    writeTaskReport(new KillTaskReport(taskId, stats), toolbox);
 
     return TaskStatus.success(taskId);
   }
 
+  protected void writeTaskReport(KillTaskReport report, TaskToolbox toolbox)
+  {
+    toolbox.getTaskReportFileWriter().write(
+        getId(),
+        TaskReport.buildTaskReports(report)
+    );
+  }
+
   @JsonIgnore
-  @VisibleForTesting
   @Nullable
-  Integer getNumTotalBatches()
+  protected Integer getNumTotalBatches()
   {
     return null != limit ? (int) Math.ceil((double) limit / batchSize) : null;
   }
@@ -334,6 +336,22 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
   int computeNextBatchSize(int numSegmentsKilled)
   {
     return null != limit ? Math.min(limit - numSegmentsKilled, batchSize) : batchSize;
+  }
+
+  /**
+   * Fetches the next batch of unused segments that are eligible for kill.
+   */
+  protected List<DataSegment> fetchUnusedSegmentsBatch(TaskToolbox toolbox, int nextBatchSize) throws IOException
+  {
+    return toolbox.getTaskActionClient().submit(
+        new RetrieveUnusedSegmentsAction(
+            getDataSource(),
+            getInterval(),
+            getVersions(),
+            nextBatchSize,
+            maxUsedStatusLastUpdatedTime
+        )
+    );
   }
 
   private NavigableMap<DateTime, List<TaskLock>> getNonRevokedTaskLockMap(TaskActionClient client) throws IOException
