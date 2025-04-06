@@ -54,7 +54,7 @@ public class SegmentsMetadataManagerConfig
     this.useCache = Configs.valueOrDefault(useCache, SegmentMetadataCache.UsageMode.NEVER);
     this.killUnused = Configs.valueOrDefault(killUnused, new UnusedSegmentKillerConfig(null));
 
-    if (killUnused.isEnabled() && this.useCache == SegmentMetadataCache.UsageMode.NEVER) {
+    if (this.killUnused.isEnabled() && this.useCache == SegmentMetadataCache.UsageMode.NEVER) {
       throw InvalidInput.exception(
           "Segment metadata cache must be enabled to allow killing of unused segments."
       );
