@@ -21,7 +21,8 @@ package org.apache.druid.metadata;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import org.joda.time.Duration;
+import org.apache.druid.common.config.Configs;
+import org.joda.time.Period;
 
 import javax.annotation.Nullable;
 
@@ -30,15 +31,20 @@ import javax.annotation.Nullable;
  */
 public class UnusedSegmentKillerConfig
 {
+  @JsonProperty("enabled")
+  private final boolean enabled;
+
   @JsonProperty("bufferPeriod")
-  private final Duration bufferPeriod;
+  private final Period bufferPeriod;
 
   @JsonCreator
   public UnusedSegmentKillerConfig(
-      @JsonProperty("bufferPeriod") @Nullable Duration bufferPeriod
+      @JsonProperty("enabled") @Nullable Boolean enabled,
+      @JsonProperty("bufferPeriod") @Nullable Period bufferPeriod
   )
   {
-    this.bufferPeriod = bufferPeriod;
+    this.enabled = Configs.valueOrDefault(enabled, false);
+    this.bufferPeriod = Configs.valueOrDefault(bufferPeriod, Period.days(90));
   }
 
   /**
@@ -46,17 +52,13 @@ public class UnusedSegmentKillerConfig
    * If this returns null, segments are never killed by the {@code UnusedSegmentKiller}
    * but they might still be killed by the Coordinator.
    */
-  @Nullable
-  public Duration getBufferPeriod()
+  public Period getBufferPeriod()
   {
     return bufferPeriod;
   }
 
-  /**
-   * @return true if {@link #getBufferPeriod()} returns a non-null value.
-   */
   public boolean isEnabled()
   {
-    return bufferPeriod != null;
+    return enabled;
   }
 }

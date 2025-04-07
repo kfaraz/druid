@@ -52,7 +52,7 @@ public class SegmentsMetadataManagerConfig
   {
     this.pollDuration = Configs.valueOrDefault(pollDuration, Period.minutes(1));
     this.useCache = Configs.valueOrDefault(useCache, SegmentMetadataCache.UsageMode.NEVER);
-    this.killUnused = Configs.valueOrDefault(killUnused, new UnusedSegmentKillerConfig(null));
+    this.killUnused = Configs.valueOrDefault(killUnused, new UnusedSegmentKillerConfig(null, null));
 
     if (this.killUnused.isEnabled() && this.useCache == SegmentMetadataCache.UsageMode.NEVER) {
       throw InvalidInput.exception(

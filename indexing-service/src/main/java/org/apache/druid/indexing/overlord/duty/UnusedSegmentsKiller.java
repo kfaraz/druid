@@ -24,36 +24,44 @@ import com.google.inject.Inject;
 import org.apache.druid.client.indexing.IndexingService;
 import org.apache.druid.common.utils.IdUtils;
 import org.apache.druid.discovery.DruidLeaderSelector;
+import org.apache.druid.indexer.TaskStatus;
 import org.apache.druid.indexer.report.KillTaskReport;
 import org.apache.druid.indexing.common.TaskToolbox;
 import org.apache.druid.indexing.common.actions.TaskActionClient;
 import org.apache.druid.indexing.common.actions.TaskActionClientFactory;
+import org.apache.druid.indexing.common.task.IndexTaskUtils;
 import org.apache.druid.indexing.common.task.KillUnusedSegmentsTask;
+import org.apache.druid.indexing.common.task.TaskMetrics;
 import org.apache.druid.indexing.common.task.Tasks;
 import org.apache.druid.indexing.overlord.IndexerMetadataStorageCoordinator;
 import org.apache.druid.indexing.overlord.TaskLockbox;
 import org.apache.druid.java.util.common.DateTimes;
+import org.apache.druid.java.util.common.Stopwatch;
 import org.apache.druid.java.util.common.concurrent.ScheduledExecutorFactory;
 import org.apache.druid.java.util.common.guava.Comparators;
 import org.apache.druid.java.util.common.lifecycle.LifecycleStart;
 import org.apache.druid.java.util.common.lifecycle.LifecycleStop;
 import org.apache.druid.java.util.common.logger.Logger;
+import org.apache.druid.java.util.emitter.service.ServiceEmitter;
+import org.apache.druid.java.util.emitter.service.ServiceMetricEvent;
 import org.apache.druid.metadata.SegmentsMetadataManagerConfig;
 import org.apache.druid.metadata.UnusedSegmentKillerConfig;
+import org.apache.druid.query.DruidMetrics;
 import org.apache.druid.segment.loading.DataSegmentKiller;
 import org.apache.druid.timeline.DataSegment;
 import org.joda.time.DateTime;
+import org.joda.time.Duration;
 import org.joda.time.Interval;
 import org.joda.time.Period;
 
 import javax.annotation.Nullable;
-import java.io.IOException;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Deletes unused segments from metadata store and the deep storage.
@@ -67,28 +75,32 @@ import java.util.concurrent.ScheduledExecutorService;
 public class UnusedSegmentsKiller implements OverlordDuty
 {
   private static final Logger log = new Logger(UnusedSegmentsKiller.class);
+
   private static final String TASK_ID_PREFIX = "overlord-issued";
 
+  /**
+   * Period after which the queue is reset even if there are existing jobs in queue.
+   */
+  private static final Duration QUEUE_RESET_PERIOD = Duration.standardDays(1);
+
+  private final ServiceEmitter emitter;
   private final TaskLockbox taskLockbox;
+  private final DruidLeaderSelector leaderSelector;
   private final DataSegmentKiller dataSegmentKiller;
 
   private final UnusedSegmentKillerConfig killConfig;
-  private final DruidLeaderSelector leaderSelector;
   private final TaskActionClientFactory taskActionClientFactory;
   private final IndexerMetadataStorageCoordinator storageCoordinator;
 
   private final ScheduledExecutorService exec;
   private int previousLeaderTerm;
-  private DateTime lastIntervalRefreshTime;
+  private final AtomicReference<DateTime> lastResetTime = new AtomicReference<>(null);
 
   /**
    * Queue of kill candidates. Use a PriorityBlockingQueue to ensure thread-safety
    * since this queue is accessed by both {@link #run()} and {@link #processKillQueue()}.
    */
   private final PriorityBlockingQueue<KillCandidate> killQueue;
-
-  private final ConcurrentHashMap<String, Set<Interval>> datasourceToKillIntervals
-      = new ConcurrentHashMap<>();
 
   @Inject
   public UnusedSegmentsKiller(
@@ -98,9 +110,11 @@ public class UnusedSegmentsKiller implements OverlordDuty
       @IndexingService DruidLeaderSelector leaderSelector,
       ScheduledExecutorFactory executorFactory,
       DataSegmentKiller dataSegmentKiller,
-      TaskLockbox taskLockbox
+      TaskLockbox taskLockbox,
+      ServiceEmitter emitter
   )
   {
+    this.emitter = emitter;
     this.taskLockbox = taskLockbox;
     this.leaderSelector = leaderSelector;
     this.dataSegmentKiller = dataSegmentKiller;
@@ -145,22 +159,28 @@ public class UnusedSegmentsKiller implements OverlordDuty
     return killConfig.isEnabled();
   }
 
+  /**
+   * Ensures that things are moving along and the kill queue is not stuck.
+   * Updates the state if leadership changes or if the queue needs to be reset.
+   */
   @Override
   public void run()
   {
     updateStateIfNewLeader();
-    if (shouldRefreshKillIntervals()) {
-      // TODO: ensure that exec has no pending tasks
-      exec.submit(this::addJobsToKillQueue);
+    if (shouldResetKillQueue()) {
+      // Clear the killQueue to stop further processing of already queued jobs
+      killQueue.clear();
+      exec.submit(this::resetKillQueue);
     }
+
+    // TODO: do something if a single job has been stuck since the last duty run
   }
 
   @Override
   public DutySchedule getSchedule()
   {
-    // If there are enough unused segments, the cleanup thread will be busy for
-    // the entire cleanup period (1 day). If there are not, having a large period doesn't hurt.
-    return new DutySchedule(Period.days(1).getMillis(), Period.minutes(1).getMillis());
+    // Check every hour that the kill queue is being processed normally
+    return new DutySchedule(Period.hours(1).getMillis(), Period.minutes(1).getMillis());
   }
 
   private void updateStateIfNewLeader()
@@ -168,44 +188,66 @@ public class UnusedSegmentsKiller implements OverlordDuty
     final int currentLeaderTerm = leaderSelector.localTerm();
     if (currentLeaderTerm != previousLeaderTerm) {
       previousLeaderTerm = currentLeaderTerm;
-      datasourceToKillIntervals.clear();
       killQueue.clear();
-      lastIntervalRefreshTime = null;
+      lastResetTime.set(null);
     }
   }
 
-  private boolean shouldRefreshKillIntervals()
+  private boolean shouldResetKillQueue()
   {
-    return lastIntervalRefreshTime == null
-           || !lastIntervalRefreshTime.isAfter(DateTimes.nowUtc().minusDays(1));
+    // Perform reset if (lastResetTime + resetPeriod < now + 1)
+    final DateTime now = DateTimes.nowUtc().plus(1);
+
+    return killQueue.isEmpty()
+           || lastResetTime.get() == null
+           || lastResetTime.get().plus(QUEUE_RESET_PERIOD).isBefore(now);
   }
 
   /**
    * Resets the kill queue with fresh jobs.
    */
-  private void addJobsToKillQueue()
+  private void resetKillQueue()
   {
+    final Stopwatch resetDuration = Stopwatch.createStarted();
     try {
-      final Set<String> dataSources = storageCoordinator.retrieveAllDatasourceNames();
-      for (String dataSource : dataSources) {
-        storageCoordinator.retrieveUnusedSegmentIntervals(dataSource, 10_000)
-                          .forEach(interval -> killQueue.add(new KillCandidate(dataSource, interval)));
-      }
-      lastIntervalRefreshTime = DateTimes.nowUtc();
-
       killQueue.clear();
-      datasourceToKillIntervals.forEach(
-          (dataSource, killIntervals) -> killIntervals.forEach(
-              interval -> killQueue.add(new KillCandidate(dataSource, interval))
+
+      final Set<String> dataSources = storageCoordinator.retrieveAllDatasourceNames();
+
+      final Map<String, Integer> dataSourceToIntervalCounts = new HashMap<>();
+      for (String dataSource : dataSources) {
+        storageCoordinator.retrieveUnusedSegmentIntervals(dataSource, 10_000).forEach(
+            interval -> {
+              dataSourceToIntervalCounts.merge(dataSource, 1, Integer::sum);
+              killQueue.offer(new KillCandidate(dataSource, interval));
+            }
+        );
+      }
+
+      lastResetTime.set(DateTimes.nowUtc());
+      log.info(
+          "Queued kill jobs for [%d] intervals across [%d] datasources in [%d] millis.",
+          killQueue.size(), dataSources.size(), resetDuration.millisElapsed()
+      );
+      dataSourceToIntervalCounts.forEach(
+          (dataSource, intervalCount) -> emitMetric(
+              TaskMetrics.UNUSED_SEGMENT_INTERVALS,
+              intervalCount,
+              Map.of(DruidMetrics.DATASOURCE, dataSource)
           )
       );
-
-      if (!killQueue.isEmpty()) {
-        processKillQueue();
-      }
+      emitMetric(Metric.QUEUE_RESET_TIME, resetDuration.millisElapsed(), null);
     }
     catch (Throwable t) {
-      log.error(t, "Could not queue kill jobs");
+      log.error(
+          t,
+          "Failed while queueing kill jobs after [%d] millis. There are [%d] jobs in queue.",
+          resetDuration.millisElapsed(), killQueue.size()
+      );
+    }
+
+    if (!killQueue.isEmpty()) {
+      processKillQueue();
     }
   }
 
@@ -216,32 +258,28 @@ public class UnusedSegmentsKiller implements OverlordDuty
    */
   public void processKillQueue()
   {
-    if (!isEnabled() || killQueue.isEmpty()) {
+    if (!isEnabled()) {
       return;
     }
 
-    while (!killQueue.isEmpty() && leaderSelector.isLeader()) {
-      final KillCandidate candidate = killQueue.poll();
-      if (candidate == null) {
-        return;
-      }
+    try {
+      while (!killQueue.isEmpty() && leaderSelector.isLeader()) {
+        final KillCandidate candidate = killQueue.poll();
+        if (candidate == null) {
+          return;
+        }
 
-      final String taskId = IdUtils.newTaskId(
-          TASK_ID_PREFIX,
-          KillUnusedSegmentsTask.TYPE,
-          candidate.dataSource,
-          candidate.interval
-      );
-      try {
+        final String taskId = IdUtils.newTaskId(
+            TASK_ID_PREFIX,
+            KillUnusedSegmentsTask.TYPE,
+            candidate.dataSource,
+            candidate.interval
+        );
         runKillTask(candidate, taskId);
       }
-      catch (Throwable t) {
-        log.error(
-            t,
-            "Error while running embedded kill task[%s] for datasource[%s], interval[%s].",
-            taskId, candidate.dataSource, candidate.interval
-        );
-      }
+    }
+    catch (Throwable t) {
+      log.error(t, "Error while processing queued kill jobs.");
     }
   }
 
@@ -250,6 +288,7 @@ public class UnusedSegmentsKiller implements OverlordDuty
    */
   private void runKillTask(KillCandidate candidate, String taskId)
   {
+    final Stopwatch taskRunTime = Stopwatch.createStarted();
     final EmbeddedKillTask killTask = new EmbeddedKillTask(
         taskId,
         candidate,
@@ -262,6 +301,9 @@ public class UnusedSegmentsKiller implements OverlordDuty
         .dataSegmentKiller(dataSegmentKiller)
         .build();
 
+    final ServiceMetricEvent.Builder metricBuilder = new ServiceMetricEvent.Builder();
+    IndexTaskUtils.setTaskDimensions(metricBuilder, killTask);
+
     try {
       final boolean isReady = killTask.isReady(taskActionClient);
       if (!isReady) {
@@ -269,14 +311,30 @@ public class UnusedSegmentsKiller implements OverlordDuty
       }
 
       taskLockbox.add(killTask);
-      killTask.runTask(taskToolbox);
+
+      final TaskStatus status = killTask.runTask(taskToolbox);
+
+      IndexTaskUtils.setTaskStatusDimensions(metricBuilder, status);
+      emitter.emit(metricBuilder.setMetric(TaskMetrics.RUN_DURATION, taskRunTime.millisElapsed()));
     }
     catch (Throwable t) {
       log.error(t, "Embedded kill task[%s] failed", killTask.getId());
+
+      IndexTaskUtils.setTaskStatusDimensions(metricBuilder, TaskStatus.failure(taskId, "Unknown error"));
+      emitter.emit(metricBuilder.setMetric(TaskMetrics.RUN_DURATION, taskRunTime.millisElapsed()));
     }
     finally {
       taskLockbox.remove(killTask);
     }
+  }
+
+  private void emitMetric(String metricName, long value, Map<String, String> dimensions)
+  {
+    final ServiceMetricEvent.Builder builder = new ServiceMetricEvent.Builder();
+    if (dimensions != null) {
+      dimensions.forEach(builder::setDimension);
+    }
+    emitter.emit(builder.setMetric(metricName, value));
   }
 
   /**
@@ -331,11 +389,11 @@ public class UnusedSegmentsKiller implements OverlordDuty
     @Override
     protected void writeTaskReport(KillTaskReport report, TaskToolbox toolbox)
     {
-      // TODO: emit stats, I guess
+      // Do nothing, metrics are emitted by the super class itself
     }
 
     @Override
-    protected List<DataSegment> fetchUnusedSegmentsBatch(TaskToolbox toolbox, int nextBatchSize) throws IOException
+    protected List<DataSegment> fetchUnusedSegmentsBatch(TaskToolbox toolbox, int nextBatchSize)
     {
       return storageCoordinator.retrieveUnusedSegmentsWithExactInterval(
           getDataSource(),
@@ -344,5 +402,10 @@ public class UnusedSegmentsKiller implements OverlordDuty
           1000
       );
     }
+  }
+
+  public static class Metric
+  {
+    public static final String QUEUE_RESET_TIME = "";
   }
 }

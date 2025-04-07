@@ -243,7 +243,7 @@ public class SqlSegmentsMetadataQuery
     final String sql = StringUtils.format(
         "SELECT start, %2$send%2$s FROM %1$s"
         + " WHERE dataSource = :dataSource AND used = false"
-        + " GROUP BY 1, 2"
+        + " GROUP BY start, %2$send%2$s"
         + "  %3$s",
         dbTables.getSegmentsTable(), connector.getQuoteString(), connector.limitClause(limit)
     );

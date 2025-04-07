@@ -30,6 +30,8 @@ import org.apache.druid.indexing.overlord.TaskStorage;
 import org.apache.druid.indexing.overlord.config.TaskLockConfig;
 import org.apache.druid.indexing.overlord.supervisor.SupervisorManager;
 import org.apache.druid.java.util.common.concurrent.ScheduledExecutors;
+import org.apache.druid.java.util.emitter.service.ServiceEmitter;
+import org.apache.druid.java.util.metrics.StubServiceEmitter;
 import org.apache.druid.metadata.IndexerSQLMetadataStorageCoordinator;
 import org.apache.druid.metadata.MetadataStorageConnectorConfig;
 import org.apache.druid.metadata.MetadataStorageTablesConfig;
@@ -107,6 +109,7 @@ public class TaskActionTestKit extends ExternalResource
   @Override
   public void before()
   {
+    final ServiceEmitter emitter = new StubServiceEmitter();
     taskStorage = new HeapMemoryTaskStorage(new TaskStorageConfig(new Period("PT24H")));
     testDerbyConnector = new TestDerbyConnector(
         Suppliers.ofInstance(new MetadataStorageConnectorConfig()),
@@ -115,7 +118,7 @@ public class TaskActionTestKit extends ExternalResource
     final ObjectMapper objectMapper = new TestUtils().getTestObjectMapper();
     segmentSchemaManager = new SegmentSchemaManager(metadataStorageTablesConfig, objectMapper, testDerbyConnector);
 
-    final SqlSegmentMetadataTransactionFactory transactionFactory = setupTransactionFactory(objectMapper);
+    final SqlSegmentMetadataTransactionFactory transactionFactory = setupTransactionFactory(objectMapper, emitter);
     metadataStorageCoordinator = new IndexerSQLMetadataStorageCoordinator(
         transactionFactory,
         objectMapper,
@@ -133,7 +136,7 @@ public class TaskActionTestKit extends ExternalResource
         testDerbyConnector,
         segmentSchemaCache,
         CentralizedDatasourceSchemaConfig.create(),
-        NoopServiceEmitter.instance()
+        emitter
     );
     final TaskLockConfig taskLockConfig = new TaskLockConfig()
     {
@@ -158,10 +161,10 @@ public class TaskActionTestKit extends ExternalResource
             taskLockbox,
             taskLockConfig,
             metadataStorageCoordinator,
-            NoopServiceEmitter.instance(),
+            emitter,
             ScheduledExecutors::fixed
         ),
-        NoopServiceEmitter.instance(),
+        emitter,
         EasyMock.createMock(SupervisorManager.class),
         objectMapper
     );
@@ -179,7 +182,10 @@ public class TaskActionTestKit extends ExternalResource
     syncSegmentMetadataCache();
   }
 
-  private SqlSegmentMetadataTransactionFactory setupTransactionFactory(ObjectMapper objectMapper)
+  private SqlSegmentMetadataTransactionFactory setupTransactionFactory(
+      ObjectMapper objectMapper,
+      ServiceEmitter emitter
+  )
   {
     metadataCachePollExec = new BlockingExecutorService("test-cache-poll-exec");
     SegmentMetadataCache.UsageMode cacheMode
@@ -192,7 +198,7 @@ public class TaskActionTestKit extends ExternalResource
         Suppliers.ofInstance(metadataStorageTablesConfig),
         testDerbyConnector,
         (poolSize, name) -> new WrappingScheduledExecutorService(name, metadataCachePollExec, false),
-        NoopServiceEmitter.instance()
+        emitter
     );
 
     final TestDruidLeaderSelector leaderSelector = new TestDruidLeaderSelector();
@@ -204,7 +210,7 @@ public class TaskActionTestKit extends ExternalResource
         testDerbyConnector,
         leaderSelector,
         segmentMetadataCache,
-        NoopServiceEmitter.instance()
+        emitter
     )
     {
       @Override

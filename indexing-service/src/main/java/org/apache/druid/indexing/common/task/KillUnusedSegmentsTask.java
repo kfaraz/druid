@@ -281,6 +281,7 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
 
       // Nuke Segments
       taskActionClient.submit(new SegmentNukeAction(new HashSet<>(unusedSegments)));
+      emitMetric(toolbox.getEmitter(), TaskMetrics.NUKED_SEGMENTS, unusedSegments.size());
 
       // Determine segments to be killed
       final List<DataSegment> segmentsToBeKilled
@@ -294,6 +295,8 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
       );
 
       toolbox.getDataSegmentKiller().kill(segmentsToBeKilled);
+      emitMetric(toolbox.getEmitter(), TaskMetrics.SEGMENTS_DELETED_FROM_DEEPSTORE, segmentsToBeKilled.size());
+
       numBatchesProcessed++;
       numSegmentsKilled += segmentsToBeKilled.size();
 
