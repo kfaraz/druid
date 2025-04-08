@@ -462,7 +462,7 @@ public class CliOverlord extends ServerRunnable
             JsonConfigProvider.bind(binder, "druid.indexer.logs.kill", TaskLogAutoCleanerConfig.class);
             final Multibinder<OverlordDuty> dutyBinder = Multibinder.newSetBinder(binder, OverlordDuty.class);
             dutyBinder.addBinding().to(TaskLogAutoCleaner.class);
-            dutyBinder.addBinding().to(UnusedSegmentsKiller.class).in(ManageLifecycle.class);
+            dutyBinder.addBinding().to(UnusedSegmentsKiller.class).in(LazySingleton.class);
           }
         },
         new IndexingServiceInputSourceModule(),

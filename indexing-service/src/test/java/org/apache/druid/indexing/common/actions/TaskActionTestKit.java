@@ -59,6 +59,7 @@ public class TaskActionTestKit extends ExternalResource
 
   private TaskStorage taskStorage;
   private TaskLockbox taskLockbox;
+  private StubServiceEmitter emitter;
   private TestDerbyConnector testDerbyConnector;
   private IndexerMetadataStorageCoordinator metadataStorageCoordinator;
   private SegmentsMetadataManager segmentsMetadataManager;
@@ -70,6 +71,21 @@ public class TaskActionTestKit extends ExternalResource
 
   private boolean useSegmentMetadataCache = false;
   private boolean skipSegmentPayloadFetchForAllocation = new TaskLockConfig().isBatchAllocationReduceMetadataIO();
+
+  public StubServiceEmitter getServiceEmitter()
+  {
+    return emitter;
+  }
+
+  public TestDerbyConnector getTestDerbyConnector()
+  {
+    return testDerbyConnector;
+  }
+
+  public MetadataStorageTablesConfig getMetadataStorageTablesConfig()
+  {
+    return metadataStorageTablesConfig;
+  }
 
   public TaskLockbox getTaskLockbox()
   {
@@ -109,7 +125,7 @@ public class TaskActionTestKit extends ExternalResource
   @Override
   public void before()
   {
-    final ServiceEmitter emitter = new StubServiceEmitter();
+    emitter = new StubServiceEmitter();
     taskStorage = new HeapMemoryTaskStorage(new TaskStorageConfig(new Period("PT24H")));
     testDerbyConnector = new TestDerbyConnector(
         Suppliers.ofInstance(new MetadataStorageConnectorConfig()),

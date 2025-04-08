@@ -1240,7 +1240,9 @@ public class TaskLockbox
       unlockAll(task);
     }
     finally {
-      activeTasks.remove(task.getId());
+      if (task != null) {
+        activeTasks.remove(task.getId());
+      }
       giant.unlock();
     }
   }

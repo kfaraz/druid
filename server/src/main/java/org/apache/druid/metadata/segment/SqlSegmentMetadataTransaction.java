@@ -306,7 +306,6 @@ class SqlSegmentMetadataTransaction implements SegmentMetadataTransaction
   @Override
   public int deleteSegments(Set<SegmentId> segmentsIdsToDelete)
   {
-    // TODO: delete in batches here, but the batches can be upto 1000 big or more?
     final String deleteSql = StringUtils.format("DELETE from %s WHERE id = :id", dbTables.getSegmentsTable());
 
     final PreparedBatch batch = handle.prepareBatch(deleteSql);

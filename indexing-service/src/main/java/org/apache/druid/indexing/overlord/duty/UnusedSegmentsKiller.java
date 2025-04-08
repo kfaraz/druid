@@ -25,7 +25,6 @@ import org.apache.druid.client.indexing.IndexingService;
 import org.apache.druid.common.utils.IdUtils;
 import org.apache.druid.discovery.DruidLeaderSelector;
 import org.apache.druid.indexer.TaskStatus;
-import org.apache.druid.indexer.report.KillTaskReport;
 import org.apache.druid.indexing.common.TaskToolbox;
 import org.apache.druid.indexing.common.actions.TaskActionClient;
 import org.apache.druid.indexing.common.actions.TaskActionClientFactory;
@@ -39,8 +38,6 @@ import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.common.Stopwatch;
 import org.apache.druid.java.util.common.concurrent.ScheduledExecutorFactory;
 import org.apache.druid.java.util.common.guava.Comparators;
-import org.apache.druid.java.util.common.lifecycle.LifecycleStart;
-import org.apache.druid.java.util.common.lifecycle.LifecycleStop;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.java.util.emitter.service.ServiceEmitter;
 import org.apache.druid.java.util.emitter.service.ServiceMetricEvent;
@@ -52,7 +49,6 @@ import org.apache.druid.timeline.DataSegment;
 import org.joda.time.DateTime;
 import org.joda.time.Duration;
 import org.joda.time.Interval;
-import org.joda.time.Period;
 
 import javax.annotation.Nullable;
 import java.util.HashMap;
@@ -136,23 +132,6 @@ public class UnusedSegmentsKiller implements OverlordDuty
     }
   }
 
-  @LifecycleStart
-  public void start()
-  {
-    if (isEnabled()) {
-      log.info("Starting UnusedSegmentsKiller. Will schedule kill jobs once I become leader.");
-    }
-  }
-
-  @LifecycleStop
-  public void stop()
-  {
-    if (isEnabled()) {
-      log.info("Stopping UnusedSegmentsKiller");
-      exec.shutdownNow();
-    }
-  }
-
   @Override
   public boolean isEnabled()
   {
@@ -166,6 +145,10 @@ public class UnusedSegmentsKiller implements OverlordDuty
   @Override
   public void run()
   {
+    if (!isEnabled()) {
+      return;
+    }
+
     updateStateIfNewLeader();
     if (shouldResetKillQueue()) {
       // Clear the killQueue to stop further processing of already queued jobs
@@ -179,8 +162,12 @@ public class UnusedSegmentsKiller implements OverlordDuty
   @Override
   public DutySchedule getSchedule()
   {
-    // Check every hour that the kill queue is being processed normally
-    return new DutySchedule(Period.hours(1).getMillis(), Period.minutes(1).getMillis());
+    if (isEnabled()) {
+      // Check every hour that the kill queue is being processed normally
+      return new DutySchedule(Duration.standardHours(1).getMillis(), Duration.standardMinutes(1).getMillis());
+    } else {
+      return new DutySchedule(0, 0);
+    }
   }
 
   private void updateStateIfNewLeader()
@@ -231,7 +218,7 @@ public class UnusedSegmentsKiller implements OverlordDuty
       );
       dataSourceToIntervalCounts.forEach(
           (dataSource, intervalCount) -> emitMetric(
-              TaskMetrics.UNUSED_SEGMENT_INTERVALS,
+              Metric.UNUSED_SEGMENT_INTERVALS,
               intervalCount,
               Map.of(DruidMetrics.DATASOURCE, dataSource)
           )
@@ -262,6 +249,8 @@ public class UnusedSegmentsKiller implements OverlordDuty
       return;
     }
 
+    final Stopwatch stopwatch = Stopwatch.createStarted();
+    int numProcessedJobs = 0;
     try {
       while (!killQueue.isEmpty() && leaderSelector.isLeader()) {
         final KillCandidate candidate = killQueue.poll();
@@ -276,10 +265,15 @@ public class UnusedSegmentsKiller implements OverlordDuty
             candidate.interval
         );
         runKillTask(candidate, taskId);
+        ++numProcessedJobs;
       }
     }
     catch (Throwable t) {
       log.error(t, "Error while processing queued kill jobs.");
+    }
+    finally {
+      emitMetric(Metric.PROCESSED_KILL_JOBS, numProcessedJobs, null);
+      emitMetric(Metric.QUEUE_PROCESS_TIME, stopwatch.millisElapsed(), null);
     }
   }
 
@@ -296,21 +290,17 @@ public class UnusedSegmentsKiller implements OverlordDuty
     );
 
     final TaskActionClient taskActionClient = taskActionClientFactory.create(killTask);
-    final TaskToolbox taskToolbox = new TaskToolbox.Builder()
-        .taskActionClient(taskActionClient)
-        .dataSegmentKiller(dataSegmentKiller)
-        .build();
+    final TaskToolbox taskToolbox = KillTaskToolbox.create(taskActionClient, dataSegmentKiller, emitter);
 
     final ServiceMetricEvent.Builder metricBuilder = new ServiceMetricEvent.Builder();
     IndexTaskUtils.setTaskDimensions(metricBuilder, killTask);
 
     try {
+      taskLockbox.add(killTask);
       final boolean isReady = killTask.isReady(taskActionClient);
       if (!isReady) {
         return;
       }
-
-      taskLockbox.add(killTask);
 
       final TaskStatus status = killTask.runTask(taskToolbox);
 
@@ -382,18 +372,12 @@ public class UnusedSegmentsKiller implements OverlordDuty
     @Override
     protected Integer getNumTotalBatches()
     {
-      // Do everything in a single batch
+      // Do everything in a single batch so that locks are not held for very long
       return 1;
     }
 
     @Override
-    protected void writeTaskReport(KillTaskReport report, TaskToolbox toolbox)
-    {
-      // Do nothing, metrics are emitted by the super class itself
-    }
-
-    @Override
-    protected List<DataSegment> fetchUnusedSegmentsBatch(TaskToolbox toolbox, int nextBatchSize)
+    protected List<DataSegment> fetchNextBatchOfUnusedSegments(TaskToolbox toolbox, int nextBatchSize)
     {
       return storageCoordinator.retrieveUnusedSegmentsWithExactInterval(
           getDataSource(),
@@ -406,6 +390,10 @@ public class UnusedSegmentsKiller implements OverlordDuty
 
   public static class Metric
   {
-    public static final String QUEUE_RESET_TIME = "";
+    public static final String QUEUE_RESET_TIME = "kill/queueReset/time";
+    public static final String QUEUE_PROCESS_TIME = "kill/queueProcess/time";
+    public static final String PROCESSED_KILL_JOBS = "kill/jobsProcessed/count";
+
+    public static final String UNUSED_SEGMENT_INTERVALS = "segment/unusedIntervals/count";
   }
 }

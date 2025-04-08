@@ -236,7 +236,7 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
         break;
       }
 
-      unusedSegments = fetchUnusedSegmentsBatch(toolbox, nextBatchSize);
+      unusedSegments = fetchNextBatchOfUnusedSegments(toolbox, nextBatchSize);
 
       // Fetch locks each time as a revokal could have occurred in between batches
       final NavigableMap<DateTime, List<TaskLock>> taskLockMap
@@ -314,17 +314,12 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
 
     final KillTaskReport.Stats stats =
         new KillTaskReport.Stats(numSegmentsKilled, numBatchesProcessed);
-    writeTaskReport(new KillTaskReport(taskId, stats), toolbox);
-
-    return TaskStatus.success(taskId);
-  }
-
-  protected void writeTaskReport(KillTaskReport report, TaskToolbox toolbox)
-  {
     toolbox.getTaskReportFileWriter().write(
         getId(),
-        TaskReport.buildTaskReports(report)
+        TaskReport.buildTaskReports(new KillTaskReport(taskId, stats))
     );
+
+    return TaskStatus.success(taskId);
   }
 
   @JsonIgnore
@@ -344,7 +339,7 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
   /**
    * Fetches the next batch of unused segments that are eligible for kill.
    */
-  protected List<DataSegment> fetchUnusedSegmentsBatch(TaskToolbox toolbox, int nextBatchSize) throws IOException
+  protected List<DataSegment> fetchNextBatchOfUnusedSegments(TaskToolbox toolbox, int nextBatchSize) throws IOException
   {
     return toolbox.getTaskActionClient().submit(
         new RetrieveUnusedSegmentsAction(

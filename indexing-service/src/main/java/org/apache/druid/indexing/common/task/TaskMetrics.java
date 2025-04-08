@@ -24,13 +24,12 @@ package org.apache.druid.indexing.common.task;
  */
 public class TaskMetrics
 {
-  private TaskMetrics() {
-      // no instantiation
+  private TaskMetrics()
+  {
+    // no instantiation
   }
 
   public static final String RUN_DURATION = "task/run/time";
-
-  public static final String UNUSED_SEGMENT_INTERVALS = "segment/unusedIntervals/count";
 
   public static final String NUKED_SEGMENTS = "segment/nuked/count";
   public static final String SEGMENTS_DELETED_FROM_DEEPSTORE = "segment/deletedFromDeepStorage/count";
