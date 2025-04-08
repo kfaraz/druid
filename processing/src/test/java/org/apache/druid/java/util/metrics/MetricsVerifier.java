@@ -19,10 +19,10 @@
 
 package org.apache.druid.java.util.metrics;
 
-import junitparams.converters.Nullable;
 import org.apache.druid.java.util.common.StringUtils;
 import org.junit.Assert;
 
+import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Map;
 
