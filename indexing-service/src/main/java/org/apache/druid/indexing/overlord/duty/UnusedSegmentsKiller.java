@@ -299,6 +299,7 @@ public class UnusedSegmentsKiller implements OverlordDuty
       taskLockbox.add(killTask);
       final boolean isReady = killTask.isReady(taskActionClient);
       if (!isReady) {
+        emitter.emit(metricBuilder.setMetric(Metric.SKIPPED_INTERVALS, 1L));
         return;
       }
 
@@ -393,6 +394,7 @@ public class UnusedSegmentsKiller implements OverlordDuty
     public static final String QUEUE_RESET_TIME = "kill/queueReset/time";
     public static final String QUEUE_PROCESS_TIME = "kill/queueProcess/time";
     public static final String PROCESSED_KILL_JOBS = "kill/jobsProcessed/count";
+    public static final String SKIPPED_INTERVALS = "kill/skippedIntervals/count";
 
     public static final String UNUSED_SEGMENT_INTERVALS = "segment/unusedIntervals/count";
   }

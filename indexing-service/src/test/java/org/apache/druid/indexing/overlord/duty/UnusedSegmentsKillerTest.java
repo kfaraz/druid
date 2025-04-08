@@ -316,6 +316,7 @@ public class UnusedSegmentsKillerTest
       // Verify that unused segments from locked intervals are not killed
       emitter.verifySum(TaskMetrics.NUKED_SEGMENTS, 5L);
       emitter.verifySum(TaskMetrics.SEGMENTS_DELETED_FROM_DEEPSTORE, 5L);
+      emitter.verifySum(UnusedSegmentsKiller.Metric.SKIPPED_INTERVALS, 5L);
     }
     finally {
       taskLockbox.remove(ingestionTask);
