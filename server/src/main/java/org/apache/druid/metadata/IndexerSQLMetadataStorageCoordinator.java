@@ -147,6 +147,26 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
   }
 
   @Override
+  public Set<String> retrieveAllDatasourceNames()
+  {
+    final String sql = StringUtils.format("SELECT DISTINCT(dataSource) FROM %s", dbTables.getSegmentsTable());
+    return Set.copyOf(
+        connector.retryWithHandle(
+            handle -> handle.createQuery(sql).mapTo(String.class).list()
+        )
+    );
+  }
+
+  @Override
+  public List<Interval> retrieveUnusedSegmentIntervals(String dataSource, int limit)
+  {
+    return inReadOnlyDatasourceTransaction(
+        dataSource,
+        transaction -> transaction.findUnusedSegmentIntervals(limit)
+    );
+  }
+
+  @Override
   public Set<DataSegment> retrieveUsedSegmentsForIntervals(
       final String dataSource,
       final List<Interval> intervals,
@@ -227,6 +247,20 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
         matchingSegments.size(), dataSource, interval, versions, maxUsedStatusLastUpdatedTime
     );
     return matchingSegments;
+  }
+
+  @Override
+  public List<DataSegment> retrieveUnusedSegmentsWithExactInterval(
+      String dataSource,
+      Interval interval,
+      DateTime maxUpdatedTime,
+      int limit
+  )
+  {
+    return inReadOnlyDatasourceTransaction(
+        dataSource,
+        transaction -> transaction.findUnusedSegmentsWithExactInterval(interval, maxUpdatedTime, limit)
+    );
   }
 
   @Override
