@@ -250,7 +250,6 @@ public class UnusedSegmentsKiller implements OverlordDuty
     }
 
     final Stopwatch stopwatch = Stopwatch.createStarted();
-    int numProcessedJobs = 0;
     try {
       while (!killQueue.isEmpty() && leaderSelector.isLeader()) {
         final KillCandidate candidate = killQueue.poll();
@@ -265,14 +264,12 @@ public class UnusedSegmentsKiller implements OverlordDuty
             candidate.interval
         );
         runKillTask(candidate, taskId);
-        ++numProcessedJobs;
       }
     }
     catch (Throwable t) {
       log.error(t, "Error while processing queued kill jobs.");
     }
     finally {
-      emitMetric(Metric.PROCESSED_KILL_JOBS, numProcessedJobs, null);
       emitMetric(Metric.QUEUE_PROCESS_TIME, stopwatch.millisElapsed(), null);
     }
   }
@@ -316,6 +313,7 @@ public class UnusedSegmentsKiller implements OverlordDuty
     }
     finally {
       taskLockbox.remove(killTask);
+      emitMetric(Metric.PROCESSED_KILL_JOBS, 1L, Map.of(DruidMetrics.DATASOURCE, candidate.dataSource));
     }
   }
 
@@ -397,11 +395,11 @@ public class UnusedSegmentsKiller implements OverlordDuty
 
   public static class Metric
   {
-    public static final String QUEUE_RESET_TIME = "kill/segment/queueReset/time";
-    public static final String QUEUE_PROCESS_TIME = "kill/segment/queueProcess/time";
-    public static final String PROCESSED_KILL_JOBS = "kill/segment/jobsProcessed/count";
-    public static final String SKIPPED_INTERVALS = "kill/segment/skippedIntervals/count";
+    public static final String QUEUE_RESET_TIME = "segment/kill/queueReset/time";
+    public static final String QUEUE_PROCESS_TIME = "segment/kill/queueProcess/time";
+    public static final String PROCESSED_KILL_JOBS = "segment/kill/jobsProcessed/count";
 
-    public static final String UNUSED_SEGMENT_INTERVALS = "segment/unusedIntervals/count";
+    public static final String SKIPPED_INTERVALS = "segment/kill/skippedIntervals/count";
+    public static final String UNUSED_SEGMENT_INTERVALS = "segment/kill/unusedIntervals/count";
   }
 }

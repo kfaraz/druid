@@ -297,6 +297,9 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
       toolbox.getDataSegmentKiller().kill(segmentsToBeKilled);
       emitMetric(toolbox.getEmitter(), TaskMetrics.SEGMENTS_DELETED_FROM_DEEPSTORE, segmentsToBeKilled.size());
 
+      // TODO: have segment killer return the killed paths so that we can log
+      //  them only if needed or add them to the kill task report instead
+
       numBatchesProcessed++;
       numSegmentsKilled += segmentsToBeKilled.size();
 
@@ -410,6 +413,7 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
         response.getUpgradedToSegmentIds().forEach((parent, children) -> {
           if (!CollectionUtils.isNullOrEmpty(children)) {
             // Do not kill segment if its parent or any of its siblings still exist in metadata store
+            // TODO: track the referenced segments here
             parentIdToUnusedSegments.remove(parent);
           }
         });
@@ -422,6 +426,10 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
           + " Overlord may be on an older version."
       );
     }
+
+    // Identify the segments whose load specs are being used by other segments too
+    // TODO: track the referenced segments here
+
 
     // Filter using the used segment load specs as segment upgrades predate the above task action
     return parentIdToUnusedSegments.values()

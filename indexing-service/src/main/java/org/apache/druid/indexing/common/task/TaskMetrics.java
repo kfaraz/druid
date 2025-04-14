@@ -31,6 +31,7 @@ public class TaskMetrics
 
   public static final String RUN_DURATION = "task/run/time";
 
-  public static final String NUKED_SEGMENTS = "segment/nuked/count";
-  public static final String SEGMENTS_DELETED_FROM_DEEPSTORE = "segment/deletedFromDeepStorage/count";
+  public static final String NUKED_SEGMENTS = "segment/killed/metadataStore/count";
+  public static final String SEGMENTS_DELETED_FROM_DEEPSTORE = "segment/killed/deepStorage/count";
+  public static final String FILES_DELETED_FROM_DEEPSTORE = "segment/killed/deepStorageFile/count";
 }
