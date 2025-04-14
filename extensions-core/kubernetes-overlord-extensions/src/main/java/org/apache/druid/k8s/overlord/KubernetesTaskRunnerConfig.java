@@ -26,7 +26,6 @@ import org.apache.commons.lang3.ObjectUtils;
 import org.joda.time.Period;
 
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import javax.validation.constraints.Max;
 import javax.validation.constraints.Min;
 import javax.validation.constraints.NotNull;
@@ -39,12 +38,14 @@ public class KubernetesTaskRunnerConfig
   @NotNull
   private String namespace;
 
+  @JsonProperty
+  private String k8sTaskPodNamePrefix = "";
+
   // This property is the namespace that the Overlord is running in.
   // For cases where we want task pods to run on different namespace from the overlord, we need to specify the namespace of the overlord here.
   // Else, we can simply leave this field alone.
   @JsonProperty
-  @Nullable
-  private String overlordNamespace;
+  private String overlordNamespace = "";
 
   @JsonProperty
   private boolean debugJobs = false;
@@ -140,6 +141,7 @@ public class KubernetesTaskRunnerConfig
   private KubernetesTaskRunnerConfig(
       @Nonnull String namespace,
       String overlordNamespace,
+      String k8sTaskPodNamePrefix,
       boolean debugJobs,
       boolean sidecarSupport,
       String primaryContainerName,
@@ -164,6 +166,7 @@ public class KubernetesTaskRunnerConfig
         overlordNamespace,
         this.overlordNamespace
     );
+    this.k8sTaskPodNamePrefix = k8sTaskPodNamePrefix;
     this.debugJobs = ObjectUtils.defaultIfNull(
         debugJobs,
         this.debugJobs
@@ -238,7 +241,12 @@ public class KubernetesTaskRunnerConfig
 
   public String getOverlordNamespace()
   {
-    return overlordNamespace == null ? namespace : overlordNamespace;
+    return overlordNamespace;
+  }
+
+  public String getK8sTaskPodNamePrefix()
+  {
+    return k8sTaskPodNamePrefix;
   }
 
   public boolean isDebugJobs()
@@ -337,6 +345,7 @@ public class KubernetesTaskRunnerConfig
   {
     private String namespace;
     private String overlordNamespace;
+    private String k8sTaskPodNamePrefix;
     private boolean debugJob;
     private boolean sidecarSupport;
     private String primaryContainerName;
@@ -368,6 +377,12 @@ public class KubernetesTaskRunnerConfig
     public Builder withOverlordNamespace(String overlordNamespace)
     {
       this.overlordNamespace = overlordNamespace;
+      return this;
+    }
+
+    public Builder withK8sTaskPodNamePrefix(String k8sTaskPodNamePrefix)
+    {
+      this.k8sTaskPodNamePrefix = k8sTaskPodNamePrefix;
       return this;
     }
 
@@ -479,6 +494,7 @@ public class KubernetesTaskRunnerConfig
       return new KubernetesTaskRunnerConfig(
           this.namespace,
           this.overlordNamespace,
+          this.k8sTaskPodNamePrefix,
           this.debugJob,
           this.sidecarSupport,
           this.primaryContainerName,

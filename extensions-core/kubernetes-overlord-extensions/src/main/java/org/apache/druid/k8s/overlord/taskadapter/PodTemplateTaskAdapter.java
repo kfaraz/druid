@@ -130,7 +130,7 @@ public class PodTemplateTaskAdapter implements TaskAdapter
 
     return new JobBuilder()
         .withNewMetadata()
-        .withName(new K8sTaskId(task).getK8sJobName())
+        .withName(new K8sTaskId(taskRunnerConfig.getK8sTaskPodNamePrefix(), task).getK8sJobName())
         .addToLabels(getJobLabels(taskRunnerConfig, task))
         .addToAnnotations(getJobAnnotations(taskRunnerConfig, task))
         .addToAnnotations(DruidK8sConstants.TASK_JOB_TEMPLATE, podTemplateWithName.getName())
@@ -209,7 +209,7 @@ public class PodTemplateTaskAdapter implements TaskAdapter
     if (taskId == null) {
       throw DruidException.defensive().build("No task_id annotation found on pod spec for job [%s]", from.getMetadata().getName());
     }
-    return new K8sTaskId(taskId);
+    return new K8sTaskId(taskRunnerConfig.getK8sTaskPodNamePrefix(), taskId);
   }
 
   private Collection<EnvVar> getEnv(Task task) throws IOException
@@ -267,13 +267,13 @@ public class PodTemplateTaskAdapter implements TaskAdapter
   
   private Map<String, String> getJobLabels(KubernetesTaskRunnerConfig config, Task task)
   {
-    // Namespace is required, or else getOverlordNamespace() will return null, and this will not work correctly.
     Preconditions.checkNotNull(config.getNamespace(), "When using Custom Pod Templates, druid.indexer.runner.namespace cannot be null.");
+    String overlordNamespace = config.getOverlordNamespace().isEmpty() ? config.getNamespace() : config.getOverlordNamespace();
 
     return ImmutableMap.<String, String>builder()
         .putAll(config.getLabels())
         .put(DruidK8sConstants.LABEL_KEY, "true")
-        .put(DruidK8sConstants.OVERLORD_NAMESPACE_KEY, config.getOverlordNamespace())
+        .put(DruidK8sConstants.OVERLORD_NAMESPACE_KEY, overlordNamespace)
         .put(getDruidLabel(DruidK8sConstants.TASK_ID), KubernetesOverlordUtils.convertTaskIdToK8sLabel(task.getId()))
         .put(getDruidLabel(DruidK8sConstants.TASK_TYPE), KubernetesOverlordUtils.convertStringToK8sLabel(task.getType()))
         .put(getDruidLabel(DruidK8sConstants.TASK_GROUP_ID), KubernetesOverlordUtils.convertTaskIdToK8sLabel(task.getGroupId()))
