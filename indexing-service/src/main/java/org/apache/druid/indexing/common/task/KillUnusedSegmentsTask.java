@@ -212,7 +212,7 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
     int nextBatchSize = computeNextBatchSize(numSegmentsKilled);
     @Nullable Integer numTotalBatches = getNumTotalBatches();
     List<DataSegment> unusedSegments;
-    LOG.info(
+    logInfo(
         "Starting kill for datasource[%s] in interval[%s] and versions[%s] with batchSize[%d], up to limit[%d]"
         + " segments before maxUsedStatusLastUpdatedTime[%s] will be deleted%s",
         getDataSource(), getInterval(), getVersions(), batchSize, limit, maxUsedStatusLastUpdatedTime,
@@ -300,13 +300,13 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
       numBatchesProcessed++;
       numSegmentsKilled += segmentsToBeKilled.size();
 
-      LOG.info("Processed [%d] batches for kill task[%s].", numBatchesProcessed, getId());
+      logInfo("Processed [%d] batches for kill task[%s].", numBatchesProcessed, getId());
 
       nextBatchSize = computeNextBatchSize(numSegmentsKilled);
     } while (!unusedSegments.isEmpty() && (null == numTotalBatches || numBatchesProcessed < numTotalBatches));
 
     final String taskId = getId();
-    LOG.info(
+    logInfo(
         "Finished kill task[%s] for dataSource[%s] and interval[%s]."
         + " Deleted total [%d] unused segments in [%d] batches.",
         taskId, getDataSource(), getInterval(), numSegmentsKilled, numBatchesProcessed
@@ -315,7 +315,7 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
     final KillTaskReport.Stats stats =
         new KillTaskReport.Stats(numSegmentsKilled, numBatchesProcessed);
     toolbox.getTaskReportFileWriter().write(
-        getId(),
+        taskId,
         TaskReport.buildTaskReports(new KillTaskReport(taskId, stats))
     );
 
@@ -350,6 +350,15 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
             maxUsedStatusLastUpdatedTime
         )
     );
+  }
+
+  /**
+   * Logs the given info message. Exposed here to allow embedded kill tasks to
+   * suppress info logs.
+   */
+  protected void logInfo(String message, Object... args)
+  {
+    LOG.info(message, args);
   }
 
   private NavigableMap<DateTime, List<TaskLock>> getNonRevokedTaskLockMap(TaskActionClient client) throws IOException

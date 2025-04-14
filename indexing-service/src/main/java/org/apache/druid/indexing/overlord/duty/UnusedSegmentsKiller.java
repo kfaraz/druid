@@ -387,14 +387,20 @@ public class UnusedSegmentsKiller implements OverlordDuty
           1000
       );
     }
+
+    @Override
+    protected void logInfo(String message, Object... args)
+    {
+      log.debug(message, args);
+    }
   }
 
   public static class Metric
   {
-    public static final String QUEUE_RESET_TIME = "kill/queueReset/time";
-    public static final String QUEUE_PROCESS_TIME = "kill/queueProcess/time";
-    public static final String PROCESSED_KILL_JOBS = "kill/jobsProcessed/count";
-    public static final String SKIPPED_INTERVALS = "kill/skippedIntervals/count";
+    public static final String QUEUE_RESET_TIME = "kill/segment/queueReset/time";
+    public static final String QUEUE_PROCESS_TIME = "kill/segment/queueProcess/time";
+    public static final String PROCESSED_KILL_JOBS = "kill/segment/jobsProcessed/count";
+    public static final String SKIPPED_INTERVALS = "kill/segment/skippedIntervals/count";
 
     public static final String UNUSED_SEGMENT_INTERVALS = "segment/unusedIntervals/count";
   }
