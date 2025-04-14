@@ -229,6 +229,22 @@ class SqlSegmentMetadataTransaction implements SegmentMetadataTransaction
     }
   }
 
+  @Override
+  public List<DataSegment> findUnusedSegmentsWithExactInterval(
+      Interval interval,
+      DateTime maxUpdatedTime,
+      int limit
+  )
+  {
+    return query.retrieveUnusedSegmentsWithExactInterval(dataSource, interval, maxUpdatedTime, limit);
+  }
+
+  @Override
+  public List<Interval> findUnusedSegmentIntervals(int limit)
+  {
+    return query.retrieveUnusedSegmentIntervals(dataSource, limit);
+  }
+
   // WRITE METHODS
 
   @Override

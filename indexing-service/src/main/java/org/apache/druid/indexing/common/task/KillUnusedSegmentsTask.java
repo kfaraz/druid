@@ -236,9 +236,7 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
         break;
       }
 
-      unusedSegments = toolbox.getTaskActionClient().submit(
-          new RetrieveUnusedSegmentsAction(getDataSource(), getInterval(), getVersions(), nextBatchSize, maxUsedStatusLastUpdatedTime)
-      );
+      unusedSegments = fetchNextBatchOfUnusedSegments(toolbox, nextBatchSize);
 
       // Fetch locks each time as a revokal could have occurred in between batches
       final NavigableMap<DateTime, List<TaskLock>> taskLockMap
@@ -283,6 +281,7 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
 
       // Nuke Segments
       taskActionClient.submit(new SegmentNukeAction(new HashSet<>(unusedSegments)));
+      emitMetric(toolbox.getEmitter(), TaskMetrics.NUKED_SEGMENTS, unusedSegments.size());
 
       // Determine segments to be killed
       final List<DataSegment> segmentsToBeKilled
@@ -296,6 +295,8 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
       );
 
       toolbox.getDataSegmentKiller().kill(segmentsToBeKilled);
+      emitMetric(toolbox.getEmitter(), TaskMetrics.SEGMENTS_DELETED_FROM_DEEPSTORE, segmentsToBeKilled.size());
+
       numBatchesProcessed++;
       numSegmentsKilled += segmentsToBeKilled.size();
 
@@ -314,7 +315,7 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
     final KillTaskReport.Stats stats =
         new KillTaskReport.Stats(numSegmentsKilled, numBatchesProcessed);
     toolbox.getTaskReportFileWriter().write(
-        taskId,
+        getId(),
         TaskReport.buildTaskReports(new KillTaskReport(taskId, stats))
     );
 
@@ -322,9 +323,8 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
   }
 
   @JsonIgnore
-  @VisibleForTesting
   @Nullable
-  Integer getNumTotalBatches()
+  protected Integer getNumTotalBatches()
   {
     return null != limit ? (int) Math.ceil((double) limit / batchSize) : null;
   }
@@ -334,6 +334,22 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
   int computeNextBatchSize(int numSegmentsKilled)
   {
     return null != limit ? Math.min(limit - numSegmentsKilled, batchSize) : batchSize;
+  }
+
+  /**
+   * Fetches the next batch of unused segments that are eligible for kill.
+   */
+  protected List<DataSegment> fetchNextBatchOfUnusedSegments(TaskToolbox toolbox, int nextBatchSize) throws IOException
+  {
+    return toolbox.getTaskActionClient().submit(
+        new RetrieveUnusedSegmentsAction(
+            getDataSource(),
+            getInterval(),
+            getVersions(),
+            nextBatchSize,
+            maxUsedStatusLastUpdatedTime
+        )
+    );
   }
 
   private NavigableMap<DateTime, List<TaskLock>> getNonRevokedTaskLockMap(TaskActionClient client) throws IOException
