@@ -35,6 +35,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * An immutable snapshot of metadata information about used segments and overshadowed segments, coming from
@@ -45,6 +46,28 @@ public class DataSourcesSnapshot
   public static DataSourcesSnapshot fromUsedSegments(Iterable<DataSegment> segments)
   {
     return fromUsedSegments(segments, DateTimes.nowUtc());
+  }
+
+  /**
+   * Creates a snapshot of all "used" segments that existed in the database at
+   * the {@code snapshotTime}.
+   */
+  public static DataSourcesSnapshot fromUsedSegments(
+      Map<String, Set<DataSegment>> datasourceToUsedSegments,
+      DateTime snapshotTime
+  )
+  {
+    final Map<String, String> properties = Map.of("created", snapshotTime.toString());
+
+    final Map<String, ImmutableDruidDataSource> dataSources = new HashMap<>();
+    datasourceToUsedSegments.forEach(
+        (dataSource, segments) -> dataSources.put(
+            dataSource,
+            new ImmutableDruidDataSource(dataSource, properties, segments)
+        )
+    );
+
+    return new DataSourcesSnapshot(snapshotTime, dataSources);
   }
 
   /**

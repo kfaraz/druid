@@ -39,7 +39,9 @@ import org.apache.druid.segment.metadata.CentralizedDatasourceSchemaConfig;
 import org.apache.druid.segment.metadata.SegmentSchemaCache;
 import org.apache.druid.server.http.DataSegmentPlus;
 import org.apache.druid.timeline.DataSegment;
+import org.apache.druid.timeline.Partitions;
 import org.apache.druid.timeline.SegmentId;
+import org.apache.druid.timeline.SegmentTimeline;
 import org.jetbrains.annotations.Nullable;
 import org.joda.time.DateTime;
 import org.joda.time.Interval;
@@ -57,12 +59,17 @@ import java.util.Set;
  * not done and the segments already present in the cache are used to build the
  * timeline. If the {@code SegmentMetadataCache} is disabled, the polling is
  * delegated to the legacy implementation in {@link SqlSegmentsMetadataManager}.
+ *
+ * TODO:
+ * - mention how the behaviour of this class is different for Coordinator and Overlord
+ * - should changes in leadership affect the state of this class
  */
 @ManageLifecycle
 public class SqlSegmentsMetadataManagerV2 implements SegmentsMetadataManager
 {
   private final SegmentsMetadataManager delegate;
   private final SegmentMetadataCache segmentMetadataCache;
+  private final CentralizedDatasourceSchemaConfig schemaConfig;
 
   public SqlSegmentsMetadataManagerV2(
       SegmentMetadataCache segmentMetadataCache,
@@ -81,6 +88,17 @@ public class SqlSegmentsMetadataManagerV2 implements SegmentsMetadataManager
         centralizedDatasourceSchemaConfig, serviceEmitter
     );
     this.segmentMetadataCache = segmentMetadataCache;
+    this.schemaConfig = centralizedDatasourceSchemaConfig;
+  }
+
+  /**
+   * @return true if segment metadata cache is enabled and segment schema cache
+   * is not enabled. Segment metadata cache currently does not handle segment
+   * schema updates.
+   */
+  private boolean useSegmentCache()
+  {
+    return segmentMetadataCache.isEnabled() && !schemaConfig.isEnabled();
   }
 
   @Override
@@ -100,44 +118,68 @@ public class SqlSegmentsMetadataManagerV2 implements SegmentsMetadataManager
   @Override
   public void startPollingDatabasePeriodically()
   {
-
+    if (useSegmentCache()) {
+      // Cache is already polling the metadata store
+    } else {
+      delegate.startPollingDatabasePeriodically();
+    }
   }
 
   @Override
   public void stopPollingDatabasePeriodically()
   {
-
+    if (useSegmentCache()) {
+      // Cache has its own lifecycle stop
+    } else {
+      delegate.stopPollingDatabasePeriodically();
+    }
   }
 
   @Override
   public boolean isPollingDatabasePeriodically()
   {
-    return segmentMetadataCache.isEnabled() || delegate.isPollingDatabasePeriodically();
+    return useSegmentCache() || delegate.isPollingDatabasePeriodically();
   }
 
   @Nullable
   @Override
   public ImmutableDruidDataSource getImmutableDataSourceWithUsedSegments(String dataSource)
   {
-    return null;
+    if (useSegmentCache()) {
+      return getSnapshotOfDataSourcesWithAllUsedSegments().getDataSource(dataSource);
+    } else {
+      return delegate.getImmutableDataSourceWithUsedSegments(dataSource);
+    }
   }
 
   @Override
   public Collection<ImmutableDruidDataSource> getImmutableDataSourcesWithAllUsedSegments()
   {
-    return List.of();
+    if (useSegmentCache()) {
+      return getSnapshotOfDataSourcesWithAllUsedSegments().getDataSourcesWithAllUsedSegments();
+    } else {
+      return delegate.getImmutableDataSourcesWithAllUsedSegments();
+    }
   }
 
   @Override
   public DataSourcesSnapshot getSnapshotOfDataSourcesWithAllUsedSegments()
   {
-    return null;
+    if (useSegmentCache()) {
+      return segmentMetadataCache.getDatasourcesSnapshot();
+    } else {
+      return delegate.getSnapshotOfDataSourcesWithAllUsedSegments();
+    }
   }
 
   @Override
   public Iterable<DataSegment> iterateAllUsedSegments()
   {
-    return null;
+    if (useSegmentCache()) {
+      return getSnapshotOfDataSourcesWithAllUsedSegments().iterateAllUsedSegmentsInSnapshot();
+    } else {
+      return delegate.iterateAllUsedSegments();
+    }
   }
 
   @Override
@@ -147,7 +189,19 @@ public class SqlSegmentsMetadataManagerV2 implements SegmentsMetadataManager
       boolean requiresLatest
   )
   {
-    return null;
+    if (useSegmentCache()) {
+      // Ignore the flag requiresLatest since the cache polls the metadata store
+      // continuously anyway
+      SegmentTimeline usedSegmentsTimeline =
+          getSnapshotOfDataSourcesWithAllUsedSegments()
+              .getUsedSegmentsTimelinesPerDataSource()
+              .get(datasource);
+      return Optional.fromNullable(usedSegmentsTimeline).transform(
+          timeline -> timeline.findNonOvershadowedObjectsInInterval(interval, Partitions.ONLY_COMPLETE)
+      );
+    } else {
+      return delegate.iterateAllUsedNonOvershadowedSegmentsForDatasourceInterval(datasource, interval, requiresLatest);
+    }
   }
 
   // Methods delegated to SqlSegmentsMetadataManager V1 implementation
@@ -179,8 +233,6 @@ public class SqlSegmentsMetadataManagerV2 implements SegmentsMetadataManager
   {
     return delegate.markSegmentAsUsed(segmentId);
   }
-
-
 
   @Override
   public Iterable<DataSegmentPlus> iterateAllUnusedSegmentsForDatasource(

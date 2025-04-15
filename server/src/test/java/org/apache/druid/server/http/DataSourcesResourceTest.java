@@ -39,6 +39,7 @@ import org.apache.druid.client.ImmutableDruidDataSource;
 import org.apache.druid.client.ImmutableSegmentLoadInfo;
 import org.apache.druid.client.SegmentLoadInfo;
 import org.apache.druid.error.DruidExceptionMatcher;
+import org.apache.druid.error.ErrorResponse;
 import org.apache.druid.jackson.DefaultObjectMapper;
 import org.apache.druid.java.util.common.Intervals;
 import org.apache.druid.java.util.http.client.response.StringFullResponseHolder;
@@ -739,15 +740,19 @@ public class DataSourcesResourceTest
             .andThrow(new RuntimeException(new HttpResponseException(responseHolder))).once();
     EasyMock.replay(overlordClient);
 
-    EasyMock.expect(segmentsMetadataManager.markSegmentAsUsed(segment.getId().toString()))
-            .andReturn(true).once();
-    EasyMock.replay(segmentsMetadataManager);
-
     Response response = dataSourcesResource.markSegmentAsUsed(segment.getDataSource(), segment.getId().toString());
-    Assert.assertEquals(200, response.getStatus());
-    Assert.assertEquals(new SegmentUpdateResponse(1), response.getEntity());
+    Assert.assertEquals(404, response.getStatus());
 
-    EasyMock.verify(overlordClient, segmentsMetadataManager);
+    final Object payload = response.getEntity();
+    Assert.assertTrue(payload instanceof ErrorResponse);
+
+    final ErrorResponse errorResponse = (ErrorResponse) payload;
+    Assert.assertEquals(
+        "Could not update segments since Overlord is on an older version.",
+        errorResponse.getAsMap().get("errorMessage")
+    );
+
+    EasyMock.verify(overlordClient);
   }
 
   @Test
