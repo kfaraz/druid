@@ -65,8 +65,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * An object that helps {@link SqlSegmentsMetadataManager} and {@link IndexerSQLMetadataStorageCoordinator} make
- * queries to the metadata store segments table. Each instance of this class is scoped to a single handle and is meant
+ * An object that is used to make queries to the metadata store segments table.
+ * Each instance of this class is scoped to a single handle and is meant
  * to be short-lived.
  */
 public class SqlSegmentsMetadataQuery

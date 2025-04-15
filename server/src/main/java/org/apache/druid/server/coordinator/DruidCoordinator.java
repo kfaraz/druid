@@ -657,8 +657,11 @@ public class DruidCoordinator
       if (rootCause instanceof HttpResponseException) {
         HttpResponseStatus status = ((HttpResponseException) rootCause).getResponse().getStatus();
         if (status.getCode() == 404) {
-          log.info("Could not update segments via Overlord API. Updating metadata store directly.");
-          return metadataManager.segments().markSegmentsAsUnused(segmentIds);
+          log.warn(
+              "Could not mark segments as unused since Overlord is on an older version."
+              + " Upgrade the Overlord to a newer version to allow updating segments."
+          );
+          return 0;
         }
       }
 

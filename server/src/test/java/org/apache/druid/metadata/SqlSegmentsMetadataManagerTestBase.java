@@ -22,6 +22,7 @@ package org.apache.druid.metadata;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import junitparams.converters.Nullable;
 import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.common.Intervals;
 import org.apache.druid.java.util.common.StringUtils;
@@ -29,13 +30,16 @@ import org.apache.druid.segment.TestHelper;
 import org.apache.druid.segment.metadata.SegmentSchemaCache;
 import org.apache.druid.segment.metadata.SegmentSchemaManager;
 import org.apache.druid.timeline.DataSegment;
+import org.apache.druid.timeline.SegmentId;
 import org.apache.druid.timeline.partition.NoneShardSpec;
+import org.joda.time.Interval;
 import org.skife.jdbi.v2.DBI;
 import org.skife.jdbi.v2.tweak.HandleCallback;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class SqlSegmentsMetadataManagerTestBase
 {
@@ -67,6 +71,47 @@ public class SqlSegmentsMetadataManagerTestBase
   protected void publishSegment(final DataSegment segment) throws IOException
   {
     publishSegment(connector, storageConfig, jsonMapper, segment);
+  }
+
+  protected int markAllSegmentsAsUnused(String dataSource)
+  {
+    return markSegmentsWithinIntervalAsUnused(dataSource, Intervals.ETERNITY, null);
+  }
+
+  protected int markSegmentsWithinIntervalAsUnused(
+      String dataSource,
+      Interval interval,
+      @Nullable List<String> versions
+  )
+  {
+    return connector.retryWithHandle(
+        handle -> SqlSegmentsMetadataQuery.forHandle(handle, connector, storageConfig, jsonMapper)
+                                          .markSegmentsUnused(dataSource, interval, versions, DateTimes.nowUtc())
+    );
+  }
+
+  protected boolean markSegmentAsUnused(SegmentId segmentId)
+  {
+    int updatedRows = markSegmentsAsUnused(Set.of(segmentId), connector, storageConfig, jsonMapper);
+    return updatedRows > 0;
+  }
+
+  protected int markSegmentsAsUnused(Set<SegmentId> segmentIds)
+  {
+    return markSegmentsAsUnused(segmentIds, connector, storageConfig, jsonMapper);
+  }
+
+  public static int markSegmentsAsUnused(
+      Set<SegmentId> segmentIds,
+      SQLMetadataConnector connector,
+      MetadataStorageTablesConfig storageConfig,
+      ObjectMapper jsonMapper
+  )
+  {
+    return connector.retryWithHandle(
+        handle -> SqlSegmentsMetadataQuery.forHandle(handle, connector, storageConfig, jsonMapper)
+                                          .markSegments(segmentIds, false, DateTimes.nowUtc())
+    );
   }
 
   protected static DataSegment createSegment(

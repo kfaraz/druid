@@ -34,12 +34,24 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * The difference between this class and org.apache.druid.sql.calcite.schema.MetadataSegmentView is that this class
- * resides in Coordinator's memory, while org.apache.druid.sql.calcite.schema.MetadataSegmentView resides in Broker's
- * memory.
+ * Polls the metadata store periodically and builds a timeline of used segments
+ * (and schemas if schema caching on the Coordinator is enabled).
+ * <p>
+ * This class is provisioned by {@link SegmentsMetadataManagerProvider} and must
+ * be bound on the Coordinator/Overlord accordingly.
  */
 public interface SegmentsMetadataManager
 {
+  /**
+   * Initializes the manager when the service is being started.
+   */
+  void start();
+
+  /**
+   * Cleans up resources when the service is being shut down.
+   */
+  void stop();
+
   void startPollingDatabasePeriodically();
 
   void stopPollingDatabasePeriodically();
@@ -78,31 +90,6 @@ public interface SegmentsMetadataManager
    * the caller.
    */
   boolean markSegmentAsUsed(String segmentId);
-
-  /**
-   * Returns the number of segment entries in the database whose state was changed as the result of this call (that is,
-   * the segments were marked as unused). If the call results in a database error, an exception is relayed to the
-   * caller.
-   */
-  int markAsUnusedAllSegmentsInDataSource(String dataSource);
-
-  /**
-   * Marks segments as unused that are <b>fully contained</b> in the given interval for an optional list of versions.
-   * If versions are not specified, all versions of segments in the interval will be marked as unused. If an empty list
-   * of versions is passed, no segments are marked as unused.
-   * Segments that are already marked as unused are not updated.
-   * @return The number of segments updated
-   */
-  int markAsUnusedSegmentsInInterval(String dataSource, Interval interval, @Nullable List<String> versions);
-
-  int markSegmentsAsUnused(Set<SegmentId> segmentIds);
-
-  /**
-   * Returns true if the state of the segment entry is changed in the database as the result of this call (that is, the
-   * segment was marked as unused), false otherwise. If the call results in a database error, an exception is relayed to
-   * the caller.
-   */
-  boolean markSegmentAsUnused(SegmentId segmentId);
 
   /**
    * If there are used segments belonging to the given data source this method returns them as an {@link

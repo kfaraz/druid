@@ -91,7 +91,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
   {
     for (DataSegment segment : segments) {
       publishSegment(segment);
-      sqlSegmentsMetadataManager.markSegmentAsUnused(segment.getId());
+      markSegmentAsUnused(segment.getId());
     }
   }
 
@@ -389,7 +389,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
     allowUsedFlagLastUpdatedToBeNullable();
 
     Assert.assertTrue(sqlSegmentsMetadataManager.isPollingDatabasePeriodically());
-    int numChangedSegments = sqlSegmentsMetadataManager.markAsUnusedAllSegmentsInDataSource(TestDataSource.WIKI);
+    int numChangedSegments = markAllSegmentsAsUnused(TestDataSource.WIKI);
     Assert.assertEquals(2, numChangedSegments);
 
     // Publish an unused segment with used_status_last_updated 2 hours ago
@@ -518,7 +518,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
     publishSegment(createNewSegment1(TestDataSource.KOALA));
 
     awaitDataSourceAppeared(TestDataSource.KOALA);
-    int numChangedSegments = sqlSegmentsMetadataManager.markAsUnusedAllSegmentsInDataSource(TestDataSource.KOALA);
+    int numChangedSegments = markAllSegmentsAsUnused(TestDataSource.KOALA);
     Assert.assertEquals(1, numChangedSegments);
     awaitDataSourceDisappeared(TestDataSource.KOALA);
     Assert.assertNull(sqlSegmentsMetadataManager.getImmutableDataSourceWithUsedSegments(TestDataSource.KOALA));
@@ -559,7 +559,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
     awaitDataSourceAppeared(TestDataSource.KOALA);
     Assert.assertNotNull(sqlSegmentsMetadataManager.getImmutableDataSourceWithUsedSegments(TestDataSource.KOALA));
 
-    Assert.assertTrue(sqlSegmentsMetadataManager.markSegmentAsUnused(koalaSegment.getId()));
+    Assert.assertTrue(markSegmentAsUnused(koalaSegment.getId()));
     awaitDataSourceDisappeared(TestDataSource.KOALA);
     Assert.assertNull(sqlSegmentsMetadataManager.getImmutableDataSourceWithUsedSegments(TestDataSource.KOALA));
   }
@@ -1043,7 +1043,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
     final ImmutableSet<SegmentId> segmentIds =
         ImmutableSet.of(koalaSegment1.getId(), koalaSegment1.getId());
 
-    Assert.assertEquals(segmentIds.size(), sqlSegmentsMetadataManager.markSegmentsAsUnused(segmentIds));
+    Assert.assertEquals(segmentIds.size(), markSegmentsAsUnused(segmentIds));
     sqlSegmentsMetadataManager.poll();
     Assert.assertEquals(
         ImmutableSet.of(wikiSegment1, wikiSegment2),
@@ -1073,7 +1073,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
     final Interval theInterval = Intervals.of("2017-10-15T00:00:00.000/2017-10-18T00:00:00.000");
 
     // 2 out of 3 segments match the interval
-    Assert.assertEquals(2, sqlSegmentsMetadataManager.markAsUnusedSegmentsInInterval(TestDataSource.KOALA, theInterval, null));
+    Assert.assertEquals(2, markSegmentsWithinIntervalAsUnused(TestDataSource.KOALA, theInterval, null));
 
     sqlSegmentsMetadataManager.poll();
     Assert.assertEquals(
@@ -1117,7 +1117,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
 
     Assert.assertEquals(
         2,
-        sqlSegmentsMetadataManager.markAsUnusedSegmentsInInterval(
+        markSegmentsWithinIntervalAsUnused(
             TestDataSource.KOALA,
             theInterval,
             ImmutableList.of(v1, v2)
@@ -1166,7 +1166,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
 
     Assert.assertEquals(
         0,
-        sqlSegmentsMetadataManager.markAsUnusedSegmentsInInterval(
+        markSegmentsWithinIntervalAsUnused(
             TestDataSource.KOALA,
             theInterval,
             ImmutableList.of("foo", "bar", "baz")
@@ -1215,7 +1215,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
 
     Assert.assertEquals(
         0,
-        sqlSegmentsMetadataManager.markAsUnusedSegmentsInInterval(
+        markSegmentsWithinIntervalAsUnused(
             TestDataSource.KOALA,
             theInterval,
             ImmutableList.of()
@@ -1264,7 +1264,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
 
     Assert.assertEquals(
         0,
-        sqlSegmentsMetadataManager.markAsUnusedSegmentsInInterval(
+        markSegmentsWithinIntervalAsUnused(
             TestDataSource.KOALA,
             theInterval,
             ImmutableList.of()
@@ -1304,7 +1304,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
     final Interval theInterval = Intervals.of("2017-10-16T00:00:00.000/2017-10-20T00:00:00.000");
 
     // 1 out of 3 segments match the interval, other 2 overlap, only the segment fully contained will be marked unused
-    Assert.assertEquals(1, sqlSegmentsMetadataManager.markAsUnusedSegmentsInInterval(TestDataSource.KOALA, theInterval, null));
+    Assert.assertEquals(1, markSegmentsWithinIntervalAsUnused(TestDataSource.KOALA, theInterval, null));
 
     sqlSegmentsMetadataManager.poll();
     Assert.assertEquals(

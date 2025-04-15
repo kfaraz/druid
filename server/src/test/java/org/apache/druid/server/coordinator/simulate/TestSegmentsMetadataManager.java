@@ -55,6 +55,18 @@ public class TestSegmentsMetadataManager implements SegmentsMetadataManager
   private volatile DataSourcesSnapshot snapshot;
   private volatile boolean pollingStarted;
 
+  @Override
+  public void start()
+  {
+
+  }
+
+  @Override
+  public void stop()
+  {
+
+  }
+
   public boolean addSegment(DataSegment segment)
   {
     allSegments.put(segment.getId().toString(), segment);
@@ -135,13 +147,11 @@ public class TestSegmentsMetadataManager implements SegmentsMetadataManager
     return true;
   }
 
-  @Override
   public int markAsUnusedAllSegmentsInDataSource(String dataSource)
   {
     return markSegmentsAsUnused(segment -> segment.getDataSource().equals(dataSource));
   }
 
-  @Override
   public int markAsUnusedSegmentsInInterval(String dataSource, Interval interval, @Nullable List<String> versions)
   {
     final Set<String> eligibleVersions = versions == null ? null : new HashSet<>(versions);
@@ -152,7 +162,6 @@ public class TestSegmentsMetadataManager implements SegmentsMetadataManager
     );
   }
 
-  @Override
   public int markSegmentsAsUnused(Set<SegmentId> segmentIds)
   {
     return markSegmentsAsUnused(
@@ -160,7 +169,6 @@ public class TestSegmentsMetadataManager implements SegmentsMetadataManager
     );
   }
 
-  @Override
   public boolean markSegmentAsUnused(SegmentId segmentId)
   {
     boolean updated = usedSegments.remove(segmentId.toString()) != null;

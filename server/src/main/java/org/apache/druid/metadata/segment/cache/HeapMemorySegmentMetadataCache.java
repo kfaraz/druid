@@ -492,7 +492,7 @@ public class HeapMemorySegmentMetadataCache implements SegmentMetadataCache
     if (syncFinishTime.get() == null) {
       retrieveAllUsedSegments(datasourceToSummary);
     } else {
-      retrieveAllSegmentIds(datasourceToSummary);
+      retrieveUsedSegmentIds(datasourceToSummary);
       updateSegmentIdsInCache(datasourceToSummary, syncStartTime);
       retrieveUsedSegmentPayloads(datasourceToSummary);
     }
@@ -547,7 +547,7 @@ public class HeapMemorySegmentMetadataCache implements SegmentMetadataCache
    * Retrieves all used segment IDs from the metadata store.
    * Populates the summary for the datasources found in metadata store.
    */
-  private void retrieveAllSegmentIds(
+  private void retrieveUsedSegmentIds(
       Map<String, DatasourceSegmentSummary> datasourceToSummary
   )
   {
@@ -629,7 +629,7 @@ public class HeapMemorySegmentMetadataCache implements SegmentMetadataCache
 
   /**
    * Updates the cache of each datasource with the segment IDs fetched from the
-   * metadata store in {@link #retrieveAllSegmentIds}. The update done on each
+   * metadata store in {@link #retrieveUsedSegmentIds}. The update done on each
    * datasource cache is atomic.
    */
   private void updateSegmentIdsInCache(

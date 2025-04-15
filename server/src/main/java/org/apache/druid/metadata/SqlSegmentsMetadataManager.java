@@ -33,7 +33,6 @@ import com.google.common.collect.Iterators;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.Futures;
 import com.google.errorprone.annotations.concurrent.GuardedBy;
-import com.google.inject.Inject;
 import org.apache.druid.client.DataSourcesSnapshot;
 import org.apache.druid.client.ImmutableDruidDataSource;
 import org.apache.druid.error.DruidException;
@@ -97,7 +96,8 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 
 /**
- *
+ * Legacy implementation of {@link SegmentsMetadataManager}. Now replaced with
+ * TODO
  */
 @ManageLifecycle
 public class SqlSegmentsMetadataManager implements SegmentsMetadataManager
@@ -249,7 +249,6 @@ public class SqlSegmentsMetadataManager implements SegmentsMetadataManager
 
   private Future<?> usedFlagLastUpdatedPopulationFuture;
 
-  @Inject
   public SqlSegmentsMetadataManager(
       ObjectMapper jsonMapper,
       Supplier<SegmentsMetadataManagerConfig> config,
@@ -270,10 +269,7 @@ public class SqlSegmentsMetadataManager implements SegmentsMetadataManager
     this.serviceEmitter = serviceEmitter;
   }
 
-  /**
-   * Don't confuse this method with {@link #startPollingDatabasePeriodically}. This is a lifecycle starting method to
-   * be executed just once for an instance of SqlSegmentsMetadataManager.
-   */
+  @Override
   @LifecycleStart
   public void start()
   {
@@ -290,10 +286,7 @@ public class SqlSegmentsMetadataManager implements SegmentsMetadataManager
     }
   }
 
-  /**
-   * Don't confuse this method with {@link #stopPollingDatabasePeriodically}. This is a lifecycle stopping method to
-   * be executed just once for an instance of SqlSegmentsMetadataManager.
-   */
+  @Override
   @LifecycleStop
   public void stop()
   {
@@ -825,74 +818,6 @@ public class SqlSegmentsMetadataManager implements SegmentsMetadataManager
             SqlSegmentsMetadataQuery.forHandle(handle, connector, dbTables.get(), jsonMapper)
                                     .markSegments(segmentIds, true, DateTimes.nowUtc())
     );
-  }
-
-  @Override
-  public int markAsUnusedAllSegmentsInDataSource(final String dataSource)
-  {
-    try {
-      return connector.getDBI().withHandle(
-          handle ->
-              SqlSegmentsMetadataQuery.forHandle(handle, connector, dbTables.get(), jsonMapper)
-                                      .markSegmentsUnused(dataSource, Intervals.ETERNITY, DateTimes.nowUtc())
-      );
-    }
-    catch (RuntimeException e) {
-      log.error(e, "Exception marking all segments as unused in data source [%s]", dataSource);
-      throw e;
-    }
-  }
-
-  /**
-   * This method does not update {@link #dataSourcesSnapshot}, see the comments in {@link #doPoll()} about
-   * snapshot update. The update of the segment's state will be reflected after the next {@link DatabasePoll}.
-   */
-  @Override
-  public boolean markSegmentAsUnused(final SegmentId segmentId)
-  {
-    try {
-      final int numSegments = connector.getDBI().withHandle(
-          handle ->
-              SqlSegmentsMetadataQuery.forHandle(handle, connector, dbTables.get(), jsonMapper)
-                                      .markSegments(List.of(segmentId), false, DateTimes.nowUtc())
-      );
-
-      return numSegments > 0;
-    }
-    catch (RuntimeException e) {
-      log.error(e, "Exception marking segment [%s] as unused", segmentId);
-      throw e;
-    }
-  }
-
-  @Override
-  public int markSegmentsAsUnused(Set<SegmentId> segmentIds)
-  {
-    return connector.getDBI().withHandle(
-        handle ->
-            SqlSegmentsMetadataQuery.forHandle(handle, connector, dbTables.get(), jsonMapper)
-                                    .markSegments(segmentIds, false, DateTimes.nowUtc())
-    );
-  }
-
-  @Override
-  public int markAsUnusedSegmentsInInterval(
-      final String dataSource,
-      final Interval interval,
-      @Nullable final List<String> versions
-  )
-  {
-    Preconditions.checkNotNull(interval);
-    try {
-      return connector.getDBI().withHandle(
-          handle ->
-              SqlSegmentsMetadataQuery.forHandle(handle, connector, dbTables.get(), jsonMapper)
-                                      .markSegmentsUnused(dataSource, interval, versions, DateTimes.nowUtc())
-      );
-    }
-    catch (Exception e) {
-      throw new RuntimeException(e);
-    }
   }
 
   @Override

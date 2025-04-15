@@ -41,8 +41,8 @@ import org.apache.druid.java.util.common.NonnullPair;
 import org.apache.druid.java.util.common.concurrent.Execs;
 import org.apache.druid.java.util.common.concurrent.ScheduledExecutors;
 import org.apache.druid.java.util.emitter.service.ServiceEmitter;
+import org.apache.druid.metadata.SegmentsMetadataManager;
 import org.apache.druid.metadata.SegmentsMetadataManagerConfig;
-import org.apache.druid.metadata.SqlSegmentsMetadataManager;
 import org.apache.druid.metadata.TestDerbyConnector;
 import org.apache.druid.query.QueryRunner;
 import org.apache.druid.query.TableDataSource;
@@ -108,7 +108,7 @@ public class CoordinatorSegmentDataCacheConcurrencyTest extends SegmentMetadataC
   private TestSegmentMetadataQueryWalker walker;
   private SegmentSchemaCache segmentSchemaCache;
   private SegmentSchemaBackFillQueue backFillQueue;
-  private SqlSegmentsMetadataManager sqlSegmentsMetadataManager;
+  private SegmentsMetadataManager segmentsMetadataManager;
   private Supplier<SegmentsMetadataManagerConfig> segmentsMetadataManagerConfigSupplier;
   private final ObjectMapper mapper = TestHelper.makeJsonMapper();
 
@@ -198,8 +198,8 @@ public class CoordinatorSegmentDataCacheConcurrencyTest extends SegmentMetadataC
         }
     );
 
-    sqlSegmentsMetadataManager = Mockito.mock(SqlSegmentsMetadataManager.class);
-    Mockito.when(sqlSegmentsMetadataManager.getImmutableDataSourcesWithAllUsedSegments()).thenReturn(Collections.emptyList());
+    segmentsMetadataManager = Mockito.mock(SegmentsMetadataManager.class);
+    Mockito.when(segmentsMetadataManager.getImmutableDataSourcesWithAllUsedSegments()).thenReturn(Collections.emptyList());
     SegmentsMetadataManagerConfig metadataManagerConfig = Mockito.mock(SegmentsMetadataManagerConfig.class);
     Mockito.when(metadataManagerConfig.getPollDuration()).thenReturn(Period.millis(1000));
     segmentsMetadataManagerConfigSupplier = Suppliers.ofInstance(metadataManagerConfig);
@@ -242,7 +242,7 @@ public class CoordinatorSegmentDataCacheConcurrencyTest extends SegmentMetadataC
         new NoopServiceEmitter(),
         segmentSchemaCache,
         backFillQueue,
-        sqlSegmentsMetadataManager,
+        segmentsMetadataManager,
         segmentsMetadataManagerConfigSupplier
     )
     {
@@ -358,7 +358,7 @@ public class CoordinatorSegmentDataCacheConcurrencyTest extends SegmentMetadataC
         new NoopServiceEmitter(),
         segmentSchemaCache,
         backFillQueue,
-        sqlSegmentsMetadataManager,
+        segmentsMetadataManager,
         segmentsMetadataManagerConfigSupplier
     )
     {

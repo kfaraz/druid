@@ -204,12 +204,10 @@ public class DataSourcesResource
   @ResourceFilters(DatasourceResourceFilter.class)
   public Response markAsUsedAllNonOvershadowedSegments(@PathParam("dataSourceName") final String dataSourceName)
   {
-    SegmentUpdateOperation metadataOperation = () -> segmentsMetadataManager
-        .markAsUsedAllNonOvershadowedSegmentsInDataSource(dataSourceName);
     RemoteSegmentUpdateOperation remoteOperation = () -> overlordClient
         .markNonOvershadowedSegmentsAsUsed(dataSourceName);
     return updateSegmentsViaOverlord(dataSourceName, remoteOperation)
-        .orUpdateMetadataIf404(metadataOperation);
+        .orThrowError();
   }
 
   /**
@@ -252,7 +250,7 @@ public class DataSourcesResource
       RemoteSegmentUpdateOperation remoteOperation
           = () -> overlordClient.markNonOvershadowedSegmentsAsUsed(dataSourceName, payload);
       return updateSegmentsViaOverlord(dataSourceName, remoteOperation)
-          .orUpdateMetadataIf404(metadataOperation);
+          .orThrowError();
     }
   }
 
@@ -277,43 +275,10 @@ public class DataSourcesResource
           .entity(SegmentsToUpdateFilter.INVALID_PAYLOAD_ERROR_MESSAGE)
           .build();
     } else {
-      SegmentUpdateOperation metadataOperation = () -> {
-        final Interval interval = payload.getInterval();
-        final List<String> versions = payload.getVersions();
-        final int numUpdatedSegments;
-        if (interval != null) {
-          numUpdatedSegments = segmentsMetadataManager.markAsUnusedSegmentsInInterval(dataSourceName, interval, versions);
-        } else {
-          final Set<SegmentId> segmentIds =
-              payload.getSegmentIds()
-                  .stream()
-                  .map(idStr -> SegmentId.tryParse(dataSourceName, idStr))
-                  .filter(Objects::nonNull)
-                  .collect(Collectors.toSet());
-
-          // Filter out segmentIds that do not belong to this datasource
-          numUpdatedSegments = segmentsMetadataManager.markSegmentsAsUnused(
-              segmentIds.stream()
-                  .filter(segmentId -> segmentId.getDataSource().equals(dataSourceName))
-                  .collect(Collectors.toSet())
-          );
-        }
-        auditManager.doAudit(
-            AuditEntry.builder()
-                .key(dataSourceName)
-                .type("segment.markUnused")
-                .payload(payload)
-                .auditInfo(AuthorizationUtils.buildAuditInfo(req))
-                .request(AuthorizationUtils.buildRequestInfo("coordinator", req))
-                .build()
-        );
-        return numUpdatedSegments;
-      };
-
       RemoteSegmentUpdateOperation remoteOperation
           = () -> overlordClient.markSegmentsAsUnused(dataSourceName, payload);
       return updateSegmentsViaOverlord(dataSourceName, remoteOperation)
-          .orUpdateMetadataIf404(metadataOperation);
+          .orThrowError();
     }
   }
 
@@ -363,7 +328,7 @@ public class DataSourcesResource
       this.remoteOperation = remoteOperation;
     }
 
-    Response orUpdateMetadataIf404(SegmentUpdateOperation operation)
+    Response orThrowError()
     {
       try {
         SegmentUpdateResponse response = FutureUtils.getUnchecked(remoteOperation.perform(), true);
@@ -377,15 +342,22 @@ public class DataSourcesResource
         if (rootCause instanceof HttpResponseException) {
           HttpResponseStatus status = ((HttpResponseException) rootCause).getResponse().getStatus();
           if (status.getCode() == 404) {
-            log.info("Could not update segments via Overlord API. Updating metadata store directly.");
-            return performSegmentUpdate(dataSourceName, operation);
+            final String errorMessage =
+                "Could not update segments since Overlord is on an older version."
+                + " Upgrade the Overlord to a newer version to allow updating segments.";
+            log.error(errorMessage);
+            return ServletResourceUtils.buildErrorResponseFrom(
+                DruidException.forPersona(DruidException.Persona.OPERATOR)
+                              .ofCategory(DruidException.Category.SERVICE_UNAVAILABLE)
+                              .build(errorMessage)
+            );
           }
         }
 
-        log.error(e, "Error occurred while updating segments for datasource[%s]", dataSourceName);
+        log.error(e, "Error occurred while updating segments for datasource[%s].", dataSourceName);
         return Response
             .serverError()
-            .entity(ImmutableMap.of("error", "Unknown server error", "message", rootCause.toString()))
+            .entity(Map.of("error", "Unknown server error", "message", rootCause.toString()))
             .build();
       }
     }
@@ -410,26 +382,10 @@ public class DataSourcesResource
     if (Boolean.parseBoolean(kill)) {
       return killUnusedSegmentsInInterval(dataSourceName, interval, req);
     } else {
-      SegmentUpdateOperation metadataOperation = () -> {
-        int numUpdatedSegments = segmentsMetadataManager.markAsUnusedAllSegmentsInDataSource(dataSourceName);
-        if (numUpdatedSegments > 0) {
-          auditManager.doAudit(
-              AuditEntry.builder()
-                        .key(dataSourceName)
-                        .type("segment.markUnused")
-                        .payload(new SegmentUpdateResponse(numUpdatedSegments))
-                        .auditInfo(AuthorizationUtils.buildAuditInfo(req))
-                        .request(AuthorizationUtils.buildRequestInfo("coordinator", req))
-                        .build()
-          );
-        }
-        return numUpdatedSegments;
-      };
-
       RemoteSegmentUpdateOperation remoteOperation
           = () -> overlordClient.markSegmentsAsUnused(dataSourceName);
       return updateSegmentsViaOverlord(dataSourceName, remoteOperation)
-          .orUpdateMetadataIf404(metadataOperation);
+          .orThrowError();
     }
   }
 
@@ -779,13 +735,10 @@ public class DataSourcesResource
       ).build();
     }
 
-    SegmentUpdateOperation metadataOperation
-        = () -> segmentsMetadataManager.markSegmentAsUnused(segmentId) ? 1 : 0;
     RemoteSegmentUpdateOperation remoteOperation
         = () -> overlordClient.markSegmentAsUnused(segmentId);
 
-    return updateSegmentsViaOverlord(dataSourceName, remoteOperation)
-        .orUpdateMetadataIf404(metadataOperation);
+    return updateSegmentsViaOverlord(dataSourceName, remoteOperation).orThrowError();
   }
 
   /**
@@ -811,13 +764,10 @@ public class DataSourcesResource
       ).build();
     }
 
-    SegmentUpdateOperation metadataOperation
-        = () -> segmentsMetadataManager.markSegmentAsUsed(segmentIdString) ? 1 : 0;
     RemoteSegmentUpdateOperation remoteOperation
         = () -> overlordClient.markSegmentAsUsed(segmentId);
 
-    return updateSegmentsViaOverlord(dataSourceName, remoteOperation)
-        .orUpdateMetadataIf404(metadataOperation);
+    return updateSegmentsViaOverlord(dataSourceName, remoteOperation).orThrowError();
   }
 
   @GET

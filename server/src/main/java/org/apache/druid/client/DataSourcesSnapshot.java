@@ -22,7 +22,7 @@ package org.apache.druid.client;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import org.apache.druid.java.util.common.DateTimes;
-import org.apache.druid.metadata.SqlSegmentsMetadataManager;
+import org.apache.druid.metadata.SegmentsMetadataManager;
 import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.timeline.SegmentTimeline;
 import org.apache.druid.timeline.VersionedIntervalTimeline;
@@ -38,7 +38,7 @@ import java.util.Map;
 
 /**
  * An immutable snapshot of metadata information about used segments and overshadowed segments, coming from
- * {@link SqlSegmentsMetadataManager}.
+ * {@link SegmentsMetadataManager}.
  */
 public class DataSourcesSnapshot
 {

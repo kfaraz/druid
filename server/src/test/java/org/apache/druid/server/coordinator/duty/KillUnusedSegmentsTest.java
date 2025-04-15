@@ -38,6 +38,7 @@ import org.apache.druid.java.util.common.JodaUtils;
 import org.apache.druid.java.util.common.parsers.CloseableIterator;
 import org.apache.druid.metadata.MetadataStorageTablesConfig;
 import org.apache.druid.metadata.SQLMetadataConnector;
+import org.apache.druid.metadata.SegmentsMetadataManager;
 import org.apache.druid.metadata.SegmentsMetadataManagerConfig;
 import org.apache.druid.metadata.SqlSegmentsMetadataManager;
 import org.apache.druid.metadata.SqlSegmentsMetadataManagerTestBase;
@@ -72,6 +73,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class KillUnusedSegmentsTest
 {
@@ -103,7 +105,7 @@ public class KillUnusedSegmentsTest
 
   @Rule
   public final TestDerbyConnector.DerbyConnectorRule derbyConnectorRule = new TestDerbyConnector.DerbyConnectorRule();
-  private SqlSegmentsMetadataManager sqlSegmentsMetadataManager;
+  private SegmentsMetadataManager segmentsMetadataManager;
   private SQLMetadataConnector connector;
   private MetadataStorageTablesConfig config;
 
@@ -112,8 +114,8 @@ public class KillUnusedSegmentsTest
   {
     connector = derbyConnectorRule.getConnector();
     SegmentsMetadataManagerConfig config = new SegmentsMetadataManagerConfig(Period.millis(1), null);
-    sqlSegmentsMetadataManager = new SqlSegmentsMetadataManager(
-        TestHelper.makeJsonMapper(),
+    segmentsMetadataManager = new SqlSegmentsMetadataManager(
+        TestHelper.JSON_MAPPER,
         Suppliers.ofInstance(config),
         derbyConnectorRule.metadataTablesConfigSupplier(),
         connector,
@@ -121,7 +123,7 @@ public class KillUnusedSegmentsTest
         CentralizedDatasourceSchemaConfig.create(),
         NoopServiceEmitter.instance()
     );
-    sqlSegmentsMetadataManager.start();
+    segmentsMetadataManager.start();
 
     this.config = derbyConnectorRule.metadataTablesConfigSupplier().get();
     connector.createSegmentTable();
@@ -1069,7 +1071,7 @@ public class KillUnusedSegmentsTest
   {
     final DataSegment segment = createSegment(dataSource, interval, version);
     try {
-      SqlSegmentsMetadataManagerTestBase.publishSegment(connector, config, TestHelper.makeJsonMapper(), segment);
+      SqlSegmentsMetadataManagerTestBase.publishSegment(connector, config, TestHelper.JSON_MAPPER, segment);
     }
     catch (IOException e) {
       throw new RuntimeException(e);
@@ -1085,7 +1087,12 @@ public class KillUnusedSegmentsTest
   )
   {
     final DataSegment segment = createAndAddUsedSegment(dataSource, interval, version);
-    sqlSegmentsMetadataManager.markSegmentsAsUnused(ImmutableSet.of(segment.getId()));
+    SqlSegmentsMetadataManagerTestBase.markSegmentsAsUnused(
+        Set.of(segment.getId()),
+        derbyConnectorRule.getConnector(),
+        derbyConnectorRule.metadataTablesConfigSupplier().get(),
+        TestHelper.JSON_MAPPER
+    );
     derbyConnectorRule.segments().updateUsedStatusLastUpdated(segment.getId().toString(), lastUpdatedTime);
   }
 
@@ -1106,7 +1113,7 @@ public class KillUnusedSegmentsTest
 
   private void initDuty()
   {
-    killDuty = new KillUnusedSegments(sqlSegmentsMetadataManager, overlordClient, configBuilder.build());
+    killDuty = new KillUnusedSegments(segmentsMetadataManager, overlordClient, configBuilder.build());
   }
 
   private CoordinatorRunStats runDutyAndGetStats()
