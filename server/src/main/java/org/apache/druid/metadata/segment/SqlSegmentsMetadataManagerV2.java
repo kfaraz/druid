@@ -27,6 +27,7 @@ import org.apache.druid.client.ImmutableDruidDataSource;
 import org.apache.druid.guice.ManageLifecycle;
 import org.apache.druid.java.util.common.lifecycle.LifecycleStart;
 import org.apache.druid.java.util.common.lifecycle.LifecycleStop;
+import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.java.util.emitter.service.ServiceEmitter;
 import org.apache.druid.metadata.MetadataStorageTablesConfig;
 import org.apache.druid.metadata.SQLMetadataConnector;
@@ -67,6 +68,8 @@ import java.util.Set;
 @ManageLifecycle
 public class SqlSegmentsMetadataManagerV2 implements SegmentsMetadataManager
 {
+  private static final Logger log = new Logger(SqlSegmentsMetadataManagerV2.class);
+
   private final SegmentsMetadataManager delegate;
   private final SegmentMetadataCache segmentMetadataCache;
   private final CentralizedDatasourceSchemaConfig schemaConfig;
@@ -119,7 +122,7 @@ public class SqlSegmentsMetadataManagerV2 implements SegmentsMetadataManager
   public void startPollingDatabasePeriodically()
   {
     if (useSegmentCache()) {
-      // Cache is already polling the metadata store
+      log.info("Not polling metadata store directly. Using segments in metadata cache to build timeline.");
     } else {
       delegate.startPollingDatabasePeriodically();
     }
