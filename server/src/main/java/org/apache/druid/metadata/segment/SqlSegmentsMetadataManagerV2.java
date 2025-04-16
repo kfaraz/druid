@@ -58,7 +58,7 @@ import java.util.Set;
  * This class acts as a wrapper over {@link SqlSegmentsMetadataManager} and the
  * {@link SegmentMetadataCache}. If the cache is enabled, an additional poll is
  * not done and the segments already present in the cache are used to build the
- * timeline. If the {@code SegmentMetadataCache} is disabled, the polling is
+ * timeline. If the {@link SegmentMetadataCache} is disabled, the polling is
  * delegated to the legacy implementation in {@link SqlSegmentsMetadataManager}.
  *
  * TODO:

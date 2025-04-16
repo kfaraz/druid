@@ -96,8 +96,8 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 
 /**
- * Legacy implementation of {@link SegmentsMetadataManager}. Now replaced with
- * TODO
+ * Implementation of {@link SegmentsMetadataManager}, that periodically polls
+ * used segments from the metadata store to build a {@link DataSourcesSnapshot}.
  */
 @ManageLifecycle
 public class SqlSegmentsMetadataManager implements SegmentsMetadataManager

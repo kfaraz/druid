@@ -30,8 +30,9 @@ public class NoopSegmentMetadataCache implements SegmentMetadataCache
     return INSTANCE;
   }
 
-  private NoopSegmentMetadataCache() {
-      // no instantiation
+  private NoopSegmentMetadataCache()
+  {
+    // no instantiation
   }
 
   @Override

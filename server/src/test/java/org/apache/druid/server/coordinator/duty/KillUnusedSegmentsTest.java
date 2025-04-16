@@ -40,9 +40,10 @@ import org.apache.druid.metadata.MetadataStorageTablesConfig;
 import org.apache.druid.metadata.SQLMetadataConnector;
 import org.apache.druid.metadata.SegmentsMetadataManager;
 import org.apache.druid.metadata.SegmentsMetadataManagerConfig;
-import org.apache.druid.metadata.SqlSegmentsMetadataManager;
 import org.apache.druid.metadata.SqlSegmentsMetadataManagerTestBase;
 import org.apache.druid.metadata.TestDerbyConnector;
+import org.apache.druid.metadata.segment.SqlSegmentsMetadataManagerV2;
+import org.apache.druid.metadata.segment.cache.NoopSegmentMetadataCache;
 import org.apache.druid.rpc.indexing.NoopOverlordClient;
 import org.apache.druid.segment.TestHelper;
 import org.apache.druid.segment.metadata.CentralizedDatasourceSchemaConfig;
@@ -114,14 +115,15 @@ public class KillUnusedSegmentsTest
   {
     connector = derbyConnectorRule.getConnector();
     SegmentsMetadataManagerConfig config = new SegmentsMetadataManagerConfig(Period.millis(1), null);
-    segmentsMetadataManager = new SqlSegmentsMetadataManager(
-        TestHelper.JSON_MAPPER,
+    segmentsMetadataManager = new SqlSegmentsMetadataManagerV2(
+        NoopSegmentMetadataCache.instance(),
+        null,
+        connector,
         Suppliers.ofInstance(config),
         derbyConnectorRule.metadataTablesConfigSupplier(),
-        connector,
-        null,
         CentralizedDatasourceSchemaConfig.create(),
-        NoopServiceEmitter.instance()
+        NoopServiceEmitter.instance(),
+        TestHelper.JSON_MAPPER
     );
     segmentsMetadataManager.start();
 
