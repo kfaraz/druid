@@ -43,10 +43,10 @@ import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.timeline.Partitions;
 import org.apache.druid.timeline.SegmentId;
 import org.apache.druid.timeline.SegmentTimeline;
-import org.jetbrains.annotations.Nullable;
 import org.joda.time.DateTime;
 import org.joda.time.Interval;
 
+import javax.annotation.Nullable;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
