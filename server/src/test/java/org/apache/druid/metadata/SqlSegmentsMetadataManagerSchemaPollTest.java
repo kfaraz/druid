@@ -53,30 +53,13 @@ public class SqlSegmentsMetadataManagerSchemaPollTest extends SqlSegmentsMetadat
   @Before
   public void setUp() throws Exception
   {
-    connector = derbyConnectorRule.getConnector();
-    SegmentsMetadataManagerConfig config = new SegmentsMetadataManagerConfig(Period.seconds(3), null);
-
-    segmentSchemaCache = new SegmentSchemaCache(new NoopServiceEmitter());
+    setUp(derbyConnectorRule);
+    segmentSchemaCache = new SegmentSchemaCache(NoopServiceEmitter.instance());
     segmentSchemaManager = new SegmentSchemaManager(
         derbyConnectorRule.metadataTablesConfigSupplier().get(),
         jsonMapper,
         connector
     );
-
-    sqlSegmentsMetadataManager = new SqlSegmentsMetadataManager(
-        jsonMapper,
-        Suppliers.ofInstance(config),
-        derbyConnectorRule.metadataTablesConfigSupplier(),
-        connector,
-        segmentSchemaCache,
-        CentralizedDatasourceSchemaConfig.create(),
-        NoopServiceEmitter.instance()
-    );
-    sqlSegmentsMetadataManager.start();
-    storageConfig = derbyConnectorRule.metadataTablesConfigSupplier().get();
-
-    connector.createSegmentSchemasTable();
-    connector.createSegmentTable();
 
     publishSegment(segment1);
     publishSegment(segment2);
@@ -85,10 +68,7 @@ public class SqlSegmentsMetadataManagerSchemaPollTest extends SqlSegmentsMetadat
   @After
   public void teardown()
   {
-    if (sqlSegmentsMetadataManager.isPollingDatabasePeriodically()) {
-      sqlSegmentsMetadataManager.stopPollingDatabasePeriodically();
-    }
-    sqlSegmentsMetadataManager.stop();
+    teardownManager();
   }
 
   @Test(timeout = 60_000)
@@ -182,7 +162,7 @@ public class SqlSegmentsMetadataManagerSchemaPollTest extends SqlSegmentsMetadat
   }
 
   @Test
-  public void testPollOnlyNewSchemaVersion()
+  public void testPollOnlyNewSchemaVersion() throws Exception
   {
     List<SegmentSchemaManager.SegmentSchemaMetadataPlus> list = new ArrayList<>();
     FingerprintGenerator fingerprintGenerator = new FingerprintGenerator(jsonMapper);

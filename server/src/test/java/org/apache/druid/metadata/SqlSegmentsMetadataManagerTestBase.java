@@ -20,6 +20,7 @@
 package org.apache.druid.metadata;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.base.Suppliers;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import junitparams.converters.Nullable;
@@ -27,12 +28,17 @@ import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.common.Intervals;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.segment.TestHelper;
+import org.apache.druid.segment.metadata.CentralizedDatasourceSchemaConfig;
 import org.apache.druid.segment.metadata.SegmentSchemaCache;
 import org.apache.druid.segment.metadata.SegmentSchemaManager;
+import org.apache.druid.server.metrics.NoopServiceEmitter;
 import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.timeline.SegmentId;
 import org.apache.druid.timeline.partition.NoneShardSpec;
 import org.joda.time.Interval;
+import org.joda.time.Period;
+import org.junit.After;
+import org.junit.Before;
 import org.skife.jdbi.v2.DBI;
 import org.skife.jdbi.v2.tweak.HandleCallback;
 
@@ -67,6 +73,42 @@ public class SqlSegmentsMetadataManagerTestBase
       "wikipedia/index/y=2012/m=01/d=05/2012-01-06T22:19:12.565Z/0/index.zip",
       0
   );
+
+  protected void setUp(TestDerbyConnector.DerbyConnectorRule derbyConnectorRule) throws Exception
+  {
+    SegmentsMetadataManagerConfig config = new SegmentsMetadataManagerConfig(Period.seconds(3), null);
+    connector = derbyConnectorRule.getConnector();
+    storageConfig = derbyConnectorRule.metadataTablesConfigSupplier().get();
+
+    segmentSchemaCache = new SegmentSchemaCache(NoopServiceEmitter.instance());
+    segmentSchemaManager = new SegmentSchemaManager(
+        derbyConnectorRule.metadataTablesConfigSupplier().get(),
+        jsonMapper,
+        connector
+    );
+
+    sqlSegmentsMetadataManager = new SqlSegmentsMetadataManager(
+        jsonMapper,
+        Suppliers.ofInstance(config),
+        derbyConnectorRule.metadataTablesConfigSupplier(),
+        connector,
+        segmentSchemaCache,
+        CentralizedDatasourceSchemaConfig.create(),
+        NoopServiceEmitter.instance()
+    );
+    sqlSegmentsMetadataManager.start();
+
+    connector.createSegmentSchemasTable();
+    connector.createSegmentTable();
+  }
+
+  protected void teardownManager()
+  {
+    if (sqlSegmentsMetadataManager.isPollingDatabasePeriodically()) {
+      sqlSegmentsMetadataManager.stopPollingDatabasePeriodically();
+    }
+    sqlSegmentsMetadataManager.stop();
+  }
 
   protected void publishSegment(final DataSegment segment) throws IOException
   {

@@ -35,15 +35,13 @@ import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.emitter.EmittingLogger;
 import org.apache.druid.segment.TestDataSource;
 import org.apache.druid.segment.metadata.CentralizedDatasourceSchemaConfig;
-import org.apache.druid.segment.metadata.SegmentSchemaCache;
-import org.apache.druid.segment.metadata.SegmentSchemaManager;
 import org.apache.druid.server.coordinator.CreateDataSegments;
 import org.apache.druid.server.metrics.NoopServiceEmitter;
 import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.timeline.SegmentId;
 import org.apache.druid.timeline.partition.NoneShardSpec;
+import org.assertj.core.util.Sets;
 import org.hamcrest.MatcherAssert;
-import org.joda.time.DateTime;
 import org.joda.time.Duration;
 import org.joda.time.Interval;
 import org.joda.time.Period;
@@ -107,41 +105,15 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
   }
 
   @Before
-  public void setUp()
+  public void setUp() throws Exception
   {
-    connector = derbyConnectorRule.getConnector();
-    SegmentsMetadataManagerConfig config = new SegmentsMetadataManagerConfig(Period.seconds(3), null);
-    storageConfig = derbyConnectorRule.metadataTablesConfigSupplier().get();
-
-    segmentSchemaCache = new SegmentSchemaCache(NoopServiceEmitter.instance());
-    segmentSchemaManager = new SegmentSchemaManager(
-        derbyConnectorRule.metadataTablesConfigSupplier().get(),
-        jsonMapper,
-        connector
-    );
-
-    sqlSegmentsMetadataManager = new SqlSegmentsMetadataManager(
-        jsonMapper,
-        Suppliers.ofInstance(config),
-        derbyConnectorRule.metadataTablesConfigSupplier(),
-        connector,
-        segmentSchemaCache,
-        CentralizedDatasourceSchemaConfig.create(),
-        NoopServiceEmitter.instance()
-    );
-    sqlSegmentsMetadataManager.start();
-
-    connector.createSegmentSchemasTable();
-    connector.createSegmentTable();
+    setUp(derbyConnectorRule);
   }
 
   @After
-  public void teardown()
+  public void tearDown()
   {
-    if (sqlSegmentsMetadataManager.isPollingDatabasePeriodically()) {
-      sqlSegmentsMetadataManager.stopPollingDatabasePeriodically();
-    }
-    sqlSegmentsMetadataManager.stop();
+    teardownManager();
   }
 
   @Test
@@ -153,12 +125,10 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
     Assert.assertTrue(
         sqlSegmentsMetadataManager.retrieveAllDataSourceNames().isEmpty()
     );
-    Assert.assertEquals(
-        0,
+    Assert.assertTrue(
         sqlSegmentsMetadataManager
             .getImmutableDataSourcesWithAllUsedSegments()
-            .stream()
-            .map(ImmutableDruidDataSource::getName).count()
+            .isEmpty()
     );
     Assert.assertNull(sqlSegmentsMetadataManager.getImmutableDataSourceWithUsedSegments(TestDataSource.WIKI));
     Assert.assertTrue(
@@ -508,22 +478,6 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
     );
   }
 
-  @Test(timeout = 60_000)
-  public void testMarkAsUnusedAllSegmentsInDataSource() throws IOException, InterruptedException
-  {
-    sqlSegmentsMetadataManager.startPollingDatabasePeriodically();
-    sqlSegmentsMetadataManager.poll();
-    Assert.assertTrue(sqlSegmentsMetadataManager.isPollingDatabasePeriodically());
-
-    publishSegment(createNewSegment1(TestDataSource.KOALA));
-
-    awaitDataSourceAppeared(TestDataSource.KOALA);
-    int numChangedSegments = markAllSegmentsAsUnused(TestDataSource.KOALA);
-    Assert.assertEquals(1, numChangedSegments);
-    awaitDataSourceDisappeared(TestDataSource.KOALA);
-    Assert.assertNull(sqlSegmentsMetadataManager.getImmutableDataSourceWithUsedSegments(TestDataSource.KOALA));
-  }
-
   private static DataSegment createNewSegment1(String datasource)
   {
     return createSegment(
@@ -540,42 +494,6 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
         "2017-10-17T00:00:00.000/2017-10-18T00:00:00.000",
         "2017-10-15T20:19:12.565Z"
     );
-  }
-
-  @Test(timeout = 60_000)
-  public void testMarkSegmentAsUnused() throws IOException, InterruptedException
-  {
-    sqlSegmentsMetadataManager.startPollingDatabasePeriodically();
-    sqlSegmentsMetadataManager.poll();
-    Assert.assertTrue(sqlSegmentsMetadataManager.isPollingDatabasePeriodically());
-
-    final DataSegment koalaSegment = createSegment(
-        TestDataSource.KOALA,
-        "2017-10-15T00:00:00.000/2017-10-16T00:00:00.000",
-        "2017-10-15T20:19:12.565Z"
-    );
-
-    publishSegment(koalaSegment);
-    awaitDataSourceAppeared(TestDataSource.KOALA);
-    Assert.assertNotNull(sqlSegmentsMetadataManager.getImmutableDataSourceWithUsedSegments(TestDataSource.KOALA));
-
-    Assert.assertTrue(markSegmentAsUnused(koalaSegment.getId()));
-    awaitDataSourceDisappeared(TestDataSource.KOALA);
-    Assert.assertNull(sqlSegmentsMetadataManager.getImmutableDataSourceWithUsedSegments(TestDataSource.KOALA));
-  }
-
-  private void awaitDataSourceAppeared(String datasource) throws InterruptedException
-  {
-    while (sqlSegmentsMetadataManager.getImmutableDataSourceWithUsedSegments(datasource) == null) {
-      Thread.sleep(5);
-    }
-  }
-
-  private void awaitDataSourceDisappeared(String dataSource) throws InterruptedException
-  {
-    while (sqlSegmentsMetadataManager.getImmutableDataSourceWithUsedSegments(dataSource) != null) {
-      Thread.sleep(5);
-    }
   }
 
   @Test
@@ -1027,289 +945,33 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
   }
 
   @Test
-  public void testMarkSegmentsAsUnused() throws IOException
+  public void test_poll_doesNotRetrieveUnusedSegments() throws IOException
   {
     publishWikiSegments();
-    sqlSegmentsMetadataManager.startPollingDatabasePeriodically();
-    sqlSegmentsMetadataManager.poll();
-    Assert.assertTrue(sqlSegmentsMetadataManager.isPollingDatabasePeriodically());
-
     final DataSegment koalaSegment1 = createNewSegment1(TestDataSource.KOALA);
-    final DataSegment koalaSegment2 = createNewSegment1(TestDataSource.KOALA);
+    final DataSegment koalaSegment2 = createNewSegment2(TestDataSource.KOALA);
 
     publishSegment(koalaSegment1);
     publishSegment(koalaSegment2);
 
-    final ImmutableSet<SegmentId> segmentIds =
-        ImmutableSet.of(koalaSegment1.getId(), koalaSegment1.getId());
+    // Poll all segments
+    sqlSegmentsMetadataManager.startPollingDatabasePeriodically();
+    sqlSegmentsMetadataManager.poll();
+    Assert.assertTrue(sqlSegmentsMetadataManager.isPollingDatabasePeriodically());
+    Assert.assertEquals(
+        Set.of(wikiSegment1, wikiSegment2, koalaSegment1, koalaSegment2),
+        Sets.newHashSet(sqlSegmentsMetadataManager.iterateAllUsedSegments())
+    );
 
+    // Mark the koala segments as unused
+    final Set<SegmentId> segmentIds = Set.of(koalaSegment1.getId(), koalaSegment2.getId());
     Assert.assertEquals(segmentIds.size(), markSegmentsAsUnused(segmentIds));
+
+    // Verify that subsequent poll only retrieves the used segments
     sqlSegmentsMetadataManager.poll();
     Assert.assertEquals(
-        ImmutableSet.of(wikiSegment1, wikiSegment2),
-        ImmutableSet.copyOf(sqlSegmentsMetadataManager.iterateAllUsedSegments())
-    );
-  }
-
-  @Test
-  public void testMarkAsUnusedSegmentsInInterval() throws IOException
-  {
-    publishWikiSegments();
-    sqlSegmentsMetadataManager.startPollingDatabasePeriodically();
-    sqlSegmentsMetadataManager.poll();
-    Assert.assertTrue(sqlSegmentsMetadataManager.isPollingDatabasePeriodically());
-
-    final DataSegment koalaSegment1 = createNewSegment1(TestDataSource.KOALA);
-    final DataSegment koalaSegment2 = createNewSegment2(TestDataSource.KOALA);
-    final DataSegment koalaSegment3 = createSegment(
-        TestDataSource.KOALA,
-        "2017-10-19T00:00:00.000/2017-10-20T00:00:00.000",
-        "2017-10-15T20:19:12.565Z"
-    );
-
-    publishSegment(koalaSegment1);
-    publishSegment(koalaSegment2);
-    publishSegment(koalaSegment3);
-    final Interval theInterval = Intervals.of("2017-10-15T00:00:00.000/2017-10-18T00:00:00.000");
-
-    // 2 out of 3 segments match the interval
-    Assert.assertEquals(2, markSegmentsWithinIntervalAsUnused(TestDataSource.KOALA, theInterval, null));
-
-    sqlSegmentsMetadataManager.poll();
-    Assert.assertEquals(
-        ImmutableSet.of(wikiSegment1, wikiSegment2, koalaSegment3),
-        ImmutableSet.copyOf(sqlSegmentsMetadataManager.iterateAllUsedSegments())
-    );
-  }
-
-  @Test
-  public void testMarkAsUnusedSegmentsInIntervalAndVersions() throws IOException
-  {
-    publishWikiSegments();
-    sqlSegmentsMetadataManager.startPollingDatabasePeriodically();
-    sqlSegmentsMetadataManager.poll();
-    Assert.assertTrue(sqlSegmentsMetadataManager.isPollingDatabasePeriodically());
-
-    final DateTime now = DateTimes.nowUtc();
-    final String v1 = now.toString();
-    final String v2 = now.plus(Duration.standardDays(1)).toString();
-
-    final DataSegment koalaSegment1 = createSegment(
-        TestDataSource.KOALA,
-        "2017-10-15T00:00:00.000/2017-10-16T00:00:00.000",
-        v1
-    );
-    final DataSegment koalaSegment2 = createSegment(
-        TestDataSource.KOALA,
-        "2017-10-17T00:00:00.000/2017-10-18T00:00:00.000",
-        v2
-    );
-    final DataSegment koalaSegment3 = createSegment(
-        TestDataSource.KOALA,
-        "2017-10-19T00:00:00.000/2017-10-20T00:00:00.000",
-        v2
-    );
-
-    publishSegment(koalaSegment1);
-    publishSegment(koalaSegment2);
-    publishSegment(koalaSegment3);
-    final Interval theInterval = Intervals.of("2017-10-15/2017-10-18");
-
-    Assert.assertEquals(
-        2,
-        markSegmentsWithinIntervalAsUnused(
-            TestDataSource.KOALA,
-            theInterval,
-            ImmutableList.of(v1, v2)
-        )
-    );
-
-    sqlSegmentsMetadataManager.poll();
-    Assert.assertEquals(
-        ImmutableSet.of(wikiSegment1, wikiSegment2, koalaSegment3),
-        ImmutableSet.copyOf(sqlSegmentsMetadataManager.iterateAllUsedSegments())
-    );
-  }
-
-  @Test
-  public void testMarkAsUnusedSegmentsInIntervalAndNonExistentVersions() throws IOException
-  {
-    publishWikiSegments();
-    sqlSegmentsMetadataManager.startPollingDatabasePeriodically();
-    sqlSegmentsMetadataManager.poll();
-    Assert.assertTrue(sqlSegmentsMetadataManager.isPollingDatabasePeriodically());
-
-    final DateTime now = DateTimes.nowUtc();
-    final String v1 = now.toString();
-    final String v2 = now.plus(Duration.standardDays(1)).toString();
-
-    final DataSegment koalaSegment1 = createSegment(
-        TestDataSource.KOALA,
-        "2017-10-15T00:00:00.000/2017-10-16T00:00:00.000",
-        v1
-    );
-    final DataSegment koalaSegment2 = createSegment(
-        TestDataSource.KOALA,
-        "2017-10-17T00:00:00.000/2017-10-18T00:00:00.000",
-        v2
-    );
-    final DataSegment koalaSegment3 = createSegment(
-        TestDataSource.KOALA,
-        "2017-10-19T00:00:00.000/2017-10-20T00:00:00.000",
-        v2
-    );
-
-    publishSegment(koalaSegment1);
-    publishSegment(koalaSegment2);
-    publishSegment(koalaSegment3);
-    final Interval theInterval = Intervals.of("2017-10-15/2017-10-18");
-
-    Assert.assertEquals(
-        0,
-        markSegmentsWithinIntervalAsUnused(
-            TestDataSource.KOALA,
-            theInterval,
-            ImmutableList.of("foo", "bar", "baz")
-        )
-    );
-
-    sqlSegmentsMetadataManager.poll();
-    Assert.assertEquals(
-        ImmutableSet.of(wikiSegment1, wikiSegment2, koalaSegment1, koalaSegment2, koalaSegment3),
-        ImmutableSet.copyOf(sqlSegmentsMetadataManager.iterateAllUsedSegments())
-    );
-  }
-
-  @Test
-  public void testMarkAsUnusedSegmentsInIntervalWithEmptyVersions() throws IOException
-  {
-    publishWikiSegments();
-    sqlSegmentsMetadataManager.startPollingDatabasePeriodically();
-    sqlSegmentsMetadataManager.poll();
-    Assert.assertTrue(sqlSegmentsMetadataManager.isPollingDatabasePeriodically());
-
-    final DateTime now = DateTimes.nowUtc();
-    final String v1 = now.toString();
-    final String v2 = now.plus(Duration.standardDays(1)).toString();
-
-    final DataSegment koalaSegment1 = createSegment(
-        TestDataSource.KOALA,
-        "2017-10-15T00:00:00.000/2017-10-16T00:00:00.000",
-        v1
-    );
-    final DataSegment koalaSegment2 = createSegment(
-        TestDataSource.KOALA,
-        "2017-10-17T00:00:00.000/2017-10-18T00:00:00.000",
-        v2
-    );
-    final DataSegment koalaSegment3 = createSegment(
-        TestDataSource.KOALA,
-        "2017-10-19T00:00:00.000/2017-10-20T00:00:00.000",
-        v2
-    );
-
-    publishSegment(koalaSegment1);
-    publishSegment(koalaSegment2);
-    publishSegment(koalaSegment3);
-    final Interval theInterval = Intervals.of("2017-10-15/2017-10-18");
-
-    Assert.assertEquals(
-        0,
-        markSegmentsWithinIntervalAsUnused(
-            TestDataSource.KOALA,
-            theInterval,
-            ImmutableList.of()
-        )
-    );
-
-    sqlSegmentsMetadataManager.poll();
-    Assert.assertEquals(
-        ImmutableSet.of(wikiSegment1, wikiSegment2, koalaSegment1, koalaSegment2, koalaSegment3),
-        ImmutableSet.copyOf(sqlSegmentsMetadataManager.iterateAllUsedSegments())
-    );
-  }
-
-  @Test
-  public void testMarkAsUnusedSegmentsInEternityIntervalWithEmptyVersions() throws IOException
-  {
-    publishWikiSegments();
-    sqlSegmentsMetadataManager.startPollingDatabasePeriodically();
-    sqlSegmentsMetadataManager.poll();
-    Assert.assertTrue(sqlSegmentsMetadataManager.isPollingDatabasePeriodically());
-
-    final DateTime now = DateTimes.nowUtc();
-    final String v1 = now.toString();
-    final String v2 = now.plus(Duration.standardDays(1)).toString();
-
-    final DataSegment koalaSegment1 = createSegment(
-        TestDataSource.KOALA,
-        "2017-10-15T00:00:00.000/2017-10-16T00:00:00.000",
-        v1
-    );
-    final DataSegment koalaSegment2 = createSegment(
-        TestDataSource.KOALA,
-        "2017-10-17T00:00:00.000/2017-10-18T00:00:00.000",
-        v2
-    );
-    final DataSegment koalaSegment3 = createSegment(
-        TestDataSource.KOALA,
-        "2017-10-19T00:00:00.000/2017-10-20T00:00:00.000",
-        v2
-    );
-
-    publishSegment(koalaSegment1);
-    publishSegment(koalaSegment2);
-    publishSegment(koalaSegment3);
-    final Interval theInterval = Intervals.of("2017-10-15/2017-10-18");
-
-    Assert.assertEquals(
-        0,
-        markSegmentsWithinIntervalAsUnused(
-            TestDataSource.KOALA,
-            theInterval,
-            ImmutableList.of()
-        )
-    );
-
-    sqlSegmentsMetadataManager.poll();
-    Assert.assertEquals(
-        ImmutableSet.of(wikiSegment1, wikiSegment2, koalaSegment1, koalaSegment2, koalaSegment3),
-        ImmutableSet.copyOf(sqlSegmentsMetadataManager.iterateAllUsedSegments())
-    );
-  }
-
-  @Test
-  public void testMarkAsUnusedSegmentsInIntervalWithOverlappingInterval() throws IOException
-  {
-    publishWikiSegments();
-    sqlSegmentsMetadataManager.startPollingDatabasePeriodically();
-    sqlSegmentsMetadataManager.poll();
-    Assert.assertTrue(sqlSegmentsMetadataManager.isPollingDatabasePeriodically());
-
-    final DataSegment koalaSegment1 = createSegment(
-        TestDataSource.KOALA,
-        "2017-10-15T00:00:00.000/2017-10-17T00:00:00.000",
-        "2017-10-15T20:19:12.565Z"
-    );
-    final DataSegment koalaSegment2 = createNewSegment2(TestDataSource.KOALA);
-    final DataSegment koalaSegment3 = createSegment(
-        TestDataSource.KOALA,
-        "2017-10-19T00:00:00.000/2017-10-22T00:00:00.000",
-        "2017-10-15T20:19:12.565Z"
-    );
-
-    publishSegment(koalaSegment1);
-    publishSegment(koalaSegment2);
-    publishSegment(koalaSegment3);
-    final Interval theInterval = Intervals.of("2017-10-16T00:00:00.000/2017-10-20T00:00:00.000");
-
-    // 1 out of 3 segments match the interval, other 2 overlap, only the segment fully contained will be marked unused
-    Assert.assertEquals(1, markSegmentsWithinIntervalAsUnused(TestDataSource.KOALA, theInterval, null));
-
-    sqlSegmentsMetadataManager.poll();
-    Assert.assertEquals(
-        ImmutableSet.of(wikiSegment1, wikiSegment2, koalaSegment1, koalaSegment3),
-        ImmutableSet.copyOf(sqlSegmentsMetadataManager.iterateAllUsedSegments())
+        Set.of(wikiSegment1, wikiSegment2),
+        Sets.newHashSet(sqlSegmentsMetadataManager.iterateAllUsedSegments())
     );
   }
 

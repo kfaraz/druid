@@ -1488,12 +1488,10 @@ public class KillUnusedSegmentsTaskTest extends IngestionTestBase
 
   private void insertUsedSegments(Set<DataSegment> segments, Map<String, String> upgradedFromSegmentIdMap)
   {
-    final String table = derbyConnectorRule.metadataTablesConfigSupplier().get().getSegmentsTable();
     IndexerSqlMetadataStorageCoordinatorTestBase.insertUsedSegments(
         segments,
         upgradedFromSegmentIdMap,
-        derbyConnectorRule.getConnector(),
-        table,
+        derbyConnectorRule,
         getObjectMapper()
     );
   }

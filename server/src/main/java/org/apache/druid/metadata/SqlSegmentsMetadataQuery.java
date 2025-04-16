@@ -605,23 +605,8 @@ public class SqlSegmentsMetadataQuery
    *
    * @param interval   Only used segments fully contained within this interval
    *                   are eligible to be marked as unused
-   * @param updateTime Updated segments will have their used_status_last_updated
-   *                   column set to this value
-   * @return Number of segments updated.
-   */
-  public int markSegmentsUnused(final String dataSource, final Interval interval, final DateTime updateTime)
-  {
-    return markSegmentsUnused(dataSource, interval, null, updateTime);
-  }
-
-  /**
-   * Marks all used segments that are <b>fully contained by</b> a particular interval
-   * filtered by an optional list of versions as unused.
-   *
-   * @param interval   Only used segments fully contained within this interval
-   *                   are eligible to be marked as unused
-   * @param versions   List of eligible segment versions. If null, all versions
-   *                   are considered eligible to be marked as unused.
+   * @param versions   List of eligible segment versions. If null or empty, all
+   *                   versions are considered eligible to be marked as unused.
    * @param updateTime Updated segments will have their used_status_last_updated
    *                   column set to this value
    * @return Number of segments updated.
