@@ -61,8 +61,10 @@ import java.util.Set;
  * timeline. If the {@link SegmentMetadataCache} is disabled, the polling is
  * delegated to the legacy implementation in {@link SqlSegmentsMetadataManager}.
  * <p>
- * TODO:
- * - mention how the behaviour of this class is different for Coordinator and Overlord
+ * The Coordinator always uses the segment timeline served by this class to
+ * perform various segment management duties such as loading, balancing, etc.
+ * The Overlord uses the segment timeline only when compaction supervisors are
+ * enabled.
  */
 @ManageLifecycle
 public class SqlSegmentsMetadataManagerV2 implements SegmentsMetadataManager
@@ -140,6 +142,8 @@ public class SqlSegmentsMetadataManagerV2 implements SegmentsMetadataManager
   @Override
   public boolean isPollingDatabasePeriodically()
   {
+    // When cache is being used, this will return true even after
+    // stopPollingDatabasePeriodically has been called
     return useSegmentCache() || delegate.isPollingDatabasePeriodically();
   }
 

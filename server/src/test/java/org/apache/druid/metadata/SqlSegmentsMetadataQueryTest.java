@@ -288,12 +288,16 @@ public class SqlSegmentsMetadataQueryTest
 
   private Set<DataSegment> retrieveAllUsedSegments()
   {
-    return readAsSet(sql -> sql.retrieveUsedSegments(TestDataSource.WIKI, List.of()));
+    return readAsSet(
+        sql -> sql.retrieveUsedSegments(TestDataSource.WIKI, List.of())
+    );
   }
 
   private Set<DataSegment> retrieveAllUnusedSegments()
   {
-    return readAsSet(sql -> sql.retrieveUnusedSegments(TestDataSource.WIKI, List.of(), null, null, null, null, null));
+    return readAsSet(
+        sql -> sql.retrieveUnusedSegments(TestDataSource.WIKI, List.of(), null, null, null, null, null)
+    );
   }
 
   private void insertSegments(DataSegment... segments)

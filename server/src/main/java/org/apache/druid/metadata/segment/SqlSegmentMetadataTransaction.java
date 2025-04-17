@@ -266,7 +266,7 @@ class SqlSegmentMetadataTransaction implements SegmentMetadataTransaction
   @Override
   public boolean markSegmentAsUnused(SegmentId segmentId, DateTime updateTime)
   {
-    return query.markSegmentsAsUsed(Set.of(segmentId), updateTime) > 0;
+    return query.markSegmentsAsUnused(Set.of(segmentId), updateTime) > 0;
   }
 
   @Override
