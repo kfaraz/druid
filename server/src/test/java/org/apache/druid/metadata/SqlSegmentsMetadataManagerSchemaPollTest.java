@@ -162,7 +162,7 @@ public class SqlSegmentsMetadataManagerSchemaPollTest extends SqlSegmentsMetadat
   }
 
   @Test
-  public void testPollOnlyNewSchemaVersion() throws Exception
+  public void testPollOnlyNewSchemaVersion()
   {
     List<SegmentSchemaManager.SegmentSchemaMetadataPlus> list = new ArrayList<>();
     FingerprintGenerator fingerprintGenerator = new FingerprintGenerator(jsonMapper);

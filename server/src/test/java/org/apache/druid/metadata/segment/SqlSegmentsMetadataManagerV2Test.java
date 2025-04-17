@@ -20,61 +20,82 @@
 package org.apache.druid.metadata.segment;
 
 import com.google.common.base.Suppliers;
+import org.apache.druid.client.DataSourcesSnapshot;
+import org.apache.druid.client.ImmutableDruidDataSource;
+import org.apache.druid.java.util.common.DateTimes;
+import org.apache.druid.java.util.common.granularity.Granularities;
+import org.apache.druid.java.util.metrics.StubServiceEmitter;
 import org.apache.druid.metadata.SegmentsMetadataManager;
 import org.apache.druid.metadata.SegmentsMetadataManagerConfig;
 import org.apache.druid.metadata.SqlSegmentsMetadataManagerTestBase;
 import org.apache.druid.metadata.TestDerbyConnector;
 import org.apache.druid.metadata.segment.cache.HeapMemorySegmentMetadataCache;
+import org.apache.druid.metadata.segment.cache.Metric;
 import org.apache.druid.metadata.segment.cache.SegmentMetadataCache;
+import org.apache.druid.segment.TestDataSource;
 import org.apache.druid.segment.metadata.CentralizedDatasourceSchemaConfig;
+import org.apache.druid.server.coordinator.CreateDataSegments;
+import org.apache.druid.server.coordinator.simulate.BlockingExecutorService;
 import org.apache.druid.server.coordinator.simulate.WrappingScheduledExecutorService;
-import org.apache.druid.server.metrics.NoopServiceEmitter;
+import org.apache.druid.timeline.DataSegment;
+import org.assertj.core.util.Sets;
+import org.joda.time.DateTime;
+import org.joda.time.Interval;
 import org.joda.time.Period;
+import org.junit.After;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
 
-@RunWith(Parameterized.class)
+import java.util.List;
+import java.util.Set;
+
 public class SqlSegmentsMetadataManagerV2Test extends SqlSegmentsMetadataManagerTestBase
 {
   @Rule
   public final TestDerbyConnector.DerbyConnectorRule derbyConnectorRule =
-      new TestDerbyConnector.DerbyConnectorRule(CentralizedDatasourceSchemaConfig.create());
+      new TestDerbyConnector.DerbyConnectorRule(CentralizedDatasourceSchemaConfig.create(true));
 
   private SegmentsMetadataManager manager;
-  private SegmentMetadataCache segmentMetadataCache;
-  private final SegmentMetadataCache.UsageMode cacheMode;
+  private BlockingExecutorService segmentMetadataCacheExec;
+  private StubServiceEmitter emitter;
 
-  @Parameterized.Parameters
-  public static Object[][] getCacheTestingModes()
-  {
-    return new Object[][]{
-        {SegmentMetadataCache.UsageMode.ALWAYS},
-        {SegmentMetadataCache.UsageMode.NEVER}
-    };
-  }
+  private static final DateTime JAN_1 = DateTimes.of("2025-01-01");
 
-  public SqlSegmentsMetadataManagerV2Test(SegmentMetadataCache.UsageMode cacheMode)
-  {
-    this.cacheMode = cacheMode;
-  }
+  private static final List<DataSegment> WIKI_SEGMENTS_1X5D
+      = CreateDataSegments.ofDatasource(TestDataSource.WIKI)
+                          .forIntervals(5, Granularities.DAY)
+                          .startingAt(JAN_1)
+                          .eachOfSize(500);
 
   @Before
   public void setup() throws Exception
   {
     setUp(derbyConnectorRule);
+    connector.createPendingSegmentsTable();
 
-    // metadataCachePollExec = new BlockingExecutorService("test-cache-poll-exec");
-    segmentMetadataCache = new HeapMemorySegmentMetadataCache(
+    emitter = new StubServiceEmitter();
+
+    WIKI_SEGMENTS_1X5D.forEach(super::publishSegment);
+  }
+
+  private void initManager(
+      SegmentMetadataCache.UsageMode cacheMode,
+      boolean useSchemaCache
+  )
+  {
+    segmentMetadataCacheExec = new BlockingExecutorService("test");
+    SegmentMetadataCache segmentMetadataCache = new HeapMemorySegmentMetadataCache(
         jsonMapper,
         Suppliers.ofInstance(new SegmentsMetadataManagerConfig(Period.seconds(1), cacheMode)),
         Suppliers.ofInstance(storageConfig),
         connector,
-        (poolSize, name) -> new WrappingScheduledExecutorService(name, null, false),
-        NoopServiceEmitter.instance()
+        (poolSize, name) -> new WrappingScheduledExecutorService(name, segmentMetadataCacheExec, false),
+        emitter
     );
+    segmentMetadataCache.start();
+    segmentMetadataCache.becomeLeader();
 
     manager = new SqlSegmentsMetadataManagerV2(
         segmentMetadataCache,
@@ -82,15 +103,127 @@ public class SqlSegmentsMetadataManagerV2Test extends SqlSegmentsMetadataManager
         connector,
         Suppliers.ofInstance(config),
         derbyConnectorRule.metadataTablesConfigSupplier(),
-        CentralizedDatasourceSchemaConfig.create(),
-        NoopServiceEmitter.instance(),
+        CentralizedDatasourceSchemaConfig.create(useSchemaCache),
+        emitter,
         jsonMapper
     );
+    manager.start();
+  }
+
+  private void syncSegmentMetadataCache()
+  {
+    segmentMetadataCacheExec.finishNextPendingTasks(2);
+    segmentMetadataCacheExec.finishNextPendingTasks(2);
+  }
+
+  @After
+  public void tearDown()
+  {
+    if (manager.isPollingDatabasePeriodically()) {
+      manager.stopPollingDatabasePeriodically();
+    }
+    manager.stop();
   }
 
   @Test
-  public void test_someStuff()
+  public void test_manager_usesCachedSegments_ifCacheIsEnabled()
   {
+    initManager(SegmentMetadataCache.UsageMode.ALWAYS, false);
 
+    manager.startPollingDatabasePeriodically();
+    Assert.assertTrue(manager.isPollingDatabasePeriodically());
+
+    syncSegmentMetadataCache();
+    verifyAllManagerMethods();
+
+    // isPolling returns true even after stop since cache is still polling the metadata store
+    manager.stopPollingDatabasePeriodically();
+    Assert.assertTrue(manager.isPollingDatabasePeriodically());
+
+    emitter.verifyNotEmitted("segment/poll/time");
+    emitter.verifyNotEmitted("segment/pollWithSchema/time");
+    emitter.verifyEmitted(Metric.SYNC_DURATION_MILLIS, 2);
+  }
+
+  @Test
+  public void test_manager_pollsSegments_ifCacheIsDisabled()
+  {
+    initManager(SegmentMetadataCache.UsageMode.NEVER, false);
+
+    manager.startPollingDatabasePeriodically();
+    Assert.assertTrue(manager.isPollingDatabasePeriodically());
+
+    verifyAllManagerMethods();
+
+    manager.stopPollingDatabasePeriodically();
+    Assert.assertFalse(manager.isPollingDatabasePeriodically());
+
+    emitter.verifyEmitted("segment/poll/time", 1);
+    emitter.verifyNotEmitted(Metric.SYNC_DURATION_MILLIS);
+  }
+
+  @Test
+  public void test_manager_pollsSegments_ifBothCacheAndSchemaAreEnabled()
+  {
+    initManager(SegmentMetadataCache.UsageMode.ALWAYS, true);
+
+    manager.startPollingDatabasePeriodically();
+    Assert.assertTrue(manager.isPollingDatabasePeriodically());
+
+    verifyAllManagerMethods();
+
+    manager.stopPollingDatabasePeriodically();
+    Assert.assertFalse(manager.isPollingDatabasePeriodically());
+
+    emitter.verifyEmitted("segment/pollWithSchema/time", 1);
+    emitter.verifyEmitted(Metric.SYNC_DURATION_MILLIS, 1);
+  }
+
+  private void verifyAllManagerMethods()
+  {
+    Assert.assertEquals(
+        Set.copyOf(WIKI_SEGMENTS_1X5D),
+        Sets.newHashSet(manager.iterateAllUsedSegments())
+    );
+    Assert.assertEquals(
+        Set.of(WIKI_SEGMENTS_1X5D.get(0), WIKI_SEGMENTS_1X5D.get(1)),
+        Sets.newHashSet(
+            manager.iterateAllUsedNonOvershadowedSegmentsForDatasourceInterval(
+                TestDataSource.WIKI,
+                new Interval(JAN_1, Period.days(2)),
+                false
+            ).get()
+        )
+    );
+    Assert.assertEquals(
+        Set.of(TestDataSource.WIKI),
+        manager.retrieveAllDataSourceNames()
+    );
+    Assert.assertEquals(
+        List.of(),
+        manager.getUnusedSegmentIntervals(
+            TestDataSource.WIKI,
+            null,
+            JAN_1.plusDays(100),
+            100,
+            DateTimes.nowUtc().plusHours(1)
+        )
+    );
+
+    final ImmutableDruidDataSource wikiSegments =
+        manager.getImmutableDataSourceWithUsedSegments(TestDataSource.WIKI);
+    Assert.assertNotNull(wikiSegments);
+    Assert.assertEquals(Set.copyOf(WIKI_SEGMENTS_1X5D), Set.copyOf(wikiSegments.getSegments()));
+
+    final List<ImmutableDruidDataSource> allDatasources =
+        List.copyOf(manager.getImmutableDataSourcesWithAllUsedSegments());
+    Assert.assertEquals(1, allDatasources.size());
+    Assert.assertEquals(Set.copyOf(WIKI_SEGMENTS_1X5D), Set.copyOf(allDatasources.get(0).getSegments()));
+
+    final DataSourcesSnapshot snapshot = manager.getSnapshotOfDataSourcesWithAllUsedSegments();
+    Assert.assertEquals(
+        Set.copyOf(WIKI_SEGMENTS_1X5D),
+        Sets.newHashSet(snapshot.iterateAllUsedSegmentsInSnapshot())
+    );
   }
 }

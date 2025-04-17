@@ -51,7 +51,6 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 
-import java.io.IOException;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -85,23 +84,18 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
   private final DataSegment wikiSegment2 =
       CreateDataSegments.ofDatasource(TestDataSource.WIKI).startingAt("2012-01-05").eachOfSizeInMb(500).get(0);
 
-  private void publishUnusedSegments(DataSegment... segments) throws IOException
+  private void publishUnusedSegments(DataSegment... segments)
   {
     for (DataSegment segment : segments) {
       publishSegment(segment);
-      markSegmentAsUnused(segment.getId());
+      markSegmentsAsUnused(segment.getId());
     }
   }
 
   private void publishWikiSegments()
   {
-    try {
-      publishSegment(wikiSegment1);
-      publishSegment(wikiSegment2);
-    }
-    catch (Exception e) {
-      throw new RuntimeException(e);
-    }
+    publishSegment(wikiSegment1);
+    publishSegment(wikiSegment2);
   }
 
   @Before
@@ -259,7 +253,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
   }
 
   @Test
-  public void testPrepareImmutableDataSourceWithUsedSegmentsAwaitsPollOnRestart() throws IOException
+  public void testPrepareImmutableDataSourceWithUsedSegmentsAwaitsPollOnRestart()
   {
     publishWikiSegments();
     DataSegment koalaSegment = pollThenStopThenPublishKoalaSegment();
@@ -270,7 +264,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
   }
 
   @Test
-  public void testGetDataSourceWithUsedSegmentsAwaitsPollOnRestart() throws IOException
+  public void testGetDataSourceWithUsedSegmentsAwaitsPollOnRestart()
   {
     publishWikiSegments();
     DataSegment koalaSegment = pollThenStopThenPublishKoalaSegment();
@@ -281,7 +275,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
   }
 
   @Test
-  public void testPrepareImmutableDataSourcesWithAllUsedSegmentsAwaitsPollOnRestart() throws IOException
+  public void testPrepareImmutableDataSourcesWithAllUsedSegmentsAwaitsPollOnRestart()
   {
     publishWikiSegments();
     DataSegment koalaSegment = pollThenStopThenPublishKoalaSegment();
@@ -298,7 +292,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
   }
 
   @Test
-  public void testIterateAllUsedSegmentsAwaitsPollOnRestart() throws IOException
+  public void testIterateAllUsedSegmentsAwaitsPollOnRestart()
   {
     publishWikiSegments();
     DataSegment koalaSegment = pollThenStopThenPublishKoalaSegment();
@@ -308,7 +302,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
     );
   }
 
-  private DataSegment pollThenStopThenPublishKoalaSegment() throws IOException
+  private DataSegment pollThenStopThenPublishKoalaSegment()
   {
     sqlSegmentsMetadataManager.startPollingDatabasePeriodically();
     sqlSegmentsMetadataManager.poll();
@@ -330,7 +324,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
    * even if one of the entries is corrupted.
    */
   @Test
-  public void testPollWithCorruptedSegment() throws IOException
+  public void testPollWithCorruptedSegment()
   {
     publishWikiSegments();
 
@@ -349,9 +343,10 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
   }
 
   @Test
-  public void testGetUnusedSegmentIntervals() throws IOException
+  public void testGetUnusedSegmentIntervals()
   {
-    publishWikiSegments();
+    publishSegment(wikiSegment1);
+    publishSegment(wikiSegment2);
     sqlSegmentsMetadataManager.startPollingDatabasePeriodically();
     sqlSegmentsMetadataManager.poll();
 
@@ -359,7 +354,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
     allowUsedFlagLastUpdatedToBeNullable();
 
     Assert.assertTrue(sqlSegmentsMetadataManager.isPollingDatabasePeriodically());
-    int numChangedSegments = markAllSegmentsAsUnused(TestDataSource.WIKI);
+    int numChangedSegments = markSegmentsAsUnused(wikiSegment1.getId(), wikiSegment2.getId());
     Assert.assertEquals(2, numChangedSegments);
 
     // Publish an unused segment with used_status_last_updated 2 hours ago
@@ -497,7 +492,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
   }
 
   @Test
-  public void testMarkAsUsedNonOvershadowedSegments() throws Exception
+  public void testMarkAsUsedNonOvershadowedSegments()
   {
     publishWikiSegments();
     sqlSegmentsMetadataManager.startPollingDatabasePeriodically();
@@ -544,7 +539,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
   }
 
   @Test
-  public void testMarkAsUsedNonOvershadowedSegmentsInEternityIntervalWithVersions() throws Exception
+  public void testMarkAsUsedNonOvershadowedSegmentsInEternityIntervalWithVersions()
   {
     publishWikiSegments();
     sqlSegmentsMetadataManager.startPollingDatabasePeriodically();
@@ -594,7 +589,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
   }
 
   @Test
-  public void testMarkAsUsedNonOvershadowedSegmentsInIntervalWithEmptyVersions() throws Exception
+  public void testMarkAsUsedNonOvershadowedSegmentsInIntervalWithEmptyVersions()
   {
     publishWikiSegments();
     sqlSegmentsMetadataManager.startPollingDatabasePeriodically();
@@ -644,7 +639,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
   }
 
   @Test
-  public void testMarkAsUsedNonOvershadowedSegmentsInEternityIntervalWithEmptyVersions() throws Exception
+  public void testMarkAsUsedNonOvershadowedSegmentsInEternityIntervalWithEmptyVersions()
   {
     publishWikiSegments();
     sqlSegmentsMetadataManager.startPollingDatabasePeriodically();
@@ -694,7 +689,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
   }
 
   @Test
-  public void testMarkAsUsedNonOvershadowedSegmentsInFiniteIntervalWithVersions() throws Exception
+  public void testMarkAsUsedNonOvershadowedSegmentsInFiniteIntervalWithVersions()
   {
     publishWikiSegments();
     sqlSegmentsMetadataManager.startPollingDatabasePeriodically();
@@ -744,7 +739,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
   }
 
   @Test
-  public void testMarkAsUsedNonOvershadowedSegmentsWithNonExistentVersions() throws Exception
+  public void testMarkAsUsedNonOvershadowedSegmentsWithNonExistentVersions()
   {
     publishWikiSegments();
     sqlSegmentsMetadataManager.startPollingDatabasePeriodically();
@@ -794,7 +789,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
   }
 
   @Test
-  public void testMarkAsUsedNonOvershadowedSegmentsInvalidDataSource() throws Exception
+  public void testMarkAsUsedNonOvershadowedSegmentsInvalidDataSource()
   {
     publishWikiSegments();
     sqlSegmentsMetadataManager.startPollingDatabasePeriodically();
@@ -855,7 +850,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
   }
 
   @Test
-  public void testMarkAsUsedNonOvershadowedSegmentsInInterval() throws IOException
+  public void testMarkAsUsedNonOvershadowedSegmentsInInterval()
   {
     publishWikiSegments();
     sqlSegmentsMetadataManager.startPollingDatabasePeriodically();
@@ -897,7 +892,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
   }
 
   @Test
-  public void testMarkAsUsedNonOvershadowedSegmentsInIntervalWithOverlappingInterval() throws IOException
+  public void testMarkAsUsedNonOvershadowedSegmentsInIntervalWithOverlappingInterval()
   {
     publishWikiSegments();
     sqlSegmentsMetadataManager.startPollingDatabasePeriodically();
@@ -945,7 +940,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
   }
 
   @Test
-  public void test_poll_doesNotRetrieveUnusedSegments() throws IOException
+  public void test_poll_doesNotRetrieveUnusedSegments()
   {
     publishWikiSegments();
     final DataSegment koalaSegment1 = createNewSegment1(TestDataSource.KOALA);
@@ -964,8 +959,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
     );
 
     // Mark the koala segments as unused
-    final Set<SegmentId> segmentIds = Set.of(koalaSegment1.getId(), koalaSegment2.getId());
-    Assert.assertEquals(segmentIds.size(), markSegmentsAsUnused(segmentIds));
+    Assert.assertEquals(2, markSegmentsAsUnused(koalaSegment1.getId(), koalaSegment2.getId()));
 
     // Verify that subsequent poll only retrieves the used segments
     sqlSegmentsMetadataManager.poll();
@@ -986,7 +980,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
   }
 
   @Test
-  public void testIterateAllUsedNonOvershadowedSegmentsForDatasourceInterval() throws Exception
+  public void testIterateAllUsedNonOvershadowedSegmentsForDatasourceInterval()
   {
     publishWikiSegments();
     final Interval theInterval = Intervals.of("2012-03-15T00:00:00.000/2012-03-20T00:00:00.000");
@@ -1037,7 +1031,7 @@ public class SqlSegmentsMetadataManagerTest extends SqlSegmentsMetadataManagerTe
   }
 
   @Test
-  public void testPopulateUsedFlagLastUpdated() throws IOException
+  public void testPopulateUsedFlagLastUpdated()
   {
     allowUsedFlagLastUpdatedToBeNullable();
     final DataSegment koalaSegment = createSegment(

@@ -23,7 +23,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Suppliers;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import junitparams.converters.Nullable;
 import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.common.Intervals;
 import org.apache.druid.java.util.common.StringUtils;
@@ -35,14 +34,10 @@ import org.apache.druid.server.metrics.NoopServiceEmitter;
 import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.timeline.SegmentId;
 import org.apache.druid.timeline.partition.NoneShardSpec;
-import org.joda.time.Interval;
 import org.joda.time.Period;
-import org.junit.After;
-import org.junit.Before;
 import org.skife.jdbi.v2.DBI;
 import org.skife.jdbi.v2.tweak.HandleCallback;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -76,7 +71,7 @@ public class SqlSegmentsMetadataManagerTestBase
 
   protected void setUp(TestDerbyConnector.DerbyConnectorRule derbyConnectorRule) throws Exception
   {
-    SegmentsMetadataManagerConfig config = new SegmentsMetadataManagerConfig(Period.seconds(3), null);
+    config = new SegmentsMetadataManagerConfig(Period.seconds(3), null);
     connector = derbyConnectorRule.getConnector();
     storageConfig = derbyConnectorRule.metadataTablesConfigSupplier().get();
 
@@ -110,37 +105,14 @@ public class SqlSegmentsMetadataManagerTestBase
     sqlSegmentsMetadataManager.stop();
   }
 
-  protected void publishSegment(final DataSegment segment) throws IOException
+  protected void publishSegment(final DataSegment segment)
   {
     publishSegment(connector, storageConfig, jsonMapper, segment);
   }
 
-  protected int markAllSegmentsAsUnused(String dataSource)
+  protected int markSegmentsAsUnused(SegmentId... segmentIds)
   {
-    return markSegmentsWithinIntervalAsUnused(dataSource, Intervals.ETERNITY, null);
-  }
-
-  protected int markSegmentsWithinIntervalAsUnused(
-      String dataSource,
-      Interval interval,
-      @Nullable List<String> versions
-  )
-  {
-    return connector.retryWithHandle(
-        handle -> SqlSegmentsMetadataQuery.forHandle(handle, connector, storageConfig, jsonMapper)
-                                          .markSegmentsUnused(dataSource, interval, versions, DateTimes.nowUtc())
-    );
-  }
-
-  protected boolean markSegmentAsUnused(SegmentId segmentId)
-  {
-    int updatedRows = markSegmentsAsUnused(Set.of(segmentId), connector, storageConfig, jsonMapper);
-    return updatedRows > 0;
-  }
-
-  protected int markSegmentsAsUnused(Set<SegmentId> segmentIds)
-  {
-    return markSegmentsAsUnused(segmentIds, connector, storageConfig, jsonMapper);
+    return markSegmentsAsUnused(Set.of(segmentIds), connector, storageConfig, jsonMapper);
   }
 
   public static int markSegmentsAsUnused(
@@ -186,46 +158,15 @@ public class SqlSegmentsMetadataManagerTestBase
       final MetadataStorageTablesConfig config,
       final ObjectMapper jsonMapper,
       final DataSegment segment
-  ) throws IOException
-  {
-    String now = DateTimes.nowUtc().toString();
-    publishSegment(
-        connector,
-        config,
-        segment.getId().toString(),
-        segment.getDataSource(),
-        now,
-        segment.getInterval().getStart().toString(),
-        segment.getInterval().getEnd().toString(),
-        (segment.getShardSpec() instanceof NoneShardSpec) ? false : true,
-        segment.getVersion(),
-        true,
-        jsonMapper.writeValueAsBytes(segment),
-        now
-    );
-  }
-
-  private static void publishSegment(
-      final SQLMetadataConnector connector,
-      final MetadataStorageTablesConfig config,
-      final String segmentId,
-      final String dataSource,
-      final String createdDate,
-      final String start,
-      final String end,
-      final boolean partitioned,
-      final String version,
-      final boolean used,
-      final byte[] payload,
-      final String usedFlagLastUpdated
   )
   {
+    final String now = DateTimes.nowUtc().toString();
     try {
       final DBI dbi = connector.getDBI();
       List<Map<String, Object>> exists = dbi.withHandle(
           handle ->
               handle.createQuery(StringUtils.format("SELECT id FROM %s WHERE id=:id", config.getSegmentsTable()))
-                    .bind("id", segmentId)
+                    .bind("id", segment.getId().toString())
                     .list()
       );
 
@@ -240,19 +181,20 @@ public class SqlSegmentsMetadataManagerTestBase
           connector.getQuoteString()
       );
 
+      final byte[] payload = jsonMapper.writeValueAsBytes(segment);
       dbi.withHandle(
           (HandleCallback<Void>) handle -> {
             handle.createStatement(publishStatement)
-                  .bind("id", segmentId)
-                  .bind("dataSource", dataSource)
-                  .bind("created_date", createdDate)
-                  .bind("start", start)
-                  .bind("end", end)
-                  .bind("partitioned", partitioned)
-                  .bind("version", version)
-                  .bind("used", used)
+                  .bind("id", segment.getId().toString())
+                  .bind("dataSource", segment.getDataSource())
+                  .bind("created_date", now)
+                  .bind("start", segment.getInterval().getStart().toString())
+                  .bind("end", segment.getInterval().getEnd().toString())
+                  .bind("partitioned", !(segment.getShardSpec() instanceof NoneShardSpec))
+                  .bind("version", segment.getVersion())
+                  .bind("used", true)
                   .bind("payload", payload)
-                  .bind("used_status_last_updated", usedFlagLastUpdated)
+                  .bind("used_status_last_updated", now)
                   .execute();
 
             return null;

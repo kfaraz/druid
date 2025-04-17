@@ -60,10 +60,9 @@ import java.util.Set;
  * not done and the segments already present in the cache are used to build the
  * timeline. If the {@link SegmentMetadataCache} is disabled, the polling is
  * delegated to the legacy implementation in {@link SqlSegmentsMetadataManager}.
- *
+ * <p>
  * TODO:
  * - mention how the behaviour of this class is different for Coordinator and Overlord
- * - should changes in leadership affect the state of this class
  */
 @ManageLifecycle
 public class SqlSegmentsMetadataManagerV2 implements SegmentsMetadataManager

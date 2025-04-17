@@ -67,7 +67,6 @@ import org.junit.Rule;
 import org.junit.Test;
 
 import javax.annotation.Nullable;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -1072,12 +1071,7 @@ public class KillUnusedSegmentsTest
   private DataSegment createAndAddUsedSegment(final String dataSource, final Interval interval, final String version)
   {
     final DataSegment segment = createSegment(dataSource, interval, version);
-    try {
-      SqlSegmentsMetadataManagerTestBase.publishSegment(connector, config, TestHelper.JSON_MAPPER, segment);
-    }
-    catch (IOException e) {
-      throw new RuntimeException(e);
-    }
+    SqlSegmentsMetadataManagerTestBase.publishSegment(connector, config, TestHelper.JSON_MAPPER, segment);
     return segment;
   }
 
