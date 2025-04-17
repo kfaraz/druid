@@ -50,34 +50,34 @@ public class SqlSegmentsMetadataQueryTest
   }
 
   @Test
-  public void test_markSegments_asUsed()
+  public void test_markSegmentsAsUsed()
   {
     update(
-        sql -> sql.markSegments(Set.of(), true, DateTimes.nowUtc())
+        sql -> sql.markSegmentsAsUsed(Set.of(), DateTimes.nowUtc())
     );
   }
 
   @Test
-  public void test_markSegments_asUnused()
+  public void test_markSegmentsAsUnused()
   {
     update(
-        sql -> sql.markSegments(Set.of(), false, DateTimes.nowUtc())
+        sql -> sql.markSegmentsAsUnused(Set.of(), DateTimes.nowUtc())
     );
   }
 
   @Test
-  public void test_markSegments_isIdempotent()
+  public void test_markSegmentsAsUsed_isIdempotent()
   {
     update(
-        sql -> sql.markSegments(Set.of(), true, DateTimes.nowUtc())
+        sql -> sql.markSegmentsAsUsed(Set.of(), DateTimes.nowUtc())
     );
   }
 
   @Test
-  public void test_markSegments_forEmptySegmentIds_isNoop()
+  public void test_markSegmentsAsUsed_forEmptySegmentIds_isNoop()
   {
     update(
-        sql -> sql.markSegments(Set.of(), true, DateTimes.nowUtc())
+        sql -> sql.markSegmentsAsUsed(Set.of(), DateTimes.nowUtc())
     );
   }
 

@@ -721,12 +721,11 @@ public class SqlSegmentsMetadataManager implements SegmentsMetadataManager
       SegmentTimeline timeline
   )
   {
-    List<SegmentId> segmentIdsToMarkAsUsed = new ArrayList<>();
-    for (DataSegment segment : unusedSegments) {
-      if (!timeline.isOvershadowed(segment)) {
-        segmentIdsToMarkAsUsed.add(segment.getId());
-      }
-    }
+    Set<SegmentId> segmentIdsToMarkAsUsed =
+        unusedSegments.stream()
+                      .filter(segment -> !timeline.isOvershadowed(segment))
+                      .map(DataSegment::getId)
+                      .collect(Collectors.toSet());
 
     return markSegmentsAsUsed(segmentIdsToMarkAsUsed);
   }
@@ -806,7 +805,7 @@ public class SqlSegmentsMetadataManager implements SegmentsMetadataManager
                                    .retrieveUsedSegments(dataSource, intervals);
   }
 
-  private int markSegmentsAsUsed(final List<SegmentId> segmentIds)
+  private int markSegmentsAsUsed(final Set<SegmentId> segmentIds)
   {
     if (segmentIds.isEmpty()) {
       log.info("No segments found to mark as used.");
@@ -816,7 +815,7 @@ public class SqlSegmentsMetadataManager implements SegmentsMetadataManager
     return connector.getDBI().withHandle(
         handle ->
             SqlSegmentsMetadataQuery.forHandle(handle, connector, dbTables.get(), jsonMapper)
-                                    .markSegments(segmentIds, true, DateTimes.nowUtc())
+                                    .markSegmentsAsUsed(segmentIds, DateTimes.nowUtc())
     );
   }
 

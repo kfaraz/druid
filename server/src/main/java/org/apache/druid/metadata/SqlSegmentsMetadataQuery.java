@@ -65,8 +65,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * An object that is used to make queries to the metadata store segments table.
- * Each instance of this class is scoped to a single handle and is meant
+ * An object that is used to query the segments table in the metadata store.
+ * Each instance of this class is scoped to a single {@link Handle} and is meant
  * to be short-lived.
  */
 public class SqlSegmentsMetadataQuery
@@ -559,15 +559,39 @@ public class SqlSegmentsMetadataQuery
   }
 
   /**
-   * Marks the provided segments as either used or unused.
+   * Marks the given segment IDs as used.
    *
-   * For better performance, please try to
-   * 1) ensure that the caller passes only used segments to this method when marking them as unused.
-   * 2) Similarly, please try to call this method only on unused segments when marking segments as used with this method.
+   * @param segmentIds Segment IDs to update. For better performance, ensure that
+   *                   these segment IDs are not already marked as used.
+   * @param updateTime Updated segments will have their used_status_last_updated
+   *                   column set to this value
+   * @return Number of segments updated in the metadata store.
+   */
+  public int markSegmentsAsUsed(Set<SegmentId> segmentIds, DateTime updateTime)
+  {
+    return markSegments(segmentIds, true, updateTime);
+  }
+
+  /**
+   * Marks the given segment IDs as unused.
+   *
+   * @param segmentIds Segment IDs to update. For better performance, ensure that
+   *                   these segment IDs are not already marked as unused.
+   * @param updateTime Updated segments will have their used_status_last_updated
+   *                   column set to this value
+   * @return Number of segments updated in the metadata store.
+   */
+  public int markSegmentsAsUnused(Set<SegmentId> segmentIds, DateTime updateTime)
+  {
+    return markSegments(segmentIds, false, updateTime);
+  }
+
+  /**
+   * Marks the given segments as either used or unused.
    *
    * @return the number of segments actually modified.
    */
-  public int markSegments(final Collection<SegmentId> segmentIds, final boolean used, DateTime updateTime)
+  private int markSegments(final Set<SegmentId> segmentIds, final boolean used, DateTime updateTime)
   {
     final String dataSource;
 
@@ -680,7 +704,7 @@ public class SqlSegmentsMetadataQuery
       return stmt.execute();
     } else {
       // Retrieve, then drop, since we can't write a WHERE clause directly.
-      final List<SegmentId> segments = ImmutableList.copyOf(
+      final Set<SegmentId> segments = ImmutableSet.copyOf(
           Iterators.transform(
               retrieveSegments(
                   dataSource,

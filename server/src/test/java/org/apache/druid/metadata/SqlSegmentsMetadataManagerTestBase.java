@@ -152,7 +152,7 @@ public class SqlSegmentsMetadataManagerTestBase
   {
     return connector.retryWithHandle(
         handle -> SqlSegmentsMetadataQuery.forHandle(handle, connector, storageConfig, jsonMapper)
-                                          .markSegments(segmentIds, false, DateTimes.nowUtc())
+                                          .markSegmentsAsUnused(segmentIds, DateTimes.nowUtc())
     );
   }
 
