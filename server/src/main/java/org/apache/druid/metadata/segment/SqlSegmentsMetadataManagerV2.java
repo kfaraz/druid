@@ -20,10 +20,8 @@
 package org.apache.druid.metadata.segment;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.base.Optional;
 import com.google.common.base.Supplier;
 import org.apache.druid.client.DataSourcesSnapshot;
-import org.apache.druid.client.ImmutableDruidDataSource;
 import org.apache.druid.guice.ManageLifecycle;
 import org.apache.druid.java.util.common.lifecycle.LifecycleStart;
 import org.apache.druid.java.util.common.lifecycle.LifecycleStop;
@@ -33,23 +31,10 @@ import org.apache.druid.metadata.MetadataStorageTablesConfig;
 import org.apache.druid.metadata.SQLMetadataConnector;
 import org.apache.druid.metadata.SegmentsMetadataManager;
 import org.apache.druid.metadata.SegmentsMetadataManagerConfig;
-import org.apache.druid.metadata.SortOrder;
 import org.apache.druid.metadata.SqlSegmentsMetadataManager;
 import org.apache.druid.metadata.segment.cache.SegmentMetadataCache;
 import org.apache.druid.segment.metadata.CentralizedDatasourceSchemaConfig;
 import org.apache.druid.segment.metadata.SegmentSchemaCache;
-import org.apache.druid.server.http.DataSegmentPlus;
-import org.apache.druid.timeline.DataSegment;
-import org.apache.druid.timeline.Partitions;
-import org.apache.druid.timeline.SegmentId;
-import org.apache.druid.timeline.SegmentTimeline;
-import org.joda.time.DateTime;
-import org.joda.time.Interval;
-
-import javax.annotation.Nullable;
-import java.util.Collection;
-import java.util.List;
-import java.util.Set;
 
 /**
  * Implementation V2 of {@link SegmentsMetadataManager}, that uses the segments
@@ -147,140 +132,28 @@ public class SqlSegmentsMetadataManagerV2 implements SegmentsMetadataManager
     return useSegmentCache() || delegate.isPollingDatabasePeriodically();
   }
 
-  @Nullable
   @Override
-  public ImmutableDruidDataSource getImmutableDataSourceWithUsedSegments(String dataSource)
-  {
-    if (useSegmentCache()) {
-      return getSnapshotOfDataSourcesWithAllUsedSegments().getDataSource(dataSource);
-    } else {
-      return delegate.getImmutableDataSourceWithUsedSegments(dataSource);
-    }
-  }
-
-  @Override
-  public Collection<ImmutableDruidDataSource> getImmutableDataSourcesWithAllUsedSegments()
-  {
-    if (useSegmentCache()) {
-      return getSnapshotOfDataSourcesWithAllUsedSegments().getDataSourcesWithAllUsedSegments();
-    } else {
-      return delegate.getImmutableDataSourcesWithAllUsedSegments();
-    }
-  }
-
-  @Override
-  public DataSourcesSnapshot getSnapshotOfDataSourcesWithAllUsedSegments()
+  public DataSourcesSnapshot getDataSourceSnapshot()
   {
     if (useSegmentCache()) {
       return segmentMetadataCache.getDatasourcesSnapshot();
     } else {
-      return delegate.getSnapshotOfDataSourcesWithAllUsedSegments();
+      return delegate.getDataSourceSnapshot();
     }
   }
 
   @Override
-  public Iterable<DataSegment> iterateAllUsedSegments()
+  public DataSourcesSnapshot forceUpdateSnapshot()
   {
     if (useSegmentCache()) {
-      return getSnapshotOfDataSourcesWithAllUsedSegments().iterateAllUsedSegmentsInSnapshot();
+      // TODO: we cannot force update the cache to refresh, we can just wait
+      return segmentMetadataCache.getDatasourcesSnapshot();
     } else {
-      return delegate.iterateAllUsedSegments();
-    }
-  }
-
-  @Override
-  public Optional<Iterable<DataSegment>> iterateAllUsedNonOvershadowedSegmentsForDatasourceInterval(
-      String datasource,
-      Interval interval,
-      boolean requiresLatest
-  )
-  {
-    if (useSegmentCache()) {
-      // Ignore the flag requiresLatest since the cache polls the metadata store
-      // continuously anyway
-      SegmentTimeline usedSegmentsTimeline =
-          getSnapshotOfDataSourcesWithAllUsedSegments()
-              .getUsedSegmentsTimelinesPerDataSource()
-              .get(datasource);
-      return Optional.fromNullable(usedSegmentsTimeline).transform(
-          timeline -> timeline.findNonOvershadowedObjectsInInterval(interval, Partitions.ONLY_COMPLETE)
-      );
-    } else {
-      return delegate.iterateAllUsedNonOvershadowedSegmentsForDatasourceInterval(datasource, interval, requiresLatest);
+      return delegate.forceUpdateSnapshot();
     }
   }
 
   // Methods delegated to SqlSegmentsMetadataManager V1 implementation
-
-  @Override
-  public int markAsUsedAllNonOvershadowedSegmentsInDataSource(String dataSource)
-  {
-    return delegate.markAsUsedAllNonOvershadowedSegmentsInDataSource(dataSource);
-  }
-
-  @Override
-  public int markAsUsedNonOvershadowedSegmentsInInterval(
-      String dataSource,
-      Interval interval,
-      @Nullable List<String> versions
-  )
-  {
-    return delegate.markAsUsedNonOvershadowedSegmentsInInterval(dataSource, interval, versions);
-  }
-
-  @Override
-  public int markAsUsedNonOvershadowedSegments(String dataSource, Set<SegmentId> segmentIds)
-  {
-    return delegate.markAsUsedNonOvershadowedSegments(dataSource, segmentIds);
-  }
-
-  @Override
-  public boolean markSegmentAsUsed(String segmentId)
-  {
-    return delegate.markSegmentAsUsed(segmentId);
-  }
-
-  @Override
-  public Iterable<DataSegmentPlus> iterateAllUnusedSegmentsForDatasource(
-      String datasource,
-      @Nullable Interval interval,
-      @Nullable Integer limit,
-      @Nullable String lastSegmentId,
-      @Nullable SortOrder sortOrder
-  )
-  {
-    return delegate.iterateAllUnusedSegmentsForDatasource(
-        datasource,
-        interval,
-        limit,
-        lastSegmentId,
-        sortOrder
-    );
-  }
-
-  @Override
-  public Set<String> retrieveAllDataSourceNames()
-  {
-    return delegate.retrieveAllDataSourceNames();
-  }
-
-  @Override
-  public List<Interval> getUnusedSegmentIntervals(
-      String dataSource,
-      @Nullable DateTime minStartTime,
-      DateTime maxEndTime,
-      int limit,
-      DateTime maxUsedStatusLastUpdatedTime
-  )
-  {
-    return delegate.getUnusedSegmentIntervals(
-        dataSource,
-        minStartTime,
-        maxEndTime,
-        limit,
-        maxUsedStatusLastUpdatedTime
-    );
-  }
 
   @Override
   public void populateUsedFlagLastUpdatedAsync()

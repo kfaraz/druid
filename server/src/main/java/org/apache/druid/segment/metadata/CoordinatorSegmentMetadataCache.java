@@ -570,7 +570,7 @@ public class CoordinatorSegmentMetadataCache extends AbstractSegmentMetadataCach
     int datasources = 0, dataSourceWithColdSegments = 0, totalColdSegments = 0;
 
     Collection<ImmutableDruidDataSource> immutableDataSources =
-        segmentsMetadataManager.getImmutableDataSourcesWithAllUsedSegments();
+        segmentsMetadataManager.getDataSourceSnapshot().getDataSourcesWithAllUsedSegments();
 
     for (ImmutableDruidDataSource dataSource : immutableDataSources) {
       datasources++;
@@ -882,7 +882,7 @@ public class CoordinatorSegmentMetadataCache extends AbstractSegmentMetadataCach
     }
 
     ImmutableDruidDataSource druidDataSource =
-        segmentsMetadataManager.getImmutableDataSourceWithUsedSegments(segment.getDataSource());
+        segmentsMetadataManager.getDataSourceSnapshot().getDataSource(segment.getDataSource());
 
     if (druidDataSource != null && druidDataSource.getSegment(id) != null) {
       markSegmentAsNeedRefresh(id);

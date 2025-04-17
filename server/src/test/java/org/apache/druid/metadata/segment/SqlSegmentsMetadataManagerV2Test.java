@@ -21,7 +21,6 @@ package org.apache.druid.metadata.segment;
 
 import com.google.common.base.Suppliers;
 import org.apache.druid.client.DataSourcesSnapshot;
-import org.apache.druid.client.ImmutableDruidDataSource;
 import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.common.granularity.Granularities;
 import org.apache.druid.java.util.metrics.StubServiceEmitter;
@@ -40,7 +39,6 @@ import org.apache.druid.server.coordinator.simulate.WrappingScheduledExecutorSer
 import org.apache.druid.timeline.DataSegment;
 import org.assertj.core.util.Sets;
 import org.joda.time.DateTime;
-import org.joda.time.Interval;
 import org.joda.time.Period;
 import org.junit.After;
 import org.junit.Assert;
@@ -134,7 +132,7 @@ public class SqlSegmentsMetadataManagerV2Test extends SqlSegmentsMetadataManager
     Assert.assertTrue(manager.isPollingDatabasePeriodically());
 
     syncSegmentMetadataCache();
-    verifyAllManagerMethods();
+    verifyDatasourceSnapshot();
 
     // isPolling returns true even after stop since cache is still polling the metadata store
     manager.stopPollingDatabasePeriodically();
@@ -153,7 +151,7 @@ public class SqlSegmentsMetadataManagerV2Test extends SqlSegmentsMetadataManager
     manager.startPollingDatabasePeriodically();
     Assert.assertTrue(manager.isPollingDatabasePeriodically());
 
-    verifyAllManagerMethods();
+    verifyDatasourceSnapshot();
 
     manager.stopPollingDatabasePeriodically();
     Assert.assertFalse(manager.isPollingDatabasePeriodically());
@@ -170,7 +168,7 @@ public class SqlSegmentsMetadataManagerV2Test extends SqlSegmentsMetadataManager
     manager.startPollingDatabasePeriodically();
     Assert.assertTrue(manager.isPollingDatabasePeriodically());
 
-    verifyAllManagerMethods();
+    verifyDatasourceSnapshot();
 
     manager.stopPollingDatabasePeriodically();
     Assert.assertFalse(manager.isPollingDatabasePeriodically());
@@ -179,51 +177,16 @@ public class SqlSegmentsMetadataManagerV2Test extends SqlSegmentsMetadataManager
     emitter.verifyEmitted(Metric.SYNC_DURATION_MILLIS, 1);
   }
 
-  private void verifyAllManagerMethods()
+  private void verifyDatasourceSnapshot()
   {
-    Assert.assertEquals(
-        Set.copyOf(WIKI_SEGMENTS_1X5D),
-        Sets.newHashSet(manager.iterateAllUsedSegments())
-    );
-    Assert.assertEquals(
-        Set.of(WIKI_SEGMENTS_1X5D.get(0), WIKI_SEGMENTS_1X5D.get(1)),
-        Sets.newHashSet(
-            manager.iterateAllUsedNonOvershadowedSegmentsForDatasourceInterval(
-                TestDataSource.WIKI,
-                new Interval(JAN_1, Period.days(2)),
-                false
-            ).get()
-        )
-    );
-    Assert.assertEquals(
-        Set.of(TestDataSource.WIKI),
-        manager.retrieveAllDataSourceNames()
-    );
-    Assert.assertEquals(
-        List.of(),
-        manager.getUnusedSegmentIntervals(
-            TestDataSource.WIKI,
-            null,
-            JAN_1.plusDays(100),
-            100,
-            DateTimes.nowUtc().plusHours(1)
-        )
-    );
-
-    final ImmutableDruidDataSource wikiSegments =
-        manager.getImmutableDataSourceWithUsedSegments(TestDataSource.WIKI);
-    Assert.assertNotNull(wikiSegments);
-    Assert.assertEquals(Set.copyOf(WIKI_SEGMENTS_1X5D), Set.copyOf(wikiSegments.getSegments()));
-
-    final List<ImmutableDruidDataSource> allDatasources =
-        List.copyOf(manager.getImmutableDataSourcesWithAllUsedSegments());
-    Assert.assertEquals(1, allDatasources.size());
-    Assert.assertEquals(Set.copyOf(WIKI_SEGMENTS_1X5D), Set.copyOf(allDatasources.get(0).getSegments()));
-
-    final DataSourcesSnapshot snapshot = manager.getSnapshotOfDataSourcesWithAllUsedSegments();
+    final DataSourcesSnapshot snapshot = manager.getDataSourceSnapshot();
     Assert.assertEquals(
         Set.copyOf(WIKI_SEGMENTS_1X5D),
         Sets.newHashSet(snapshot.iterateAllUsedSegmentsInSnapshot())
+    );
+    Assert.assertEquals(
+        Set.copyOf(WIKI_SEGMENTS_1X5D),
+        Set.copyOf(snapshot.getDataSource(TestDataSource.WIKI).getSegments())
     );
   }
 }

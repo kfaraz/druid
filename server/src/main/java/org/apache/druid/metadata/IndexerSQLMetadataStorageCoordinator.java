@@ -91,6 +91,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -144,6 +145,17 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     }
     connector.createSegmentTable();
     connector.createUpgradeSegmentsTable();
+  }
+
+  @Override
+  public Set<String> retrieveAllDatasourceNames()
+  {
+    final String sql = StringUtils.format("SELECT DISTINCT(dataSource) FROM %s", dbTables.getSegmentsTable());
+    return Set.copyOf(
+        connector.inReadOnlyTransaction(
+            (handle, status) -> handle.createQuery(sql).mapTo(String.class).list()
+        )
+    );
   }
 
   @Override
@@ -279,6 +291,76 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     return inReadWriteDatasourceTransaction(
         dataSource,
         transaction -> transaction.markAllSegmentsAsUnused(DateTimes.nowUtc())
+    );
+  }
+
+  @Override
+  public boolean markSegmentAsUsed(SegmentId segmentId)
+  {
+    return inWriteTransaction(
+        sql -> sql.markSegmentAsUsed(segmentId, DateTimes.nowUtc())
+    );
+  }
+
+  @Override
+  public int markNonOvershadowedSegmentsAsUsed(String dataSource, Set<SegmentId> segmentIds)
+  {
+    return inWriteTransaction(
+        sql -> sql.markNonOvershadowedSegmentsAsUsed(dataSource, segmentIds, DateTimes.nowUtc())
+    );
+  }
+
+  @Override
+  public int markNonOvershadowedSegmentsAsUsed(
+      String dataSource,
+      Interval interval,
+      @Nullable List<String> versions
+  )
+  {
+    return inWriteTransaction(
+        sql -> sql.markNonOvershadowedSegmentsAsUsed(dataSource, interval, versions, DateTimes.nowUtc())
+    );
+  }
+
+  @Override
+  public int markAllNonOvershadowedSegmentsAsUsed(String dataSource)
+  {
+    return inWriteTransaction(
+        sql -> sql.markAllNonOvershadowedSegmentsAsUsed(dataSource, DateTimes.nowUtc())
+    );
+  }
+
+  @Override
+  public List<DataSegmentPlus> iterateAllUnusedSegmentsForDatasource(
+      String datasource,
+      @Nullable Interval interval,
+      @Nullable Integer limit,
+      @Nullable String lastSegmentId,
+      @Nullable SortOrder sortOrder
+  )
+  {
+    return inReadOnlyTransaction(
+        sql -> sql.iterateAllUnusedSegmentsForDatasource(datasource, interval, limit, lastSegmentId, sortOrder)
+    );
+  }
+
+  @Override
+  public List<Interval> getUnusedSegmentIntervals(
+      String dataSource,
+      DateTime minStartTime,
+      DateTime maxEndTime,
+      int limit,
+      DateTime maxUsedStatusLastUpdatedTime
+  )
+  {
+    return inReadOnlyTransaction(
+        sql -> sql.retrieveUnusedSegmentIntervals(
+            dataSource,
+            minStartTime,
+            maxEndTime,
+            limit,
+            maxUsedStatusLastUpdatedTime
+        )
     );
   }
 
@@ -2492,6 +2574,10 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     return upgradedToSegmentIds;
   }
 
+  /**
+   * Performs a read-write transaction using the {@link SegmentMetadataTransactionFactory},
+   * which may use the segment metadata cache, if enabled and ready.
+   */
   private <T> T inReadWriteDatasourceTransaction(
       String dataSource,
       SegmentMetadataTransaction.Callback<T> callback
@@ -2500,11 +2586,43 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     return transactionFactory.inReadWriteDatasourceTransaction(dataSource, callback);
   }
 
+  /**
+   * Performs a read-only transaction using the {@link SegmentMetadataTransactionFactory},
+   * which may use the segment metadata cache, if enabled and ready.
+   */
   private <T> T inReadOnlyDatasourceTransaction(
       String dataSource,
       SegmentMetadataReadTransaction.Callback<T> callback
   )
   {
     return transactionFactory.inReadOnlyDatasourceTransaction(dataSource, callback);
+  }
+
+  /**
+   * Performs a read-only transaction using the {@link SqlSegmentsMetadataQuery},
+   * which queries the metadata store directly.
+   */
+  private <T> T inReadOnlyTransaction(Function<SqlSegmentsMetadataQuery, T> sqlQuery)
+  {
+    return connector.retryReadOnlyTransaction(
+        (handle, status) -> sqlQuery.apply(
+            SqlSegmentsMetadataQuery.forHandle(handle, connector, dbTables, jsonMapper)
+        ),
+        2, 3
+    );
+  }
+
+  /**
+   * Performs a write transaction using the {@link SqlSegmentsMetadataQuery},
+   * which updates the metadata store directly.
+   */
+  private <T> T inWriteTransaction(Function<SqlSegmentsMetadataQuery, T> sqlUpdate)
+  {
+    return connector.retryTransaction(
+        (handle, status) -> sqlUpdate.apply(
+            SqlSegmentsMetadataQuery.forHandle(handle, connector, dbTables, jsonMapper)
+        ),
+        2, 3
+    );
   }
 }

@@ -141,10 +141,6 @@ public class SqlSegmentsMetadataManagerSchemaPollTest extends SqlSegmentsMetadat
 
     dataSourcesSnapshot = sqlSegmentsMetadataManager.getDataSourcesSnapshot();
     Assert.assertEquals(
-        ImmutableSet.of("wikipedia"),
-        sqlSegmentsMetadataManager.retrieveAllDataSourceNames()
-    );
-    Assert.assertEquals(
         ImmutableList.of("wikipedia"),
         dataSourcesSnapshot.getDataSourcesWithAllUsedSegments()
                            .stream()

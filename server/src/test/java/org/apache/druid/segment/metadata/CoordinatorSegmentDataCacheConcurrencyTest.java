@@ -27,6 +27,7 @@ import com.google.common.collect.Sets;
 import org.apache.druid.client.BrokerServerView;
 import org.apache.druid.client.CoordinatorSegmentWatcherConfig;
 import org.apache.druid.client.CoordinatorServerView;
+import org.apache.druid.client.DataSourcesSnapshot;
 import org.apache.druid.client.DirectDruidClientFactory;
 import org.apache.druid.client.DruidServer;
 import org.apache.druid.client.InternalQueryConfig;
@@ -199,7 +200,8 @@ public class CoordinatorSegmentDataCacheConcurrencyTest extends SegmentMetadataC
     );
 
     segmentsMetadataManager = Mockito.mock(SegmentsMetadataManager.class);
-    Mockito.when(segmentsMetadataManager.getImmutableDataSourcesWithAllUsedSegments()).thenReturn(Collections.emptyList());
+    Mockito.when(segmentsMetadataManager.getDataSourceSnapshot())
+           .thenReturn(DataSourcesSnapshot.fromUsedSegments(List.of()));
     SegmentsMetadataManagerConfig metadataManagerConfig = Mockito.mock(SegmentsMetadataManagerConfig.class);
     Mockito.when(metadataManagerConfig.getPollDuration()).thenReturn(Period.millis(1000));
     segmentsMetadataManagerConfigSupplier = Suppliers.ofInstance(metadataManagerConfig);

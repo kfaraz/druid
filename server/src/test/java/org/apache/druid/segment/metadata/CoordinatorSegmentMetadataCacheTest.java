@@ -28,6 +28,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
+import org.apache.druid.client.DataSourcesSnapshot;
 import org.apache.druid.client.DruidServer;
 import org.apache.druid.client.ImmutableDruidDataSource;
 import org.apache.druid.client.InternalQueryConfig;
@@ -131,7 +132,8 @@ public class CoordinatorSegmentMetadataCacheTest extends CoordinatorSegmentMetad
   {
     super.setUp();
     segmentsMetadataManager = Mockito.mock(SegmentsMetadataManager.class);
-    Mockito.when(segmentsMetadataManager.getImmutableDataSourcesWithAllUsedSegments()).thenReturn(Collections.emptyList());
+    Mockito.when(segmentsMetadataManager.getDataSourceSnapshot())
+           .thenReturn(DataSourcesSnapshot.fromUsedSegments(List.of()));
     SegmentsMetadataManagerConfig metadataManagerConfig = Mockito.mock(SegmentsMetadataManagerConfig.class);
     Mockito.when(metadataManagerConfig.getPollDuration()).thenReturn(Period.millis(1000));
     segmentsMetadataManagerConfigSupplier = Suppliers.ofInstance(metadataManagerConfig);
@@ -589,7 +591,8 @@ public class CoordinatorSegmentMetadataCacheTest extends CoordinatorSegmentMetad
     String datasource = "newSegmentAddTest";
     CountDownLatch addSegmentLatch = new CountDownLatch(2);
     SegmentsMetadataManager segmentsMetadataManager = Mockito.mock(SegmentsMetadataManager.class);
-    Mockito.when(segmentsMetadataManager.getImmutableDataSourcesWithAllUsedSegments()).thenReturn(Collections.emptyList());
+    Mockito.when(segmentsMetadataManager.getDataSourceSnapshot())
+           .thenReturn(DataSourcesSnapshot.fromUsedSegments(List.of()));
     SegmentsMetadataManagerConfig metadataManagerConfig = Mockito.mock(SegmentsMetadataManagerConfig.class);
     Mockito.when(metadataManagerConfig.getPollDuration()).thenReturn(Period.millis(1000));
     Supplier<SegmentsMetadataManagerConfig> segmentsMetadataManagerConfigSupplier = Suppliers.ofInstance(metadataManagerConfig);
@@ -643,7 +646,8 @@ public class CoordinatorSegmentMetadataCacheTest extends CoordinatorSegmentMetad
     String datasource = "newSegmentAddTest";
     CountDownLatch addSegmentLatch = new CountDownLatch(1);
     SegmentsMetadataManager segmentsMetadataManager = Mockito.mock(SegmentsMetadataManager.class);
-    Mockito.when(segmentsMetadataManager.getImmutableDataSourcesWithAllUsedSegments()).thenReturn(Collections.emptyList());
+    Mockito.when(segmentsMetadataManager.getDataSourceSnapshot())
+           .thenReturn(DataSourcesSnapshot.fromUsedSegments(List.of()));
     SegmentsMetadataManagerConfig metadataManagerConfig = Mockito.mock(SegmentsMetadataManagerConfig.class);
     Mockito.when(metadataManagerConfig.getPollDuration()).thenReturn(Period.millis(1000));
     Supplier<SegmentsMetadataManagerConfig> segmentsMetadataManagerConfigSupplier = Suppliers.ofInstance(metadataManagerConfig);
@@ -694,7 +698,8 @@ public class CoordinatorSegmentMetadataCacheTest extends CoordinatorSegmentMetad
     String datasource = "newSegmentAddTest";
     CountDownLatch addSegmentLatch = new CountDownLatch(1);
     SegmentsMetadataManager segmentsMetadataManager = Mockito.mock(SegmentsMetadataManager.class);
-    Mockito.when(segmentsMetadataManager.getImmutableDataSourcesWithAllUsedSegments()).thenReturn(Collections.emptyList());
+    Mockito.when(segmentsMetadataManager.getDataSourceSnapshot())
+           .thenReturn(DataSourcesSnapshot.fromUsedSegments(List.of()));
     SegmentsMetadataManagerConfig metadataManagerConfig = Mockito.mock(SegmentsMetadataManagerConfig.class);
     Mockito.when(metadataManagerConfig.getPollDuration()).thenReturn(Period.millis(1000));
     Supplier<SegmentsMetadataManagerConfig> segmentsMetadataManagerConfigSupplier = Suppliers.ofInstance(metadataManagerConfig);
@@ -1862,9 +1867,8 @@ public class CoordinatorSegmentMetadataCacheTest extends CoordinatorSegmentMetad
         Collections.singletonMap(singleColdSegment.getId(), singleColdSegment)
     ));
 
-    Mockito.when(
-               segmentsMetadataManager.getImmutableDataSourcesWithAllUsedSegments())
-           .thenReturn(druidDataSources);
+    Mockito.when(segmentsMetadataManager.getDataSourceSnapshot())
+           .thenReturn(DataSourcesSnapshot.fromUsedSegments(List.of(segment1, segment2)));
 
     CoordinatorSegmentMetadataCache schema = new CoordinatorSegmentMetadataCache(
         getQueryLifecycleFactory(walker),
@@ -2042,7 +2046,7 @@ public class CoordinatorSegmentMetadataCacheTest extends CoordinatorSegmentMetad
     DataSegment coldSegmentGamma =
         DataSegment.builder()
             .dataSource("gamma")
-            .interval(Intervals.of("2000/P2Y"))
+            .interval(Intervals.of("2000/P1Y"))
             .version("1")
             .shardSpec(new LinearShardSpec(0))
             .size(0)
@@ -2083,29 +2087,9 @@ public class CoordinatorSegmentMetadataCacheTest extends CoordinatorSegmentMetad
         new SegmentSchemaCache.FinalizedSegmentSchemaInfo(segmentStatsMap.build(), schemaPayloadMap.build())
     );
 
-    List<ImmutableDruidDataSource> druidDataSources = new ArrayList<>();
-    druidDataSources.add(
-        new ImmutableDruidDataSource(
-            "alpha",
-            Collections.emptyMap(),
-            Collections.singletonMap(coldSegmentAlpha.getId(), coldSegmentAlpha)
-        )
+    Mockito.when(segmentsMetadataManager.getDataSourceSnapshot()).thenReturn(
+        DataSourcesSnapshot.fromUsedSegments(List.of(coldSegmentAlpha, hotSegmentGamma, coldSegmentGamma))
     );
-
-    Map<SegmentId, DataSegment> gammaSegments = new HashMap<>();
-    gammaSegments.put(hotSegmentGamma.getId(), hotSegmentGamma);
-    gammaSegments.put(coldSegmentGamma.getId(), coldSegmentGamma);
-
-    druidDataSources.add(
-        new ImmutableDruidDataSource(
-            "gamma",
-            Collections.emptyMap(),
-            gammaSegments
-        )
-    );
-
-    Mockito.when(segmentsMetadataManager.getImmutableDataSourcesWithAllUsedSegments())
-           .thenReturn(druidDataSources);
 
     CoordinatorSegmentMetadataCache schema = new CoordinatorSegmentMetadataCache(
         getQueryLifecycleFactory(walker),
@@ -2152,25 +2136,8 @@ public class CoordinatorSegmentMetadataCacheTest extends CoordinatorSegmentMetad
 
     Assert.assertEquals(new HashSet<>(Arrays.asList("alpha", "gamma")), schema.getDataSourceInformationMap().keySet());
 
-    druidDataSources.clear();
-    druidDataSources.add(
-        new ImmutableDruidDataSource(
-            "beta",
-            Collections.emptyMap(),
-            Collections.singletonMap(coldSegmentBeta.getId(), coldSegmentBeta)
-        )
-    );
-
-    druidDataSources.add(
-        new ImmutableDruidDataSource(
-            "gamma",
-            Collections.emptyMap(),
-            Collections.singletonMap(hotSegmentGamma.getId(), hotSegmentGamma)
-        )
-    );
-
-    Mockito.when(segmentsMetadataManager.getImmutableDataSourcesWithAllUsedSegments())
-           .thenReturn(druidDataSources);
+    Mockito.when(segmentsMetadataManager.getDataSourceSnapshot())
+           .thenReturn(DataSourcesSnapshot.fromUsedSegments(List.of(coldSegmentBeta, hotSegmentGamma)));
 
     schema.coldDatasourceSchemaExec();
     Assert.assertNotNull(schema.getDatasource("beta"));
@@ -2416,8 +2383,8 @@ public class CoordinatorSegmentMetadataCacheTest extends CoordinatorSegmentMetad
             segmentMap
         );
 
-    Mockito.when(segmentsMetadataManager.getImmutableDataSourceWithUsedSegments(ArgumentMatchers.anyString()))
-           .thenReturn(druidDataSource);
+    Mockito.when(segmentsMetadataManager.getDataSourceSnapshot())
+           .thenReturn(DataSourcesSnapshot.fromUsedSegments(List.of(segments.get(0), segments.get(1))));
 
     Set<SegmentId> segmentsToRefresh = segments.stream().map(DataSegment::getId).collect(Collectors.toSet());
     segmentsToRefresh.remove(segments.get(1).getId());

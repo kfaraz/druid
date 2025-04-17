@@ -22,33 +22,22 @@ package org.apache.druid.metadata;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Optional;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Supplier;
-import com.google.common.base.Throwables;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
-import com.google.common.collect.Iterators;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.Futures;
 import com.google.errorprone.annotations.concurrent.GuardedBy;
 import org.apache.druid.client.DataSourcesSnapshot;
 import org.apache.druid.client.ImmutableDruidDataSource;
-import org.apache.druid.error.DruidException;
-import org.apache.druid.error.InvalidInput;
 import org.apache.druid.guice.ManageLifecycle;
 import org.apache.druid.java.util.common.DateTimes;
-import org.apache.druid.java.util.common.Intervals;
-import org.apache.druid.java.util.common.JodaUtils;
-import org.apache.druid.java.util.common.MapUtils;
-import org.apache.druid.java.util.common.Pair;
 import org.apache.druid.java.util.common.Stopwatch;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.concurrent.Execs;
 import org.apache.druid.java.util.common.lifecycle.LifecycleStart;
 import org.apache.druid.java.util.common.lifecycle.LifecycleStop;
-import org.apache.druid.java.util.common.parsers.CloseableIterator;
 import org.apache.druid.java.util.emitter.EmittingLogger;
 import org.apache.druid.java.util.emitter.service.ServiceEmitter;
 import org.apache.druid.java.util.emitter.service.ServiceMetricEvent;
@@ -56,21 +45,16 @@ import org.apache.druid.segment.SchemaPayload;
 import org.apache.druid.segment.SegmentMetadata;
 import org.apache.druid.segment.metadata.CentralizedDatasourceSchemaConfig;
 import org.apache.druid.segment.metadata.SegmentSchemaCache;
-import org.apache.druid.server.http.DataSegmentPlus;
 import org.apache.druid.timeline.DataSegment;
-import org.apache.druid.timeline.Partitions;
 import org.apache.druid.timeline.SegmentId;
-import org.apache.druid.timeline.SegmentTimeline;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 import org.joda.time.DateTime;
 import org.joda.time.Duration;
 import org.joda.time.Interval;
 import org.skife.jdbi.v2.BaseResultSetMapper;
 import org.skife.jdbi.v2.Batch;
-import org.skife.jdbi.v2.FoldController;
 import org.skife.jdbi.v2.Handle;
 import org.skife.jdbi.v2.Query;
-import org.skife.jdbi.v2.StatementContext;
 import org.skife.jdbi.v2.TransactionCallback;
 import org.skife.jdbi.v2.TransactionStatus;
 
@@ -78,14 +62,10 @@ import javax.annotation.Nullable;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -93,7 +73,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.stream.Collectors;
 
 /**
  * Implementation of {@link SegmentsMetadataManager}, that periodically polls
@@ -186,7 +165,7 @@ public class SqlSegmentsMetadataManager implements SegmentsMetadataManager
    * The latest {@link DatabasePoll} represent {@link #poll()} calls which update {@link #dataSourcesSnapshot}, either
    * periodically (see {@link PeriodicDatabasePoll}, {@link #startPollingDatabasePeriodically}, {@link
    * #stopPollingDatabasePeriodically}) or "on demand" (see {@link OnDemandDatabasePoll}), when one of the methods that
-   * accesses {@link #dataSourcesSnapshot}'s state (such as {@link #getImmutableDataSourceWithUsedSegments}) is
+   * accesses {@link #dataSourcesSnapshot}'s state is
    * called when the Coordinator is not the leader and therefore SqlSegmentsMetadataManager isn't polling the database
    * periodically.
    *
@@ -205,8 +184,8 @@ public class SqlSegmentsMetadataManager implements SegmentsMetadataManager
    * #dataSourcesSnapshot}-accessing methods should be generally "wait free" for database polls.
    *
    * The notion and the complexity of "on demand" database polls was introduced to simplify the interface of {@link
-   * SegmentsMetadataManager} and guarantee that it always returns consistent and relatively up-to-date data from methods
-   * like {@link #getImmutableDataSourceWithUsedSegments}, while avoiding excessive repetitive polls. The last part
+   * SegmentsMetadataManager} and guarantee that it always returns consistent and relatively up-to-date data,
+   * while avoiding excessive repetitive polls. The last part
    * is achieved via "hooking on" other polls by awaiting on {@link PeriodicDatabasePoll#firstPollCompletionFuture} or
    * {@link OnDemandDatabasePoll#pollCompletionFuture}, see {@link #useLatestIfWithinDelayOrPerformNewDatabasePoll} method
    * implementation for details.
@@ -636,205 +615,16 @@ public class SqlSegmentsMetadataManager implements SegmentsMetadataManager
   }
 
   @Override
-  public boolean markSegmentAsUsed(final String segmentId)
-  {
-    try {
-      int numUpdatedDatabaseEntries = connector.getDBI().withHandle(
-          handle -> handle
-              .createStatement(StringUtils.format("UPDATE %s SET used=true, used_status_last_updated = :used_status_last_updated WHERE id = :id", getSegmentsTable()))
-              .bind("id", segmentId)
-              .bind("used_status_last_updated", DateTimes.nowUtc().toString())
-              .execute()
-      );
-      // Unlike bulk markAsUsed methods: markAsUsedAllNonOvershadowedSegmentsInDataSource(),
-      // markAsUsedNonOvershadowedSegmentsInInterval(), and markAsUsedNonOvershadowedSegments() we don't put the marked
-      // segment into the respective data source, because we don't have it fetched from the database. It's probably not
-      // worth complicating the implementation and making two database queries just to add the segment because it will
-      // be anyway fetched during the next poll(). Segment putting that is done in the bulk markAsUsed methods is a nice
-      // to have thing, but doesn't formally affect the external guarantees of SegmentsMetadataManager class.
-      return numUpdatedDatabaseEntries > 0;
-    }
-    catch (RuntimeException e) {
-      log.error(e, "Exception marking segment %s as used", segmentId);
-      throw e;
-    }
-  }
-
-  @Override
-  public int markAsUsedAllNonOvershadowedSegmentsInDataSource(final String dataSource)
-  {
-    return doMarkAsUsedNonOvershadowedSegments(dataSource, null, null);
-  }
-
-  @Override
-  public int markAsUsedNonOvershadowedSegmentsInInterval(
-      final String dataSource,
-      final Interval interval,
-      @Nullable final List<String> versions
-  )
-  {
-    Preconditions.checkNotNull(interval);
-    return doMarkAsUsedNonOvershadowedSegments(dataSource, interval, versions);
-  }
-
-  private int doMarkAsUsedNonOvershadowedSegments(
-      final String dataSourceName,
-      final @Nullable Interval interval,
-      final @Nullable List<String> versions
-  )
-  {
-    final List<DataSegment> unusedSegments = new ArrayList<>();
-    final SegmentTimeline timeline = new SegmentTimeline();
-
-    connector.inReadOnlyTransaction(
-        (handle, status) -> {
-          final SqlSegmentsMetadataQuery queryTool =
-              SqlSegmentsMetadataQuery.forHandle(handle, connector, dbTables.get(), jsonMapper);
-
-          final List<Interval> intervals =
-              interval == null ? Intervals.ONLY_ETERNITY : Collections.singletonList(interval);
-
-          try (final CloseableIterator<DataSegment> iterator =
-                   queryTool.retrieveUsedSegments(dataSourceName, intervals, versions)) {
-            timeline.addSegments(iterator);
-          }
-
-          try (final CloseableIterator<DataSegment> iterator =
-                   queryTool.retrieveUnusedSegments(dataSourceName, intervals, versions, null, null, null, null)) {
-            while (iterator.hasNext()) {
-              final DataSegment dataSegment = iterator.next();
-              timeline.addSegments(Iterators.singletonIterator(dataSegment));
-              unusedSegments.add(dataSegment);
-            }
-          }
-
-          //noinspection ReturnOfNull: This consumer operates by side effects
-          return null;
-        }
-    );
-
-    return markNonOvershadowedSegmentsAsUsed(unusedSegments, timeline);
-  }
-
-  private int markNonOvershadowedSegmentsAsUsed(
-      List<DataSegment> unusedSegments,
-      SegmentTimeline timeline
-  )
-  {
-    Set<SegmentId> segmentIdsToMarkAsUsed =
-        unusedSegments.stream()
-                      .filter(segment -> !timeline.isOvershadowed(segment))
-                      .map(DataSegment::getId)
-                      .collect(Collectors.toSet());
-
-    return markSegmentsAsUsed(segmentIdsToMarkAsUsed);
-  }
-
-  @Override
-  public int markAsUsedNonOvershadowedSegments(final String dataSource, final Set<SegmentId> segmentIds)
-  {
-    try {
-      Pair<List<DataSegment>, SegmentTimeline> unusedSegmentsAndTimeline = connector
-          .inReadOnlyTransaction(
-              (handle, status) -> {
-                List<DataSegment> unusedSegments = retrieveUnusedSegments(dataSource, segmentIds, handle);
-                List<Interval> unusedSegmentsIntervals = JodaUtils.condenseIntervals(
-                    unusedSegments.stream().map(DataSegment::getInterval).collect(Collectors.toList())
-                );
-                try (CloseableIterator<DataSegment> usedSegmentsOverlappingUnusedSegmentsIntervals =
-                         retrieveUsedSegmentsOverlappingIntervals(dataSource, unusedSegmentsIntervals, handle)) {
-                  SegmentTimeline timeline = SegmentTimeline.forSegments(
-                      Iterators.concat(usedSegmentsOverlappingUnusedSegmentsIntervals, unusedSegments.iterator())
-                  );
-                  return new Pair<>(unusedSegments, timeline);
-                }
-              }
-          );
-
-      List<DataSegment> unusedSegments = unusedSegmentsAndTimeline.lhs;
-      SegmentTimeline timeline = unusedSegmentsAndTimeline.rhs;
-      return markNonOvershadowedSegmentsAsUsed(unusedSegments, timeline);
-    }
-    catch (Exception e) {
-      Throwable rootCause = Throwables.getRootCause(e);
-      if (rootCause instanceof DruidException) {
-        throw (DruidException) rootCause;
-      } else {
-        throw e;
-      }
-    }
-  }
-
-  private List<DataSegment> retrieveUnusedSegments(
-      final String dataSource,
-      final Set<SegmentId> segmentIds,
-      final Handle handle
-  )
-  {
-    final List<DataSegmentPlus> retrievedSegments = SqlSegmentsMetadataQuery
-        .forHandle(handle, connector, dbTables.get(), jsonMapper)
-        .retrieveSegmentsById(dataSource, segmentIds);
-
-    final Set<SegmentId> unknownSegmentIds = new HashSet<>(segmentIds);
-    final List<DataSegment> unusedSegments = new ArrayList<>();
-    for (DataSegmentPlus entry : retrievedSegments) {
-      final DataSegment segment = entry.getDataSegment();
-      unknownSegmentIds.remove(segment.getId());
-      if (Boolean.FALSE.equals(entry.getUsed())) {
-        unusedSegments.add(segment);
-      }
-    }
-
-    if (!unknownSegmentIds.isEmpty()) {
-      throw InvalidInput.exception(
-          "Could not find segment IDs[%s] for datasource[%s]",
-          unknownSegmentIds, dataSource
-      );
-    }
-
-    return unusedSegments;
-  }
-
-  private CloseableIterator<DataSegment> retrieveUsedSegmentsOverlappingIntervals(
-      final String dataSource,
-      final Collection<Interval> intervals,
-      final Handle handle
-  )
-  {
-    return SqlSegmentsMetadataQuery.forHandle(handle, connector, dbTables.get(), jsonMapper)
-                                   .retrieveUsedSegments(dataSource, intervals);
-  }
-
-  private int markSegmentsAsUsed(final Set<SegmentId> segmentIds)
-  {
-    if (segmentIds.isEmpty()) {
-      log.info("No segments found to mark as used.");
-      return 0;
-    }
-
-    return connector.getDBI().withHandle(
-        handle ->
-            SqlSegmentsMetadataQuery.forHandle(handle, connector, dbTables.get(), jsonMapper)
-                                    .markSegmentsAsUsed(segmentIds, DateTimes.nowUtc())
-    );
-  }
-
-  @Override
-  public @Nullable ImmutableDruidDataSource getImmutableDataSourceWithUsedSegments(String dataSourceName)
-  {
-    return getSnapshotOfDataSourcesWithAllUsedSegments().getDataSource(dataSourceName);
-  }
-
-  @Override
-  public Collection<ImmutableDruidDataSource> getImmutableDataSourcesWithAllUsedSegments()
-  {
-    return getSnapshotOfDataSourcesWithAllUsedSegments().getDataSourcesWithAllUsedSegments();
-  }
-
-  @Override
-  public DataSourcesSnapshot getSnapshotOfDataSourcesWithAllUsedSegments()
+  public DataSourcesSnapshot getDataSourceSnapshot()
   {
     useLatestIfWithinDelayOrPerformNewDatabasePoll();
+    return dataSourcesSnapshot;
+  }
+
+  @Override
+  public DataSourcesSnapshot forceUpdateSnapshot()
+  {
+    forceOrWaitOngoingDatabasePoll();
     return dataSourcesSnapshot;
   }
 
@@ -848,96 +638,6 @@ public class SqlSegmentsMetadataManager implements SegmentsMetadataManager
   DatabasePoll getLatestDatabasePoll()
   {
     return latestDatabasePoll;
-  }
-
-  @Override
-  public Iterable<DataSegment> iterateAllUsedSegments()
-  {
-    useLatestIfWithinDelayOrPerformNewDatabasePoll();
-    return dataSourcesSnapshot.iterateAllUsedSegmentsInSnapshot();
-  }
-
-  @Override
-  public Optional<Iterable<DataSegment>> iterateAllUsedNonOvershadowedSegmentsForDatasourceInterval(
-      String datasource,
-      Interval interval,
-      boolean requiresLatest
-  )
-  {
-    if (requiresLatest) {
-      forceOrWaitOngoingDatabasePoll();
-    } else {
-      useLatestIfWithinDelayOrPerformNewDatabasePoll();
-    }
-    SegmentTimeline usedSegmentsTimeline
-        = dataSourcesSnapshot.getUsedSegmentsTimelinesPerDataSource().get(datasource);
-    return Optional.fromNullable(usedSegmentsTimeline)
-                   .transform(timeline -> timeline.findNonOvershadowedObjectsInInterval(interval, Partitions.ONLY_COMPLETE));
-  }
-
-  /**
-   * Retrieves segments and their associated metadata for a given datasource that are marked unused and that are
-   * *fully contained by* an optionally specified interval. If the interval specified is null, this method will
-   * retrieve all unused segments.
-   *
-   * This call does not return any information about realtime segments.
-   *
-   * @param datasource      The name of the datasource
-   * @param interval        an optional interval to search over.
-   * @param limit           an optional maximum number of results to return. If none is specified, the results are
-   *                        not limited.
-   * @param lastSegmentId an optional last segment id from which to search for results. All segments returned are >
-   *                      this segment lexigraphically if sortOrder is null or  {@link SortOrder#ASC}, or < this
-   *                      segment lexigraphically if sortOrder is {@link SortOrder#DESC}. If none is specified, no
-   *                      such filter is used.
-   * @param sortOrder an optional order with which to return the matching segments by id, start time, end time. If
-   *                  none is specified, the order of the results is not guarenteed.
-
-   * Returns an iterable.
-   */
-  @Override
-  public Iterable<DataSegmentPlus> iterateAllUnusedSegmentsForDatasource(
-      final String datasource,
-      @Nullable final Interval interval,
-      @Nullable final Integer limit,
-      @Nullable final String lastSegmentId,
-      @Nullable final SortOrder sortOrder
-  )
-  {
-    return connector.inReadOnlyTransaction(
-        (handle, status) -> {
-          final SqlSegmentsMetadataQuery queryTool =
-              SqlSegmentsMetadataQuery.forHandle(handle, connector, dbTables.get(), jsonMapper);
-
-          final List<Interval> intervals =
-              interval == null
-                  ? Intervals.ONLY_ETERNITY
-                  : Collections.singletonList(interval);
-          try (final CloseableIterator<DataSegmentPlus> iterator =
-                   queryTool.retrieveUnusedSegmentsPlus(datasource, intervals, null, limit, lastSegmentId, sortOrder, null)) {
-            return ImmutableList.copyOf(iterator);
-          }
-        }
-    );
-  }
-
-  @Override
-  public Set<String> retrieveAllDataSourceNames()
-  {
-    return connector.getDBI().withHandle(
-        handle -> handle
-            .createQuery(StringUtils.format("SELECT DISTINCT(datasource) FROM %s", getSegmentsTable()))
-            .fold(
-                new HashSet<>(),
-                (Set<String> druidDataSources,
-                 Map<String, Object> stringObjectMap,
-                 FoldController foldController,
-                 StatementContext statementContext) -> {
-                  druidDataSources.add(MapUtils.getString(stringObjectMap, "datasource"));
-                  return druidDataSources;
-                }
-            )
-    );
   }
 
   @VisibleForTesting
@@ -1165,70 +865,5 @@ public class SqlSegmentsMetadataManager implements SegmentsMetadataManager
   private String getSegmentSchemaTable()
   {
     return dbTables.get().getSegmentSchemasTable();
-  }
-
-  @Override
-  public List<Interval> getUnusedSegmentIntervals(
-      final String dataSource,
-      @Nullable final DateTime minStartTime,
-      final DateTime maxEndTime,
-      final int limit,
-      final DateTime maxUsedStatusLastUpdatedTime
-  )
-  {
-    // Note that we handle the case where used_status_last_updated IS NULL here to allow smooth transition to Druid version that uses used_status_last_updated column
-    return connector.inReadOnlyTransaction(
-        new TransactionCallback<>()
-        {
-          @Override
-          public List<Interval> inTransaction(Handle handle, TransactionStatus status)
-          {
-            final Query<Interval> sql = handle
-                .createQuery(
-                    StringUtils.format(
-                        "SELECT start, %2$send%2$s FROM %1$s WHERE dataSource = :dataSource AND "
-                        + "%2$send%2$s <= :end AND used = false AND used_status_last_updated IS NOT NULL AND used_status_last_updated <= :used_status_last_updated %3$s ORDER BY start, %2$send%2$s",
-                        getSegmentsTable(),
-                        connector.getQuoteString(),
-                        null != minStartTime ? "AND start >= :start" : ""
-                    )
-                )
-                .setFetchSize(connector.getStreamingFetchSize())
-                .setMaxRows(limit)
-                .bind("dataSource", dataSource)
-                .bind("end", maxEndTime.toString())
-                .bind("used_status_last_updated", maxUsedStatusLastUpdatedTime.toString())
-                .map(
-                    new BaseResultSetMapper<>()
-                    {
-                      @Override
-                      protected Interval mapInternal(int index, Map<String, Object> row)
-                      {
-                        return new Interval(
-                            DateTimes.of((String) row.get("start")),
-                            DateTimes.of((String) row.get("end"))
-                        );
-                      }
-                    }
-                );
-            if (null != minStartTime) {
-              sql.bind("start", minStartTime.toString());
-            }
-
-            Iterator<Interval> iter = sql.iterator();
-
-            List<Interval> result = Lists.newArrayListWithCapacity(limit);
-            for (int i = 0; i < limit && iter.hasNext(); i++) {
-              try {
-                result.add(iter.next());
-              }
-              catch (Exception e) {
-                throw new RuntimeException(e);
-              }
-            }
-            return result;
-          }
-        }
-    );
   }
 }

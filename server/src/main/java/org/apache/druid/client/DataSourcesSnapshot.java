@@ -24,10 +24,12 @@ import com.google.common.collect.ImmutableSet;
 import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.metadata.SegmentsMetadataManager;
 import org.apache.druid.timeline.DataSegment;
+import org.apache.druid.timeline.Partitions;
 import org.apache.druid.timeline.SegmentTimeline;
 import org.apache.druid.timeline.VersionedIntervalTimeline;
 import org.apache.druid.utils.CollectionUtils;
 import org.joda.time.DateTime;
+import org.joda.time.Interval;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -141,6 +143,23 @@ public class DataSourcesSnapshot
   public ImmutableSet<DataSegment> getOvershadowedSegments()
   {
     return overshadowedSegments;
+  }
+
+  /**
+   * Gets all the used segments for the datasource that overlap with the given
+   * interval and are not completely overshadowed.
+   */
+  public Set<DataSegment> getAllUsedNonOvershadowedSegments(
+      String dataSource,
+      Interval interval
+  )
+  {
+    final SegmentTimeline timeline = usedSegmentsTimelinesPerDataSource.get(dataSource);
+    if (timeline == null) {
+      return Set.of();
+    }
+
+    return timeline.findNonOvershadowedObjectsInInterval(interval, Partitions.ONLY_COMPLETE);
   }
 
   /**

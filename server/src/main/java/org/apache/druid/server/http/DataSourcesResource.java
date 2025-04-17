@@ -19,7 +19,6 @@
 
 package org.apache.druid.server.http;
 
-import com.google.common.base.Optional;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
@@ -31,6 +30,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.druid.audit.AuditEntry;
 import org.apache.druid.audit.AuditManager;
 import org.apache.druid.client.CoordinatorServerView;
+import org.apache.druid.client.DataSourcesSnapshot;
 import org.apache.druid.client.DruidDataSource;
 import org.apache.druid.client.DruidServer;
 import org.apache.druid.client.ImmutableDruidDataSource;
@@ -106,6 +106,10 @@ import java.util.stream.Collectors;
 public class DataSourcesResource
 {
   private static final Logger log = new Logger(DataSourcesResource.class);
+
+  /**
+   * Default offset of 14 days.
+   */
   private static final long DEFAULT_LOADSTATUS_INTERVAL_OFFSET = 14 * 24 * 60 * 60 * 1000;
 
   private final CoordinatorServerView serverInventoryView;
@@ -443,17 +447,15 @@ public class DataSourcesResource
       theInterval = Intervals.of(interval.replace('_', '/'));
     }
 
-    Optional<Iterable<DataSegment>> segments = segmentsMetadataManager.iterateAllUsedNonOvershadowedSegmentsForDatasourceInterval(
-        dataSourceName,
-        theInterval,
-        forceMetadataRefresh
-    );
-
-    if (!segments.isPresent()) {
-      return logAndCreateDataSourceNotFoundResponse(dataSourceName);
+    final DataSourcesSnapshot snapshot;
+    if (forceMetadataRefresh) {
+      snapshot = segmentsMetadataManager.forceUpdateSnapshot();
+    } else {
+      snapshot = segmentsMetadataManager.getDataSourceSnapshot();
     }
 
-    if (Iterables.size(segments.get()) == 0) {
+    final Set<DataSegment> segments = snapshot.getAllUsedNonOvershadowedSegments(dataSourceName, theInterval);
+    if (segments.isEmpty()) {
       return Response
           .status(Response.Status.NO_CONTENT)
           .entity("No used segment found for the given datasource and interval")
@@ -462,7 +464,7 @@ public class DataSourcesResource
 
     if (simple != null) {
       // Calculate response for simple mode
-      SegmentsLoadStatistics segmentsLoadStatistics = computeSegmentLoadStatistics(segments.get());
+      SegmentsLoadStatistics segmentsLoadStatistics = computeSegmentLoadStatistics(segments);
       return Response.ok(
           ImmutableMap.of(
               dataSourceName,
@@ -472,7 +474,7 @@ public class DataSourcesResource
     } else if (full != null) {
       // Calculate response for full mode
       Map<String, Object2LongMap<String>> segmentLoadMap =
-          coordinator.getTierToDatasourceToUnderReplicatedCount(segments.get(), computeUsingClusterView != null);
+          coordinator.getTierToDatasourceToUnderReplicatedCount(segments, computeUsingClusterView != null);
       if (segmentLoadMap.isEmpty()) {
         return Response.serverError()
                        .entity("Coordinator segment replicant lookup is not initialized yet. Try again later.")
@@ -481,7 +483,7 @@ public class DataSourcesResource
       return Response.ok(segmentLoadMap).build();
     } else {
       // Calculate response for default mode
-      SegmentsLoadStatistics segmentsLoadStatistics = computeSegmentLoadStatistics(segments.get());
+      SegmentsLoadStatistics segmentsLoadStatistics = computeSegmentLoadStatistics(segments);
       return Response.ok(
           ImmutableMap.of(
               dataSourceName,

@@ -1026,7 +1026,7 @@ public class AbstractParallelIndexSupervisorTaskTest extends IngestionTestBase
       ImmutableDruidDataSource druidDataSource;
       try {
         druidDataSource = exec.submit(
-            () -> getSegmentsMetadataManager().getImmutableDataSourceWithUsedSegments(dataSource)
+            () -> getSegmentsMetadataManager().getDataSourceSnapshot().getDataSource(dataSource)
         ).get();
       }
       catch (InterruptedException | ExecutionException e) {

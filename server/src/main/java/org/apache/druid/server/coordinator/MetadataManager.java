@@ -26,6 +26,7 @@ import org.apache.druid.metadata.MetadataRuleManager;
 import org.apache.druid.metadata.MetadataSupervisorManager;
 import org.apache.druid.metadata.SegmentsMetadataManager;
 import org.apache.druid.segment.metadata.SegmentSchemaManager;
+import org.apache.druid.timeline.DataSegment;
 
 /**
  * Contains all metadata managers used by the Coordinator.
@@ -113,4 +114,16 @@ public class MetadataManager
   {
     return segmentSchemaManager;
   }
+
+  /**
+   * Returns an iterable to go over all segments in all data sources. The order in which segments are iterated is
+   * unspecified. Note: the iteration may not be as trivially cheap as, for example, iteration over an ArrayList. Try
+   * (to some reasonable extent) to organize the code so that it iterates the returned iterable only once rather than
+   * several times.
+   */
+  public Iterable<DataSegment> iterateAllUsedSegments()
+  {
+    return segments().getDataSourceSnapshot().iterateAllUsedSegmentsInSnapshot();
+  }
+
 }
