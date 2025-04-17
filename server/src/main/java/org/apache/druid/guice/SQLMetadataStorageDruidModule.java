@@ -103,7 +103,7 @@ public class SQLMetadataStorageDruidModule implements Module
     // Similar to some other classes bound here, such as IndexerSQLMetadataStorageCoordinator
     binder.bind(SegmentMetadataCache.class)
           .to(HeapMemorySegmentMetadataCache.class)
-          .in(LazySingleton.class);
+          .in(ManageLifecycle.class);
 
     PolyBind.optionBinder(binder, Key.get(SegmentMetadataTransactionFactory.class))
             .addBinding(type)
