@@ -25,6 +25,7 @@ import org.apache.druid.indexing.overlord.IndexerMetadataStorageCoordinator;
 import org.apache.druid.metadata.MetadataRuleManager;
 import org.apache.druid.metadata.MetadataSupervisorManager;
 import org.apache.druid.metadata.SegmentsMetadataManager;
+import org.apache.druid.metadata.segment.cache.SegmentMetadataCache;
 import org.apache.druid.segment.metadata.SegmentSchemaManager;
 import org.apache.druid.timeline.DataSegment;
 
@@ -40,6 +41,7 @@ public class MetadataManager
   private final MetadataRuleManager metadataRuleManager;
   private final IndexerMetadataStorageCoordinator storageCoordinator;
   private final SegmentSchemaManager segmentSchemaManager;
+  private final SegmentMetadataCache segmentMetadataCache;
 
   @Inject
   public MetadataManager(
@@ -49,7 +51,8 @@ public class MetadataManager
       MetadataSupervisorManager metadataSupervisorManager,
       MetadataRuleManager metadataRuleManager,
       IndexerMetadataStorageCoordinator storageCoordinator,
-      SegmentSchemaManager segmentSchemaManager
+      SegmentSchemaManager segmentSchemaManager,
+      SegmentMetadataCache segmentMetadataCache
   )
   {
     this.auditManager = auditManager;
@@ -59,18 +62,21 @@ public class MetadataManager
     this.metadataRuleManager = metadataRuleManager;
     this.storageCoordinator = storageCoordinator;
     this.segmentSchemaManager = segmentSchemaManager;
+    this.segmentMetadataCache = segmentMetadataCache;
   }
 
   public void onLeaderStart()
   {
     segmentsMetadataManager.startPollingDatabasePeriodically();
     segmentsMetadataManager.populateUsedFlagLastUpdatedAsync();
+    segmentMetadataCache.becomeLeader();
     metadataRuleManager.start();
   }
 
   public void onLeaderStop()
   {
     metadataRuleManager.stop();
+    segmentMetadataCache.stopBeingLeader();
     segmentsMetadataManager.stopPollingDatabasePeriodically();
     segmentsMetadataManager.stopAsyncUsedFlagLastUpdatedUpdate();
   }

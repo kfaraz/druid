@@ -205,6 +205,7 @@ public class HeapMemorySegmentMetadataCache implements SegmentMetadataCache
         pollExecutor.shutdownNow();
         datasourceToSegmentCache.forEach((datasource, cache) -> cache.stop());
         datasourceToSegmentCache.clear();
+        datasourcesSnapshot.set(null);
         syncFinishTime.set(null);
 
         updateCacheState(CacheState.STOPPED, "Stopped sync with metadata store");
@@ -219,13 +220,15 @@ public class HeapMemorySegmentMetadataCache implements SegmentMetadataCache
       if (isEnabled()) {
         if (currentCacheState == CacheState.STOPPED) {
           throw DruidException.defensive("Cache has not been started yet");
-        } else {
+        } else if (currentCacheState == CacheState.FOLLOWER) {
           updateCacheState(CacheState.LEADER_FIRST_SYNC_PENDING, "We are now leader");
 
           // Cancel the current sync so that a fresh one is scheduled and cache becomes ready sooner
           if (nextSyncFuture != null && !nextSyncFuture.isDone()) {
             nextSyncFuture.cancel(true);
           }
+        } else {
+          log.info("We are already the leader. Cache is in state[%s].", currentCacheState);
         }
       }
     }

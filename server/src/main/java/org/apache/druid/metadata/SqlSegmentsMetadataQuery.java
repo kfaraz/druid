@@ -269,8 +269,7 @@ public class SqlSegmentsMetadataQuery
              retrieveUnusedSegmentsPlus(datasource, intervals, null, limit, lastSegmentId, sortOrder, null)) {
       return ImmutableList.copyOf(iterator);
     }
-    catch (IOException e)
-    {
+    catch (IOException e) {
       throw new RuntimeException(e);
     }
   }

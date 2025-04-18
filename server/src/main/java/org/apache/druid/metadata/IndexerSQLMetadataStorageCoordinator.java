@@ -23,6 +23,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
+import com.google.common.base.Throwables;
 import com.google.common.collect.FluentIterable;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -2604,12 +2605,22 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
    */
   private <T> T inReadOnlyTransaction(Function<SqlSegmentsMetadataQuery, T> sqlQuery)
   {
-    return connector.retryReadOnlyTransaction(
-        (handle, status) -> sqlQuery.apply(
-            SqlSegmentsMetadataQuery.forHandle(handle, connector, dbTables, jsonMapper)
-        ),
-        2, 3
-    );
+    try {
+      return connector.retryReadOnlyTransaction(
+          (handle, status) -> sqlQuery.apply(
+              SqlSegmentsMetadataQuery.forHandle(handle, connector, dbTables, jsonMapper)
+          ),
+          2, 3
+      );
+    }
+    catch (Throwable t) {
+      Throwable rootCause = Throwables.getRootCause(t);
+      if (rootCause instanceof DruidException) {
+        throw (DruidException) rootCause;
+      } else {
+        throw t;
+      }
+    }
   }
 
   /**
@@ -2618,11 +2629,21 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
    */
   private <T> T inWriteTransaction(Function<SqlSegmentsMetadataQuery, T> sqlUpdate)
   {
-    return connector.retryTransaction(
-        (handle, status) -> sqlUpdate.apply(
-            SqlSegmentsMetadataQuery.forHandle(handle, connector, dbTables, jsonMapper)
-        ),
-        2, 3
-    );
+    try {
+      return connector.retryTransaction(
+          (handle, status) -> sqlUpdate.apply(
+              SqlSegmentsMetadataQuery.forHandle(handle, connector, dbTables, jsonMapper)
+          ),
+          2, 3
+      );
+    }
+    catch (Throwable t) {
+      Throwable rootCause = Throwables.getRootCause(t);
+      if (rootCause instanceof DruidException) {
+        throw (DruidException) rootCause;
+      } else {
+        throw t;
+      }
+    }
   }
 }

@@ -43,6 +43,7 @@ import org.apache.druid.java.util.emitter.service.ServiceEmitter;
 import org.apache.druid.java.util.emitter.service.ServiceMetricEvent;
 import org.apache.druid.metadata.MetadataRuleManager;
 import org.apache.druid.metadata.SegmentsMetadataManager;
+import org.apache.druid.metadata.segment.cache.NoopSegmentMetadataCache;
 import org.apache.druid.rpc.indexing.OverlordClient;
 import org.apache.druid.segment.metadata.CentralizedDatasourceSchemaConfig;
 import org.apache.druid.server.DruidNode;
@@ -180,7 +181,8 @@ public class DruidCoordinatorTest
         null,
         metadataRuleManager,
         null,
-        null
+        null,
+        NoopSegmentMetadataCache.instance()
     );
   }
 
@@ -636,13 +638,9 @@ public class DruidCoordinatorTest
     DataSourcesSnapshot dataSourcesSnapshot = DataSourcesSnapshot.fromUsedSegments(
         Collections.singleton(dataSegment)
     );
-    EasyMock
-        .expect(segmentsMetadataManager.getDataSourceSnapshot())
-        .andReturn(dataSourcesSnapshot)
-        .anyTimes();
-    EasyMock.expect(segmentsMetadataManager.isPollingDatabasePeriodically()).andReturn(true).anyTimes();
     EasyMock.expect(segmentsMetadataManager.getDataSourceSnapshot())
-            .andReturn(DataSourcesSnapshot.fromUsedSegments(List.of(dataSegment))).anyTimes();
+            .andReturn(dataSourcesSnapshot).anyTimes();
+    EasyMock.expect(segmentsMetadataManager.isPollingDatabasePeriodically()).andReturn(true).anyTimes();
     EasyMock.expect(serverInventoryView.isStarted()).andReturn(true).anyTimes();
     EasyMock.expect(serverInventoryView.getInventory()).andReturn(Collections.emptyList()).anyTimes();
     EasyMock.replay(serverInventoryView, loadQueueTaskMaster, segmentsMetadataManager);
@@ -834,10 +832,6 @@ public class DruidCoordinatorTest
     EasyMock
         .expect(segmentsMetadataManager.getDataSourceSnapshot())
         .andReturn(dataSourcesSnapshot)
-        .anyTimes();
-    EasyMock
-        .expect(segmentsMetadataManager.retrieveAllDataSourceNames())
-        .andReturn(Collections.singleton(dataSource.getName()))
         .anyTimes();
     EasyMock.replay(segmentsMetadataManager);
 

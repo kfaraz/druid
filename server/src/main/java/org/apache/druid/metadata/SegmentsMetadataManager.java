@@ -40,10 +40,19 @@ public interface SegmentsMetadataManager
    */
   void stop();
 
+  /**
+   * Starts polling segments from the metadata store upon becoming leader.
+   */
   void startPollingDatabasePeriodically();
 
+  /**
+   * Stops polling segments from the metadata store when leadership is lost.
+   */
   void stopPollingDatabasePeriodically();
 
+  /**
+   * @return true if currently the leader and polling the metadata store.
+   */
   boolean isPollingDatabasePeriodically();
 
   /**
@@ -58,10 +67,10 @@ public interface SegmentsMetadataManager
    * If a poll is already in progress, a new poll is not started. This method
    * until the poll finishes.
    *
-   * @return The snapshot built after finishing the latest poll of the metadata
-   * store.
+   * @return The snapshot built after finishing the poll of the metadata store
+   * triggered by this method.
    */
-  DataSourcesSnapshot forceUpdateSnapshot();
+  DataSourcesSnapshot forceUpdateAndGetSnapshot();
 
   /**
    * Populates used_status_last_updated column in the segments table iteratively until there are no segments with a NULL

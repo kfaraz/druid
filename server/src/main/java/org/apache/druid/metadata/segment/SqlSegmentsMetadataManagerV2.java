@@ -35,21 +35,25 @@ import org.apache.druid.metadata.SqlSegmentsMetadataManager;
 import org.apache.druid.metadata.segment.cache.SegmentMetadataCache;
 import org.apache.druid.segment.metadata.CentralizedDatasourceSchemaConfig;
 import org.apache.druid.segment.metadata.SegmentSchemaCache;
+import org.apache.druid.server.coordinator.DruidCompactionConfig;
 
 /**
- * Implementation V2 of {@link SegmentsMetadataManager}, that uses the segments
- * in {@link SegmentMetadataCache} to build a timeline.
+ * Implementation V2 of {@link SegmentsMetadataManager}, that can use the
+ * segments cached in {@link SegmentMetadataCache} to build a {@link DataSourcesSnapshot}.
  * <p>
  * This class acts as a wrapper over {@link SqlSegmentsMetadataManager} and the
  * {@link SegmentMetadataCache}. If the cache is enabled, an additional poll is
  * not done and the segments already present in the cache are used to build the
- * timeline. If the {@link SegmentMetadataCache} is disabled, the polling is
+ * snapshot. If the {@link SegmentMetadataCache} is disabled, the polling is
  * delegated to the legacy implementation in {@link SqlSegmentsMetadataManager}.
  * <p>
- * The Coordinator always uses the segment timeline served by this class to
- * perform various segment management duties such as loading, balancing, etc.
- * The Overlord uses the segment timeline only when compaction supervisors are
- * enabled.
+ * The Coordinator always uses the snapshot to perform various segment management
+ * duties such as loading, balancing, etc.
+ * The Overlord uses the snapshot only when compaction supervisors are enabled.
+ * Thus, when running the Overlord as a standalone service (i.e. not combined
+ * with the Coordinator), {@link #startPollingDatabasePeriodically()} and
+ * {@link #stopPollingDatabasePeriodically()} are called based on the current
+ * state of {@link DruidCompactionConfig#isUseSupervisors()}.
  */
 @ManageLifecycle
 public class SqlSegmentsMetadataManagerV2 implements SegmentsMetadataManager
@@ -85,7 +89,7 @@ public class SqlSegmentsMetadataManagerV2 implements SegmentsMetadataManager
    * is not enabled. Segment metadata cache currently does not handle segment
    * schema updates.
    */
-  private boolean useSegmentCache()
+  private boolean useCacheToBuildTimeline()
   {
     return segmentMetadataCache.isEnabled() && !schemaConfig.isEnabled();
   }
@@ -107,9 +111,10 @@ public class SqlSegmentsMetadataManagerV2 implements SegmentsMetadataManager
   @Override
   public void startPollingDatabasePeriodically()
   {
-    if (useSegmentCache()) {
-      log.info("Not polling metadata store directly. Using segments in metadata cache to build timeline.");
+    if (useCacheToBuildTimeline()) {
+      log.info("Using segments in metadata cache to build timeline.");
     } else {
+      log.info("Starting poll of segments from metadata store.");
       delegate.startPollingDatabasePeriodically();
     }
   }
@@ -117,9 +122,10 @@ public class SqlSegmentsMetadataManagerV2 implements SegmentsMetadataManager
   @Override
   public void stopPollingDatabasePeriodically()
   {
-    if (useSegmentCache()) {
-      // Cache has its own lifecycle stop
+    if (useCacheToBuildTimeline()) {
+      // Cache does not stop polling until service is stopped
     } else {
+      log.info("Stopping poll of segments from metadata store.");
       delegate.stopPollingDatabasePeriodically();
     }
   }
@@ -129,13 +135,13 @@ public class SqlSegmentsMetadataManagerV2 implements SegmentsMetadataManager
   {
     // When cache is being used, this will return true even after
     // stopPollingDatabasePeriodically has been called
-    return useSegmentCache() || delegate.isPollingDatabasePeriodically();
+    return useCacheToBuildTimeline() || delegate.isPollingDatabasePeriodically();
   }
 
   @Override
   public DataSourcesSnapshot getDataSourceSnapshot()
   {
-    if (useSegmentCache()) {
+    if (useCacheToBuildTimeline()) {
       return segmentMetadataCache.getDatasourcesSnapshot();
     } else {
       return delegate.getDataSourceSnapshot();
@@ -143,13 +149,13 @@ public class SqlSegmentsMetadataManagerV2 implements SegmentsMetadataManager
   }
 
   @Override
-  public DataSourcesSnapshot forceUpdateSnapshot()
+  public DataSourcesSnapshot forceUpdateAndGetSnapshot()
   {
-    if (useSegmentCache()) {
-      // TODO: we cannot force update the cache to refresh, we can just wait
+    if (useCacheToBuildTimeline()) {
+      // TODO: we cannot force the cache to refresh, we can just wait
       return segmentMetadataCache.getDatasourcesSnapshot();
     } else {
-      return delegate.forceUpdateSnapshot();
+      return delegate.forceUpdateAndGetSnapshot();
     }
   }
 

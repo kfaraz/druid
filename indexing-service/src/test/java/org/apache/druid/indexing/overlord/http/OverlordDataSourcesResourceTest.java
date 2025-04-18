@@ -70,7 +70,6 @@ public class OverlordDataSourcesResourceTest
     TaskMaster taskMaster = new TaskMaster(null, null);
     dataSourcesResource = new OverlordDataSourcesResource(
         taskMaster,
-        segmentsMetadataManager,
         metadataStorageCoordinator,
         auditManager
     );

@@ -38,6 +38,7 @@ import org.apache.druid.java.util.emitter.EmittingLogger;
 import org.apache.druid.java.util.http.client.HttpClient;
 import org.apache.druid.java.util.metrics.MetricsVerifier;
 import org.apache.druid.java.util.metrics.StubServiceEmitter;
+import org.apache.druid.metadata.segment.cache.NoopSegmentMetadataCache;
 import org.apache.druid.rpc.indexing.NoopOverlordClient;
 import org.apache.druid.rpc.indexing.SegmentUpdateResponse;
 import org.apache.druid.segment.metadata.CentralizedDatasourceSchemaConfig;
@@ -480,7 +481,8 @@ public class CoordinatorSimulationBuilder
           null,
           ruleManager,
           null,
-          null
+          null,
+          NoopSegmentMetadataCache.instance()
       );
     }
 

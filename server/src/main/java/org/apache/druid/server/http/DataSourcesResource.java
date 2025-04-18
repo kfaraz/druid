@@ -449,7 +449,7 @@ public class DataSourcesResource
 
     final DataSourcesSnapshot snapshot;
     if (forceMetadataRefresh) {
-      snapshot = segmentsMetadataManager.forceUpdateSnapshot();
+      snapshot = segmentsMetadataManager.forceUpdateAndGetSnapshot();
     } else {
       snapshot = segmentsMetadataManager.getDataSourceSnapshot();
     }

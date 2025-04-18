@@ -26,7 +26,6 @@ import com.google.common.base.Preconditions;
 import com.google.common.base.Supplier;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
-import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.Futures;
 import com.google.errorprone.annotations.concurrent.GuardedBy;
 import org.apache.druid.client.DataSourcesSnapshot;
@@ -50,11 +49,8 @@ import org.apache.druid.timeline.SegmentId;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 import org.joda.time.DateTime;
 import org.joda.time.Duration;
-import org.joda.time.Interval;
-import org.skife.jdbi.v2.BaseResultSetMapper;
 import org.skife.jdbi.v2.Batch;
 import org.skife.jdbi.v2.Handle;
-import org.skife.jdbi.v2.Query;
 import org.skife.jdbi.v2.TransactionCallback;
 import org.skife.jdbi.v2.TransactionStatus;
 
@@ -62,9 +58,7 @@ import javax.annotation.Nullable;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -622,7 +616,7 @@ public class SqlSegmentsMetadataManager implements SegmentsMetadataManager
   }
 
   @Override
-  public DataSourcesSnapshot forceUpdateSnapshot()
+  public DataSourcesSnapshot forceUpdateAndGetSnapshot()
   {
     forceOrWaitOngoingDatabasePoll();
     return dataSourcesSnapshot;
@@ -645,22 +639,15 @@ public class SqlSegmentsMetadataManager implements SegmentsMetadataManager
   {
     // See the comment to the pollLock field, explaining this synchronized block
     synchronized (pollLock) {
-      doPoll();
+      if (centralizedDatasourceSchemaConfig.isEnabled()) {
+        pollSegmentAndSchema();
+      } else {
+        pollSegments();
+      }
     }
   }
 
-  /** This method is extracted from {@link #poll()} solely to reduce code nesting. */
-  @GuardedBy("pollLock")
-  private void doPoll()
-  {
-    if (centralizedDatasourceSchemaConfig.isEnabled()) {
-      doPollSegmentAndSchema();
-    } else {
-      doPollSegments();
-    }
-  }
-
-  private void doPollSegments()
+  private void pollSegments()
   {
     final DateTime startTime = DateTimes.nowUtc();
     final Stopwatch stopwatch = Stopwatch.createStarted();
@@ -702,7 +689,7 @@ public class SqlSegmentsMetadataManager implements SegmentsMetadataManager
     createDatasourcesSnapshot(startTime, segments);
   }
 
-  private void doPollSegmentAndSchema()
+  private void pollSegmentAndSchema()
   {
     final DateTime startTime = DateTimes.nowUtc();
     final Stopwatch stopwatch = Stopwatch.createStarted();
