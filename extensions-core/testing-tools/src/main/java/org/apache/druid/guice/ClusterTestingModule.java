@@ -34,16 +34,18 @@ import java.util.Set;
 
 public class ClusterTestingModule implements DruidModule
 {
-  private final Properties props;
-  private final boolean isTask;
+  private Properties props = null;
+  private boolean isTask = false;
 
   @Inject
-  public ClusterTestingModule(
-      Properties props,
-      @Self Set<NodeRole> roles
-  )
+  public void setProperties(Properties props)
   {
     this.props = props;
+  }
+
+  @Inject
+  public void setNodeRoles(@Self Set<NodeRole> roles)
+  {
     this.isTask = roles.contains(NodeRole.PEON);
   }
 
