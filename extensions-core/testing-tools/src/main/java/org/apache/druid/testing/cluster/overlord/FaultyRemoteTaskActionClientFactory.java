@@ -31,17 +31,21 @@ import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.rpc.ServiceClientFactory;
 import org.apache.druid.rpc.ServiceLocator;
+import org.apache.druid.testing.cluster.ClusterTestingConfig;
 
 public class FaultyRemoteTaskActionClientFactory extends RemoteTaskActionClientFactory
 {
   private static final Logger log = new Logger(FaultyRemoteTaskActionClientFactory.class);
+
+  private final ClusterTestingConfig config;
 
   @Inject
   public FaultyRemoteTaskActionClientFactory(
       @Json final ObjectMapper jsonMapper,
       @EscalatedGlobal final ServiceClientFactory clientFactory,
       @IndexingService final ServiceLocator serviceLocator,
-      RetryPolicyConfig retryPolicyConfig
+      RetryPolicyConfig retryPolicyConfig,
+      ClusterTestingConfig config
   )
   {
     super(
@@ -50,12 +54,13 @@ public class FaultyRemoteTaskActionClientFactory extends RemoteTaskActionClientF
         serviceLocator,
         retryPolicyConfig
     );
+    this.config = config;
   }
 
   @Override
   public TaskActionClient create(Task task)
   {
-    log.info("Creating a faulty task action client");
+    log.info("Creating a faulty task action client with overlord config[%s].", config.getOverlordClientConfig());
     return new FaultyRemoteTaskActionClient(super.create(task));
   }
 }

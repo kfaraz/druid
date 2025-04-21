@@ -19,48 +19,94 @@
 
 package org.apache.druid.guice;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Binder;
 import com.google.inject.Inject;
+import com.google.inject.Provider;
 import org.apache.druid.client.coordinator.CoordinatorClient;
+import org.apache.druid.common.config.Configs;
 import org.apache.druid.discovery.NodeRole;
 import org.apache.druid.guice.annotations.Self;
 import org.apache.druid.indexing.common.actions.RemoteTaskActionClientFactory;
+import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.initialization.DruidModule;
+import org.apache.druid.java.util.common.logger.Logger;
+import org.apache.druid.testing.cluster.ClusterTestingConfig;
 import org.apache.druid.testing.cluster.overlord.FaultyCoordinatorClient;
 import org.apache.druid.testing.cluster.overlord.FaultyRemoteTaskActionClientFactory;
 
+import java.io.IOException;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 
+/**
+ * Module that injects faulty clients into the Peon process to simulate various
+ * fault scenarios.
+ */
 public class ClusterTestingModule implements DruidModule
 {
-  private Properties props = null;
-  private boolean isTask = false;
+  private static final Logger log = new Logger(ClusterTestingModule.class);
+
+  private boolean isPeon = false;
+  private boolean isClusterTestingEnabled = false;
 
   @Inject
-  public void setProperties(Properties props)
+  public void configure(
+      Properties props,
+      @Self Set<NodeRole> roles
+  )
   {
-    this.props = props;
-  }
-
-  @Inject
-  public void setNodeRoles(@Self Set<NodeRole> roles)
-  {
-    this.isTask = roles.contains(NodeRole.PEON);
+    this.isClusterTestingEnabled = Boolean.parseBoolean(
+        props.getProperty("druid.unsafe.cluster.testing", "false")
+    );
+    this.isPeon = roles.contains(NodeRole.PEON);
   }
 
   @Override
   public void configure(Binder binder)
   {
-    // Bind the testing stuff if this is a task and if cluster testing is enabled
-    if (isTask && isClusterTestingEnabled()) {
-      binder.bind(CoordinatorClient.class).to(FaultyCoordinatorClient.class).in(LazySingleton.class);
-      binder.bind(RemoteTaskActionClientFactory.class).to(FaultyRemoteTaskActionClientFactory.class).in(LazySingleton.class);
+    // Bind the faulty clients only if this is a peon and cluster testing is enabled
+    if (isPeon && isClusterTestingEnabled) {
+      binder.bind(ClusterTestingConfig.class)
+            .toProvider(ClusterTestingConfigProvider.class)
+            .in(LazySingleton.class);
+      binder.bind(CoordinatorClient.class)
+            .to(FaultyCoordinatorClient.class)
+            .in(LazySingleton.class);
+      binder.bind(RemoteTaskActionClientFactory.class)
+            .to(FaultyRemoteTaskActionClientFactory.class)
+            .in(LazySingleton.class);
     }
   }
 
-  private boolean isClusterTestingEnabled()
+  private static class ClusterTestingConfigProvider implements Provider<ClusterTestingConfig>
   {
-    return Boolean.parseBoolean(props.getProperty("druid.unsafe.cluster.testing", "false"));
+    private final Task task;
+    private final ObjectMapper mapper;
+
+    @Inject
+    public ClusterTestingConfigProvider(Task task, ObjectMapper mapper)
+    {
+      this.task = task;
+      this.mapper = mapper;
+    }
+
+
+    @Override
+    public ClusterTestingConfig get()
+    {
+      try {
+        final Map<String, Object> configAsMap = task.getContextValue("clusterTesting");
+        final String json = mapper.writeValueAsString(configAsMap);
+        final ClusterTestingConfig testingConfig = mapper.readValue(json, ClusterTestingConfig.class);
+        log.info("Running peon in cluster testing mode with config[%s].", testingConfig);
+
+        return Configs.valueOrDefault(testingConfig, new ClusterTestingConfig(null));
+      }
+      catch (IOException e) {
+        throw new RuntimeException(e);
+      }
+    }
   }
 }

@@ -22,6 +22,7 @@ package org.apache.druid.testing.cluster.overlord;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.inject.Inject;
+import org.apache.druid.client.BootstrapSegmentsResponse;
 import org.apache.druid.client.coordinator.Coordinator;
 import org.apache.druid.client.coordinator.CoordinatorClientImpl;
 import org.apache.druid.discovery.NodeRole;
@@ -52,6 +53,7 @@ public class FaultyCoordinatorClient extends CoordinatorClientImpl
         ),
         jsonMapper
     );
+    log.info("Initializing faulty coordinator client");
   }
 
   @Override
@@ -59,5 +61,12 @@ public class FaultyCoordinatorClient extends CoordinatorClientImpl
   {
     log.info("Checking if faulty segment handoff is complete");
     return super.isHandoffComplete(dataSource, descriptor);
+  }
+
+  @Override
+  public ListenableFuture<BootstrapSegmentsResponse> fetchBootstrapSegments()
+  {
+    log.info("Fetching faulty bootstrap segments");
+    return super.fetchBootstrapSegments();
   }
 }
