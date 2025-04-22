@@ -31,8 +31,10 @@ import org.apache.druid.indexing.common.actions.RemoteTaskActionClientFactory;
 import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.initialization.DruidModule;
 import org.apache.druid.java.util.common.logger.Logger;
+import org.apache.druid.rpc.indexing.OverlordClient;
 import org.apache.druid.testing.cluster.ClusterTestingConfig;
 import org.apache.druid.testing.cluster.overlord.FaultyCoordinatorClient;
+import org.apache.druid.testing.cluster.overlord.FaultyOverlordClient;
 import org.apache.druid.testing.cluster.overlord.FaultyRemoteTaskActionClientFactory;
 
 import java.io.IOException;
@@ -73,6 +75,9 @@ public class ClusterTestingModule implements DruidModule
             .in(LazySingleton.class);
       binder.bind(CoordinatorClient.class)
             .to(FaultyCoordinatorClient.class)
+            .in(LazySingleton.class);
+      binder.bind(OverlordClient.class)
+            .to(FaultyOverlordClient.class)
             .in(LazySingleton.class);
       binder.bind(RemoteTaskActionClientFactory.class)
             .to(FaultyRemoteTaskActionClientFactory.class)

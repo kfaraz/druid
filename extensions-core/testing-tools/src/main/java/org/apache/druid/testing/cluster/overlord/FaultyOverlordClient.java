@@ -19,12 +19,37 @@
 
 package org.apache.druid.testing.cluster.overlord;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.inject.Inject;
+import org.apache.druid.client.coordinator.Coordinator;
+import org.apache.druid.discovery.NodeRole;
+import org.apache.druid.guice.annotations.EscalatedGlobal;
+import org.apache.druid.guice.annotations.Json;
 import org.apache.druid.java.util.common.logger.Logger;
-import org.apache.druid.rpc.indexing.NoopOverlordClient;
+import org.apache.druid.rpc.ServiceClientFactory;
+import org.apache.druid.rpc.ServiceLocator;
+import org.apache.druid.rpc.StandardRetryPolicy;
+import org.apache.druid.rpc.indexing.OverlordClientImpl;
 
-public class FaultyOverlordClient extends NoopOverlordClient
+public class FaultyOverlordClient extends OverlordClientImpl
 {
   private static final Logger log = new Logger(FaultyOverlordClient.class);
 
-
+  @Inject
+  public FaultyOverlordClient(
+      @Json final ObjectMapper jsonMapper,
+      @EscalatedGlobal final ServiceClientFactory clientFactory,
+      @Coordinator final ServiceLocator serviceLocator
+  )
+  {
+    super(
+        clientFactory.makeClient(
+            NodeRole.COORDINATOR.getJsonName(),
+            serviceLocator,
+            StandardRetryPolicy.builder().maxAttempts(6).build()
+        ),
+        jsonMapper
+    );
+    log.info("Initializing faulty overlord client");
+  }
 }
