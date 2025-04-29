@@ -58,7 +58,7 @@ public class ClusterTestingTaskConfig
   @Override
   public String toString()
   {
-    return "ClusterTestingConfig{" +
+    return "{" +
            "overlordClient=" + overlordClient +
            '}';
   }
@@ -98,7 +98,7 @@ public class ClusterTestingTaskConfig
     @Override
     public String toString()
     {
-      return "OverlordClientConfig{" +
+      return "{" +
              "segmentPublishDelay=" + segmentPublishDelay +
              '}';
     }
@@ -130,7 +130,7 @@ public class ClusterTestingTaskConfig
     @Override
     public String toString()
     {
-      return "CoordinatorClientConfig{" +
+      return "{" +
              "segmentHandoffDelay=" + segmentHandoffDelay +
              '}';
     }
