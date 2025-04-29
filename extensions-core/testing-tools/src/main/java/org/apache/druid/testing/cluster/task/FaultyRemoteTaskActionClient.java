@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.druid.testing.cluster.overlord;
+package org.apache.druid.testing.cluster.task;
 
 import org.apache.druid.indexing.common.actions.TaskAction;
 import org.apache.druid.indexing.common.actions.TaskActionClient;

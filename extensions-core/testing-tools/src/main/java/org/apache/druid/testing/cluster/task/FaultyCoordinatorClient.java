@@ -17,26 +17,29 @@
  * under the License.
  */
 
-package org.apache.druid.testing.cluster.overlord;
+package org.apache.druid.testing.cluster.task;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.util.concurrent.ListenableFuture;
 import com.google.inject.Inject;
+import org.apache.druid.client.BootstrapSegmentsResponse;
 import org.apache.druid.client.coordinator.Coordinator;
+import org.apache.druid.client.coordinator.CoordinatorClientImpl;
 import org.apache.druid.discovery.NodeRole;
 import org.apache.druid.guice.annotations.EscalatedGlobal;
 import org.apache.druid.guice.annotations.Json;
 import org.apache.druid.java.util.common.logger.Logger;
+import org.apache.druid.query.SegmentDescriptor;
 import org.apache.druid.rpc.ServiceClientFactory;
 import org.apache.druid.rpc.ServiceLocator;
 import org.apache.druid.rpc.StandardRetryPolicy;
-import org.apache.druid.rpc.indexing.OverlordClientImpl;
 
-public class FaultyOverlordClient extends OverlordClientImpl
+public class FaultyCoordinatorClient extends CoordinatorClientImpl
 {
-  private static final Logger log = new Logger(FaultyOverlordClient.class);
+  private static final Logger log = new Logger(FaultyCoordinatorClient.class);
 
   @Inject
-  public FaultyOverlordClient(
+  public FaultyCoordinatorClient(
       @Json final ObjectMapper jsonMapper,
       @EscalatedGlobal final ServiceClientFactory clientFactory,
       @Coordinator final ServiceLocator serviceLocator
@@ -50,6 +53,20 @@ public class FaultyOverlordClient extends OverlordClientImpl
         ),
         jsonMapper
     );
-    log.info("Initializing faulty overlord client");
+    log.info("Initializing faulty coordinator client");
+  }
+
+  @Override
+  public ListenableFuture<Boolean> isHandoffComplete(String dataSource, SegmentDescriptor descriptor)
+  {
+    log.info("Checking if faulty segment handoff is complete");
+    return super.isHandoffComplete(dataSource, descriptor);
+  }
+
+  @Override
+  public ListenableFuture<BootstrapSegmentsResponse> fetchBootstrapSegments()
+  {
+    log.info("Fetching faulty bootstrap segments");
+    return super.fetchBootstrapSegments();
   }
 }

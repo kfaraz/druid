@@ -17,50 +17,39 @@
  * under the License.
  */
 
-package org.apache.druid.testing.cluster.overlord;
+package org.apache.druid.testing.cluster.task;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
-import org.apache.druid.client.indexing.IndexingService;
+import org.apache.druid.client.coordinator.Coordinator;
+import org.apache.druid.discovery.NodeRole;
 import org.apache.druid.guice.annotations.EscalatedGlobal;
 import org.apache.druid.guice.annotations.Json;
-import org.apache.druid.indexing.common.RetryPolicyConfig;
-import org.apache.druid.indexing.common.actions.RemoteTaskActionClientFactory;
-import org.apache.druid.indexing.common.actions.TaskActionClient;
-import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.rpc.ServiceClientFactory;
 import org.apache.druid.rpc.ServiceLocator;
-import org.apache.druid.testing.cluster.ClusterTestingConfig;
+import org.apache.druid.rpc.StandardRetryPolicy;
+import org.apache.druid.rpc.indexing.OverlordClientImpl;
 
-public class FaultyRemoteTaskActionClientFactory extends RemoteTaskActionClientFactory
+public class FaultyOverlordClient extends OverlordClientImpl
 {
-  private static final Logger log = new Logger(FaultyRemoteTaskActionClientFactory.class);
-
-  private final ClusterTestingConfig config;
+  private static final Logger log = new Logger(FaultyOverlordClient.class);
 
   @Inject
-  public FaultyRemoteTaskActionClientFactory(
+  public FaultyOverlordClient(
       @Json final ObjectMapper jsonMapper,
       @EscalatedGlobal final ServiceClientFactory clientFactory,
-      @IndexingService final ServiceLocator serviceLocator,
-      RetryPolicyConfig retryPolicyConfig,
-      ClusterTestingConfig config
+      @Coordinator final ServiceLocator serviceLocator
   )
   {
     super(
-        jsonMapper,
-        clientFactory,
-        serviceLocator,
-        retryPolicyConfig
+        clientFactory.makeClient(
+            NodeRole.COORDINATOR.getJsonName(),
+            serviceLocator,
+            StandardRetryPolicy.builder().maxAttempts(6).build()
+        ),
+        jsonMapper
     );
-    this.config = config;
-  }
-
-  @Override
-  public TaskActionClient create(Task task)
-  {
-    log.info("Creating a faulty task action client with overlord config[%s].", config.getOverlordClientConfig());
-    return new FaultyRemoteTaskActionClient(super.create(task));
+    log.info("Initializing faulty overlord client");
   }
 }

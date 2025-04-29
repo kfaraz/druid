@@ -24,12 +24,16 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 import javax.annotation.Nullable;
 
-public class ClusterTestingConfig
+/**
+ * Config used for testing scalability of a Druid cluster by introducing faults
+ * at various interface points.
+ */
+public class TaskClusterTestingConfig
 {
   private final OverlordClientConfig overlordClient;
 
   @JsonCreator
-  public ClusterTestingConfig(
+  public TaskClusterTestingConfig(
       @JsonProperty("overlordClient") @Nullable OverlordClientConfig overlordClient
   )
   {
