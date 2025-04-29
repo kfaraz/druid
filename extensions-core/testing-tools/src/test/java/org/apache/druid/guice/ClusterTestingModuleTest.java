@@ -148,20 +148,21 @@ public class ClusterTestingModuleTest
 
       final ClusterTestingTaskConfig taskConfig = peonInjector.getInstance(ClusterTestingTaskConfig.class);
       Assert.assertNotNull(taskConfig);
-      Assert.assertNotNull(taskConfig.getCoordinatorClient());
+      Assert.assertNotNull(taskConfig.getCoordinatorClientConfig());
       Assert.assertNotNull(taskConfig.getOverlordClientConfig());
+      Assert.assertNotNull(taskConfig.getTaskActionClientConfig());
 
       Assert.assertEquals(
           Duration.standardSeconds(10),
-          taskConfig.getOverlordClientConfig().getSegmentPublishDelay()
+          taskConfig.getTaskActionClientConfig().getSegmentPublishDelay()
       );
       Assert.assertEquals(
           Duration.standardSeconds(5),
-          taskConfig.getOverlordClientConfig().getSegmentAllocateDelay()
+          taskConfig.getTaskActionClientConfig().getSegmentAllocateDelay()
       );
       Assert.assertEquals(
           Duration.standardSeconds(30),
-          taskConfig.getCoordinatorClient().getSegmentHandoffDelay()
+          taskConfig.getCoordinatorClientConfig().getMinSegmentHandoffDelay()
       );
     }
     finally {
@@ -192,16 +193,16 @@ public class ClusterTestingModuleTest
 
   private Map<String, Object> createClusterTestingConfigMap()
   {
-    final Map<String, Object> overlordClientConfig = Map.of(
+    final Map<String, Object> taskActionClientConfig = Map.of(
         "segmentPublishDelay", "PT10S",
         "segmentAllocateDelay", "PT5S"
     );
     final Map<String, Object> coordinatorClientConfig = Map.of(
-        "segmentHandoffDelay", "PT30S"
+        "minSegmentHandoffDelay", "PT30S"
     );
     return Map.of(
-        "overlordClient", overlordClientConfig,
-        "coordinatorClient", coordinatorClientConfig
+        "coordinatorClientConfig", coordinatorClientConfig,
+        "taskActionClientConfig", taskActionClientConfig
     );
   }
 }

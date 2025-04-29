@@ -97,6 +97,7 @@ public class ClusterTestingModule implements DruidModule
             .in(LazySingleton.class);
     } else if (roles.contains(NodeRole.OVERLORD)) {
       // If this is the Overlord, bind a faulty storage coordinator
+      log.info("Running Overlord in cluster testing mode.");
       binder.bind(IndexerSQLMetadataStorageCoordinator.class)
             .to(FaultyMetadataStorageCoordinator.class)
             .in(ManageLifecycle.class);
@@ -132,9 +133,9 @@ public class ClusterTestingModule implements DruidModule
         final Map<String, Object> configAsMap = task.getContextValue("clusterTesting");
         final String json = mapper.writeValueAsString(configAsMap);
         final ClusterTestingTaskConfig testingConfig = mapper.readValue(json, ClusterTestingTaskConfig.class);
-        log.info("Running peon in cluster testing mode with config[%s].", testingConfig);
+        log.info("Running task in cluster testing mode with config[%s].", testingConfig);
 
-        return Configs.valueOrDefault(testingConfig, new ClusterTestingTaskConfig(null, null));
+        return Configs.valueOrDefault(testingConfig, new ClusterTestingTaskConfig(null, null, null));
       }
       catch (IOException e) {
         throw new RuntimeException(e);

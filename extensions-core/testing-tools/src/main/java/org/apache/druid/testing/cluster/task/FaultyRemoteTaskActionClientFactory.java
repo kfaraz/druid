@@ -28,15 +28,12 @@ import org.apache.druid.indexing.common.RetryPolicyConfig;
 import org.apache.druid.indexing.common.actions.RemoteTaskActionClientFactory;
 import org.apache.druid.indexing.common.actions.TaskActionClient;
 import org.apache.druid.indexing.common.task.Task;
-import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.rpc.ServiceClientFactory;
 import org.apache.druid.rpc.ServiceLocator;
 import org.apache.druid.testing.cluster.ClusterTestingTaskConfig;
 
 public class FaultyRemoteTaskActionClientFactory extends RemoteTaskActionClientFactory
 {
-  private static final Logger log = new Logger(FaultyRemoteTaskActionClientFactory.class);
-
   private final ClusterTestingTaskConfig config;
 
   @Inject
@@ -60,7 +57,6 @@ public class FaultyRemoteTaskActionClientFactory extends RemoteTaskActionClientF
   @Override
   public TaskActionClient create(Task task)
   {
-    log.info("Creating a faulty task action client with overlord config[%s].", config.getOverlordClientConfig());
-    return new FaultyRemoteTaskActionClient(super.create(task));
+    return new FaultyRemoteTaskActionClient(config.getTaskActionClientConfig(), super.create(task));
   }
 }

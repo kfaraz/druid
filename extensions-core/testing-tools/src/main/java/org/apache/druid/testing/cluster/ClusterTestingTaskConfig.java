@@ -32,34 +32,44 @@ import javax.annotation.Nullable;
  */
 public class ClusterTestingTaskConfig
 {
-  private final OverlordClientConfig overlordClient;
-  private final CoordinatorClientConfig coordinatorClient;
+  private final OverlordClientConfig overlordClientConfig;
+  private final CoordinatorClientConfig coordinatorClientConfig;
+  private final TaskActionClientConfig taskActionClientConfig;
 
   @JsonCreator
   public ClusterTestingTaskConfig(
-      @JsonProperty("overlordClient") @Nullable OverlordClientConfig overlordClient,
-      @JsonProperty("coordinatorClient") @Nullable CoordinatorClientConfig coordinatorClient
+      @JsonProperty("overlordClientConfig") @Nullable OverlordClientConfig overlordClientConfig,
+      @JsonProperty("coordinatorClientConfig") @Nullable CoordinatorClientConfig coordinatorClientConfig,
+      @JsonProperty("taskActionClientConfig") @Nullable TaskActionClientConfig taskActionClientConfig
   )
   {
-    this.overlordClient = Configs.valueOrDefault(overlordClient, OverlordClientConfig.DEFAULT);
-    this.coordinatorClient = Configs.valueOrDefault(coordinatorClient, CoordinatorClientConfig.DEFAULT);
+    this.overlordClientConfig = Configs.valueOrDefault(overlordClientConfig, OverlordClientConfig.DEFAULT);
+    this.coordinatorClientConfig = Configs.valueOrDefault(coordinatorClientConfig, CoordinatorClientConfig.DEFAULT);
+    this.taskActionClientConfig = Configs.valueOrDefault(taskActionClientConfig, TaskActionClientConfig.DEFAULT);
   }
 
   public OverlordClientConfig getOverlordClientConfig()
   {
-    return overlordClient;
+    return overlordClientConfig;
   }
 
-  public CoordinatorClientConfig getCoordinatorClient()
+  public CoordinatorClientConfig getCoordinatorClientConfig()
   {
-    return coordinatorClient;
+    return coordinatorClientConfig;
+  }
+
+  public TaskActionClientConfig getTaskActionClientConfig()
+  {
+    return taskActionClientConfig;
   }
 
   @Override
   public String toString()
   {
-    return "{" +
-           "overlordClient=" + overlordClient +
+    return '{' +
+           "overlordClientConfig=" + overlordClientConfig +
+           ", coordinatorClientConfig=" + coordinatorClientConfig +
+           ", taskActionClientConfig=" + taskActionClientConfig +
            '}';
   }
 
@@ -68,13 +78,69 @@ public class ClusterTestingTaskConfig
    */
   public static class OverlordClientConfig
   {
-    private static final OverlordClientConfig DEFAULT = new OverlordClientConfig(null, null);
+    private static final OverlordClientConfig DEFAULT = new OverlordClientConfig();
+
+    @Override
+    public String toString()
+    {
+      return "";
+    }
+  }
+
+  /**
+   * Config for faulty coordinator client.
+   */
+  public static class CoordinatorClientConfig
+  {
+    private static final CoordinatorClientConfig DEFAULT = new CoordinatorClientConfig(null);
+
+    private final Duration minSegmentHandoffDelay;
+
+    @JsonCreator
+    public CoordinatorClientConfig(
+        @JsonProperty("minSegmentHandoffDelay") @Nullable Duration minSegmentHandoffDelay
+    )
+    {
+      this.minSegmentHandoffDelay = minSegmentHandoffDelay;
+    }
+
+    /**
+     * Minimum duration for which segment handoff is assumed to not have completed.
+     * The actual handoff status is fetched from the Coordinator only after this
+     * duration has elapsed. This delay applies to each segment separately.
+     * <p>
+     * For any segment,
+     * <pre>
+     * observed handoff time = actual handoff time + minSegmentHandoffDelay
+     * </pre>
+     */
+    @Nullable
+    public Duration getMinSegmentHandoffDelay()
+    {
+      return minSegmentHandoffDelay;
+    }
+
+    @Override
+    public String toString()
+    {
+      return "{" +
+             "minSegmentHandoffDelay=" + minSegmentHandoffDelay +
+             '}';
+    }
+  }
+
+  /**
+   * Config for faulty task action client.
+   */
+  public static class TaskActionClientConfig
+  {
+    private static final TaskActionClientConfig DEFAULT = new TaskActionClientConfig(null, null);
 
     private final Duration segmentPublishDelay;
     private final Duration segmentAllocateDelay;
 
     @JsonCreator
-    public OverlordClientConfig(
+    public TaskActionClientConfig(
         @JsonProperty("segmentAllocateDelay") @Nullable Duration segmentAllocateDelay,
         @JsonProperty("segmentPublishDelay") @Nullable Duration segmentPublishDelay
     )
@@ -83,12 +149,28 @@ public class ClusterTestingTaskConfig
       this.segmentPublishDelay = segmentPublishDelay;
     }
 
+    /**
+     * Duration to wait before sending a segment publish request to the Overlord.
+     * <p>
+     * For each publish request (containing one or more segments),
+     * <pre>
+     * observed publish time = actual publish time + segmentPublishDelay
+     * </pre>
+     */
     @Nullable
     public Duration getSegmentPublishDelay()
     {
       return segmentPublishDelay;
     }
 
+    /**
+     * Duration to wait before sending a segment allocate request to the Overlord.
+     * <p>
+     * For each segment,
+     * <pre>
+     * observed segment allocation time = actual allocation time + segmentAllocateDelay
+     * </pre>
+     */
     @Nullable
     public Duration getSegmentAllocateDelay()
     {
@@ -100,38 +182,7 @@ public class ClusterTestingTaskConfig
     {
       return "{" +
              "segmentPublishDelay=" + segmentPublishDelay +
-             '}';
-    }
-  }
-
-  /**
-   * Config for faulty coordinator client.
-   */
-  public static class CoordinatorClientConfig
-  {
-    private static final CoordinatorClientConfig DEFAULT = new CoordinatorClientConfig(null);
-
-    private final Duration segmentHandoffDelay;
-
-    @JsonCreator
-    public CoordinatorClientConfig(
-        @JsonProperty("segmentHandoffDelay") @Nullable Duration segmentHandoffDelay
-    )
-    {
-      this.segmentHandoffDelay = segmentHandoffDelay;
-    }
-
-    @Nullable
-    public Duration getSegmentHandoffDelay()
-    {
-      return segmentHandoffDelay;
-    }
-
-    @Override
-    public String toString()
-    {
-      return "{" +
-             "segmentHandoffDelay=" + segmentHandoffDelay +
+             ", segmentAllocateDelay=" + segmentAllocateDelay +
              '}';
     }
   }

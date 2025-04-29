@@ -30,13 +30,17 @@ import org.apache.druid.rpc.ServiceClientFactory;
 import org.apache.druid.rpc.ServiceLocator;
 import org.apache.druid.rpc.StandardRetryPolicy;
 import org.apache.druid.rpc.indexing.OverlordClientImpl;
+import org.apache.druid.testing.cluster.ClusterTestingTaskConfig;
 
 public class FaultyOverlordClient extends OverlordClientImpl
 {
   private static final Logger log = new Logger(FaultyOverlordClient.class);
 
+  private final ClusterTestingTaskConfig testingConfig;
+
   @Inject
   public FaultyOverlordClient(
+      ClusterTestingTaskConfig testingConfig,
       @Json final ObjectMapper jsonMapper,
       @EscalatedGlobal final ServiceClientFactory clientFactory,
       @Coordinator final ServiceLocator serviceLocator
@@ -50,6 +54,6 @@ public class FaultyOverlordClient extends OverlordClientImpl
         ),
         jsonMapper
     );
-    log.info("Initializing faulty overlord client");
+    this.testingConfig = testingConfig;
   }
 }

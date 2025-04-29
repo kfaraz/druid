@@ -20,26 +20,35 @@
 package org.apache.druid.testing.cluster.task;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.inject.Inject;
-import org.apache.druid.client.BootstrapSegmentsResponse;
 import org.apache.druid.client.coordinator.Coordinator;
 import org.apache.druid.client.coordinator.CoordinatorClientImpl;
 import org.apache.druid.discovery.NodeRole;
 import org.apache.druid.guice.annotations.EscalatedGlobal;
 import org.apache.druid.guice.annotations.Json;
+import org.apache.druid.java.util.common.Stopwatch;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.query.SegmentDescriptor;
 import org.apache.druid.rpc.ServiceClientFactory;
 import org.apache.druid.rpc.ServiceLocator;
 import org.apache.druid.rpc.StandardRetryPolicy;
+import org.apache.druid.testing.cluster.ClusterTestingTaskConfig;
+import org.joda.time.Duration;
+
+import java.util.concurrent.ConcurrentHashMap;
 
 public class FaultyCoordinatorClient extends CoordinatorClientImpl
 {
   private static final Logger log = new Logger(FaultyCoordinatorClient.class);
 
+  private final ClusterTestingTaskConfig testingConfig;
+  private final ConcurrentHashMap<SegmentDescriptor, Stopwatch> segmentHandoffTimers = new ConcurrentHashMap<>();
+
   @Inject
   public FaultyCoordinatorClient(
+      ClusterTestingTaskConfig testingConfig,
       @Json final ObjectMapper jsonMapper,
       @EscalatedGlobal final ServiceClientFactory clientFactory,
       @Coordinator final ServiceLocator serviceLocator
@@ -53,20 +62,34 @@ public class FaultyCoordinatorClient extends CoordinatorClientImpl
         ),
         jsonMapper
     );
-    log.info("Initializing faulty coordinator client");
+    this.testingConfig = testingConfig;
   }
 
   @Override
   public ListenableFuture<Boolean> isHandoffComplete(String dataSource, SegmentDescriptor descriptor)
   {
-    log.info("Checking if faulty segment handoff is complete");
+    final Duration minHandoffDelay = getHandoffDelay();
+    if (minHandoffDelay != null) {
+      final Stopwatch sinceHandoffCheckStarted = segmentHandoffTimers.computeIfAbsent(
+          descriptor,
+          d -> Stopwatch.createStarted()
+      );
+
+      if (sinceHandoffCheckStarted.hasElapsed(minHandoffDelay)) {
+        // Wait period is over, check with Coordinator now
+        segmentHandoffTimers.remove(descriptor);
+      } else {
+        // Until the min handoff delay has elapsed, keep returning false
+        return Futures.immediateFuture(false);
+      }
+    }
+
+    // Call Coordinator for the actual handoff status
     return super.isHandoffComplete(dataSource, descriptor);
   }
 
-  @Override
-  public ListenableFuture<BootstrapSegmentsResponse> fetchBootstrapSegments()
+  private Duration getHandoffDelay()
   {
-    log.info("Fetching faulty bootstrap segments");
-    return super.fetchBootstrapSegments();
+    return testingConfig.getCoordinatorClientConfig().getMinSegmentHandoffDelay();
   }
 }
