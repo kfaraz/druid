@@ -4640,7 +4640,7 @@ public abstract class SeekableStreamSupervisor<PartitionIdType, SequenceOffsetTy
    */
   protected LagStats aggregatePartitionLags(Map<PartitionIdType, Long> partitionLags)
   {
-    return spec.getSpec().getIOConfig().getLagAggregator().aggregate(partitionLags);
+    return spec.getIoConfig().getLagAggregator().aggregate(partitionLags);
   }
 
   /**
