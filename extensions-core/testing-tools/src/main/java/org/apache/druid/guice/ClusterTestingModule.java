@@ -36,7 +36,7 @@ import org.apache.druid.initialization.DruidModule;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.metadata.IndexerSQLMetadataStorageCoordinator;
 import org.apache.druid.rpc.indexing.OverlordClient;
-import org.apache.druid.testing.cluster.TaskClusterTestingConfig;
+import org.apache.druid.testing.cluster.ClusterTestingTaskConfig;
 import org.apache.druid.testing.cluster.overlord.FaultyLagAggregator;
 import org.apache.druid.testing.cluster.overlord.FaultyMetadataStorageCoordinator;
 import org.apache.druid.testing.cluster.task.FaultyCoordinatorClient;
@@ -82,8 +82,8 @@ public class ClusterTestingModule implements DruidModule
 
     if (roles.equals(Set.of(NodeRole.PEON))) {
       // If this is a Peon, bind faulty clients for Coordinator, Overlord and task actions
-      binder.bind(TaskClusterTestingConfig.class)
-            .toProvider(TaskClusterTestingConfigProvider.class)
+      binder.bind(ClusterTestingTaskConfig.class)
+            .toProvider(TestConfigProvider.class)
             .in(LazySingleton.class);
 
       binder.bind(CoordinatorClient.class)
@@ -96,6 +96,7 @@ public class ClusterTestingModule implements DruidModule
             .to(FaultyRemoteTaskActionClientFactory.class)
             .in(LazySingleton.class);
     } else if (roles.contains(NodeRole.OVERLORD)) {
+      // If this is the Overlord, bind a faulty storage coordinator
       binder.bind(IndexerSQLMetadataStorageCoordinator.class)
             .to(FaultyMetadataStorageCoordinator.class)
             .in(ManageLifecycle.class);
@@ -111,13 +112,13 @@ public class ClusterTestingModule implements DruidModule
     );
   }
 
-  private static class TaskClusterTestingConfigProvider implements Provider<TaskClusterTestingConfig>
+  private static class TestConfigProvider implements Provider<ClusterTestingTaskConfig>
   {
     private final Task task;
     private final ObjectMapper mapper;
 
     @Inject
-    public TaskClusterTestingConfigProvider(Task task, ObjectMapper mapper)
+    public TestConfigProvider(Task task, ObjectMapper mapper)
     {
       this.task = task;
       this.mapper = mapper;
@@ -125,15 +126,15 @@ public class ClusterTestingModule implements DruidModule
 
 
     @Override
-    public TaskClusterTestingConfig get()
+    public ClusterTestingTaskConfig get()
     {
       try {
         final Map<String, Object> configAsMap = task.getContextValue("clusterTesting");
         final String json = mapper.writeValueAsString(configAsMap);
-        final TaskClusterTestingConfig testingConfig = mapper.readValue(json, TaskClusterTestingConfig.class);
+        final ClusterTestingTaskConfig testingConfig = mapper.readValue(json, ClusterTestingTaskConfig.class);
         log.info("Running peon in cluster testing mode with config[%s].", testingConfig);
 
-        return Configs.valueOrDefault(testingConfig, new TaskClusterTestingConfig(null));
+        return Configs.valueOrDefault(testingConfig, new ClusterTestingTaskConfig(null, null));
       }
       catch (IOException e) {
         throw new RuntimeException(e);

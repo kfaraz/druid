@@ -31,13 +31,13 @@ import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.rpc.ServiceClientFactory;
 import org.apache.druid.rpc.ServiceLocator;
-import org.apache.druid.testing.cluster.TaskClusterTestingConfig;
+import org.apache.druid.testing.cluster.ClusterTestingTaskConfig;
 
 public class FaultyRemoteTaskActionClientFactory extends RemoteTaskActionClientFactory
 {
   private static final Logger log = new Logger(FaultyRemoteTaskActionClientFactory.class);
 
-  private final TaskClusterTestingConfig config;
+  private final ClusterTestingTaskConfig config;
 
   @Inject
   public FaultyRemoteTaskActionClientFactory(
@@ -45,7 +45,7 @@ public class FaultyRemoteTaskActionClientFactory extends RemoteTaskActionClientF
       @EscalatedGlobal final ServiceClientFactory clientFactory,
       @IndexingService final ServiceLocator serviceLocator,
       RetryPolicyConfig retryPolicyConfig,
-      TaskClusterTestingConfig config
+      ClusterTestingTaskConfig config
   )
   {
     super(

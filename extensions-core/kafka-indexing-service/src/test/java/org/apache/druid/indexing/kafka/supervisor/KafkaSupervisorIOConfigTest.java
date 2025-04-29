@@ -292,9 +292,9 @@ public class KafkaSupervisorIOConfigTest
             mapper.readValue(
                 jsonStr,
                 KafkaSupervisorIOConfig.class
-                )
-            ), KafkaSupervisorIOConfig.class
-        );
+            )
+        ), KafkaSupervisorIOConfig.class
+    );
   }
 
   @Test
