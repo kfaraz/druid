@@ -38,7 +38,7 @@ public class SegmentsMetadataManagerConfig
   private final Period pollDuration;
 
   @JsonProperty
-  private final SegmentMetadataCache.UsageMode useCache;
+  private final SegmentMetadataCache.UsageMode useIncrementalCache;
 
   @JsonProperty
   private final UnusedSegmentKillerConfig killUnused;
@@ -46,24 +46,26 @@ public class SegmentsMetadataManagerConfig
   @JsonCreator
   public SegmentsMetadataManagerConfig(
       @JsonProperty("pollDuration") Period pollDuration,
-      @JsonProperty("useCache") SegmentMetadataCache.UsageMode useCache,
+      @JsonProperty("useIncrementalCache") SegmentMetadataCache.UsageMode useIncrementalCache,
       @JsonProperty("killUnused") UnusedSegmentKillerConfig killUnused
   )
   {
     this.pollDuration = Configs.valueOrDefault(pollDuration, Period.minutes(1));
-    this.useCache = Configs.valueOrDefault(useCache, SegmentMetadataCache.UsageMode.NEVER);
+    this.useIncrementalCache = Configs.valueOrDefault(useIncrementalCache, SegmentMetadataCache.UsageMode.NEVER);
     this.killUnused = Configs.valueOrDefault(killUnused, new UnusedSegmentKillerConfig(null, null));
-
-    if (this.killUnused.isEnabled() && this.useCache == SegmentMetadataCache.UsageMode.NEVER) {
+    if (this.killUnused.isEnabled() && this.useIncrementalCache == SegmentMetadataCache.UsageMode.NEVER) {
       throw InvalidInput.exception(
           "Segment metadata cache must be enabled to allow killing of unused segments."
       );
     }
   }
 
-  public SegmentMetadataCache.UsageMode getCacheMode()
+  /**
+   * Usage mode of the incremental cache.
+   */
+  public SegmentMetadataCache.UsageMode getCacheUsageMode()
   {
-    return useCache;
+    return useIncrementalCache;
   }
 
   public Period getPollDuration()
