@@ -253,22 +253,6 @@ class CachedSegmentMetadataTransaction implements SegmentMetadataTransaction
   }
 
   @Override
-  public List<DataSegment> findUnusedSegmentsWithExactInterval(
-      Interval interval,
-      DateTime maxUpdatedTime,
-      int limit
-  )
-  {
-    return delegate.findUnusedSegmentsWithExactInterval(interval, maxUpdatedTime, limit);
-  }
-
-  @Override
-  public List<Interval> findUnusedSegmentIntervals(int limit)
-  {
-    return delegate.findUnusedSegmentIntervals(limit);
-  }
-
-  @Override
   public DataSegment findSegment(SegmentId segmentId)
   {
     // Try to find used segment in cache

@@ -53,15 +53,6 @@ public interface IndexerMetadataStorageCoordinator
   Set<String> retrieveAllDatasourceNames();
 
   /**
-   * Retrieves intervals of the specified datasource that contain any unused segments.
-   * There is no guarantee on the order of intervals in the list or on whether
-   * the limited list contains the earliest or latest intervals of the datasource.
-   *
-   * @return Unsorted list of unused segment intervals containing upto {@code limit} entries.
-   */
-  List<Interval> retrieveUnusedSegmentIntervals(String dataSource, int limit);
-
-  /**
    * Retrieves all published segments that have partial or complete overlap with
    * the given interval and are marked as used.
    */
@@ -578,6 +569,15 @@ public interface IndexerMetadataStorageCoordinator
       int limit,
       DateTime maxUsedStatusLastUpdatedTime
   );
+
+  /**
+   * Retrieves intervals of the specified datasource that contain any unused segments.
+   * There is no guarantee on the order of intervals in the list or on whether
+   * the limited list contains the earliest or latest intervals of the datasource.
+   *
+   * @return Unsorted list of unused segment intervals containing upto {@code limit} entries.
+   */
+  List<Interval> retrieveUnusedSegmentIntervals(String dataSource, int limit);
 
   /**
    * Returns the number of segment entries in the database whose state was changed as the result of this call (that is,

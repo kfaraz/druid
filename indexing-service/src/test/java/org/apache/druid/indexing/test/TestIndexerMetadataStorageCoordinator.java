@@ -104,12 +104,6 @@ public class TestIndexerMetadataStorageCoordinator implements IndexerMetadataSto
   }
 
   @Override
-  public Set<String> retrieveAllDatasourceNames()
-  {
-    return Set.of();
-  }
-
-  @Override
   public Set<DataSegment> retrieveAllUsedSegments(String dataSource, Segments visibility)
   {
     return Set.copyOf(

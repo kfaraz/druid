@@ -94,29 +94,6 @@ public interface SegmentMetadataReadTransaction
       @Nullable DateTime maxUpdatedTime
   );
 
-  /**
-   * Retrieves unused segments that exactly match the given interval.
-   *
-   * @param interval       Returned segments must exactly match this interval.
-   * @param maxUpdatedTime Returned segments must have a {@code used_status_last_updated}
-   *                       which is either null or earlier than this value.
-   * @param limit          Maximum number of segments to return
-   */
-  List<DataSegment> findUnusedSegmentsWithExactInterval(
-      Interval interval,
-      DateTime maxUpdatedTime,
-      int limit
-  );
-
-  /**
-   * Retrieves intervals that contain any unused segment. There is no guarantee
-   * on the order of intervals in the list or on whether the limited list contains
-   * the earliest or latest intervals present in the datasource.
-   *
-   * @return Unsorted list of unused segment intervals containing upto {@code limit} entries.
-   */
-  List<Interval> findUnusedSegmentIntervals(int limit);
-
   @FunctionalInterface
   interface Callback<T>
   {
