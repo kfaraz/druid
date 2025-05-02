@@ -36,24 +36,10 @@ import java.util.Set;
 public interface DatasourceSegmentMetadataReader
 {
   /**
-   * Retrieves the IDs of segments (out of the given set) which already exist in
-   * the metadata store.
-   */
-  Set<String> findExistingSegmentIds(Set<SegmentId> segments);
-
-  /**
    * Retrieves IDs of used segments that belong to the datasource and overlap
    * the given interval.
    */
   Set<SegmentId> findUsedSegmentIdsOverlapping(Interval interval);
-
-  /**
-   * Retrieves the ID of the unused segment that has the highest partition
-   * number amongst all unused segments that exactly match the given interval
-   * and version.
-   */
-  @Nullable
-  SegmentId findHighestUnusedSegmentId(Interval interval, String version);
 
   /**
    * Retrieves used segments that overlap with any of the given intervals.

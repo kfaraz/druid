@@ -19,7 +19,6 @@
 
 package org.apache.druid.metadata.segment.cache;
 
-import org.apache.druid.error.DruidException;
 import org.apache.druid.java.util.common.Intervals;
 import org.apache.druid.java.util.common.guava.Comparators;
 import org.apache.druid.metadata.PendingSegmentRecord;
@@ -308,24 +307,12 @@ class HeapMemoryDatasourceSegmentCache extends ReadWriteCache implements AutoClo
   // CACHE READ METHODS
 
   @Override
-  public Set<String> findExistingSegmentIds(Set<SegmentId> segments)
-  {
-    throw DruidException.defensive("Unsupported: Unused segments are not cached");
-  }
-
-  @Override
   public Set<SegmentId> findUsedSegmentIdsOverlapping(Interval interval)
   {
     return findUsedSegmentsPlusOverlappingAnyOf(List.of(interval))
         .stream()
         .map(s -> s.getDataSegment().getId())
         .collect(Collectors.toSet());
-  }
-
-  @Override
-  public SegmentId findHighestUnusedSegmentId(Interval interval, String version)
-  {
-    throw DruidException.defensive("Unsupported: Unused segments are not cached");
   }
 
   @Override

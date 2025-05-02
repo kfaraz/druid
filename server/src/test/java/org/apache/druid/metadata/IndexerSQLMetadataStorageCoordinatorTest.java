@@ -3839,7 +3839,11 @@ public class IndexerSQLMetadataStorageCoordinatorTest extends IndexerSqlMetadata
 
     SegmentId highestUnusedId = transactionFactory.inReadWriteDatasourceTransaction(
         TestDataSource.WIKI,
-        transaction -> transaction.findHighestUnusedSegmentId(Intervals.of("2024/2025"), "v1")
+        transaction -> transaction.noCacheSql().retrieveHighestUnusedSegmentId(
+            TestDataSource.WIKI,
+            Intervals.of("2024/2025"),
+            "v1"
+        )
     );
     Assert.assertEquals(
         unusedSegmentForExactIntervalAndVersion.getId(),

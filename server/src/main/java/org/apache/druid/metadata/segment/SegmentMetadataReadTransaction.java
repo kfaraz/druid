@@ -19,11 +19,10 @@
 
 package org.apache.druid.metadata.segment;
 
+import org.apache.druid.metadata.SqlSegmentsMetadataQuery;
 import org.apache.druid.server.http.DataSegmentPlus;
 import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.timeline.SegmentId;
-import org.joda.time.DateTime;
-import org.joda.time.Interval;
 import org.skife.jdbi.v2.Handle;
 
 import javax.annotation.Nullable;
@@ -45,12 +44,23 @@ public interface SegmentMetadataReadTransaction
   Handle getHandle();
 
   /**
+   * @return SQL tool to read or update the metadata store directly.
+   */
+  SqlSegmentsMetadataQuery noCacheSql();
+
+  /**
    * Completes the transaction by either committing it or rolling it back.
    */
   @Override
   void close();
 
-  // Methods that can be served only by the metadata store since the required info is not cached
+  // Methods that can be served only partially by the cache
+
+  /**
+   * Retrieves the IDs of segments (out of the given set) which already exist in
+   * the metadata store.
+   */
+  Set<String> findExistingSegmentIds(Set<SegmentId> segments);
 
   /**
    * Retrieves the segment for the given segment ID.
@@ -73,25 +83,6 @@ public interface SegmentMetadataReadTransaction
    */
   List<DataSegmentPlus> findSegmentsWithSchema(
       Set<SegmentId> segmentIds
-  );
-
-  /**
-   * Retrieves unused segments that are fully contained within the given interval.
-   *
-   * @param interval       Returned segments must be fully contained within this
-   *                       interval
-   * @param versions       Optional list of segment versions. If passed as null,
-   *                       all segment versions are eligible.
-   * @param limit          Maximum number of segments to return. If passed as null,
-   *                       all segments are returned.
-   * @param maxUpdatedTime Returned segments must have a {@code used_status_last_updated}
-   *                       which is either null or earlier than this value.
-   */
-  List<DataSegment> findUnusedSegments(
-      Interval interval,
-      @Nullable List<String> versions,
-      @Nullable Integer limit,
-      @Nullable DateTime maxUpdatedTime
   );
 
   @FunctionalInterface

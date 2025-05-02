@@ -48,7 +48,6 @@ import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.jackson.JacksonUtils;
 import org.apache.druid.java.util.common.lifecycle.LifecycleStart;
 import org.apache.druid.java.util.common.logger.Logger;
-import org.apache.druid.metadata.segment.DatasourceSegmentMetadataWriter;
 import org.apache.druid.metadata.segment.SegmentMetadataReadTransaction;
 import org.apache.druid.metadata.segment.SegmentMetadataTransaction;
 import org.apache.druid.metadata.segment.SegmentMetadataTransactionFactory;
@@ -233,7 +232,8 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
   {
     final List<DataSegment> matchingSegments = inReadOnlyDatasourceTransaction(
         dataSource,
-        transaction -> transaction.findUnusedSegments(
+        transaction -> transaction.noCacheSql().findUnusedSegments(
+            dataSource,
             interval,
             versions,
             limit,
@@ -1600,7 +1600,8 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     }
 
     // If yes, try to compute allocated partition num using the max unused segment shard spec
-    SegmentId unusedMaxId = transaction.findHighestUnusedSegmentId(
+    SegmentId unusedMaxId = transaction.noCacheSql().retrieveHighestUnusedSegmentId(
+        allocatedId.getDataSource(),
         allocatedId.getInterval(),
         allocatedId.getVersion()
     );
@@ -1643,7 +1644,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
   {
     return inReadWriteDatasourceTransaction(
         dataSource,
-        DatasourceSegmentMetadataWriter::deleteAllPendingSegments
+        SegmentMetadataTransaction::deleteAllPendingSegments
     );
   }
 

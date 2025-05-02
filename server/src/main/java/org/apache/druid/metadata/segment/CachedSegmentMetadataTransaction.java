@@ -22,6 +22,7 @@ package org.apache.druid.metadata.segment;
 import org.apache.druid.discovery.DruidLeaderSelector;
 import org.apache.druid.error.DruidException;
 import org.apache.druid.metadata.PendingSegmentRecord;
+import org.apache.druid.metadata.SqlSegmentsMetadataQuery;
 import org.apache.druid.metadata.segment.cache.DatasourceSegmentCache;
 import org.apache.druid.segment.realtime.appenderator.SegmentIdWithShardSpec;
 import org.apache.druid.server.http.DataSegmentPlus;
@@ -119,6 +120,12 @@ class CachedSegmentMetadataTransaction implements SegmentMetadataTransaction
   }
 
   @Override
+  public SqlSegmentsMetadataQuery noCacheSql()
+  {
+    return delegate.noCacheSql();
+  }
+
+  @Override
   public void setRollbackOnly()
   {
     isRollingBack = true;
@@ -188,12 +195,6 @@ class CachedSegmentMetadataTransaction implements SegmentMetadataTransaction
   }
 
   @Override
-  public SegmentId findHighestUnusedSegmentId(Interval interval, String version)
-  {
-    return delegate.findHighestUnusedSegmentId(interval, version);
-  }
-
-  @Override
   public List<DataSegmentPlus> findSegments(Set<SegmentId> segmentIds)
   {
     final Set<SegmentId> remainingIdsToFind = new HashSet<>(segmentIds);
@@ -239,17 +240,6 @@ class CachedSegmentMetadataTransaction implements SegmentMetadataTransaction
   public Set<DataSegmentPlus> findUsedSegmentsPlusOverlappingAnyOf(List<Interval> intervals)
   {
     return performReadAction(reader -> reader.findUsedSegmentsPlusOverlappingAnyOf(intervals));
-  }
-
-  @Override
-  public List<DataSegment> findUnusedSegments(
-      Interval interval,
-      @Nullable List<String> versions,
-      @Nullable Integer limit,
-      @Nullable DateTime maxUpdatedTime
-  )
-  {
-    return delegate.findUnusedSegments(interval, versions, limit, maxUpdatedTime);
   }
 
   @Override

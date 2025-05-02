@@ -184,8 +184,9 @@ public class SqlSegmentsMetadataQuery
   }
 
   /**
-   * Determines the highest ID amongst unused segments for the given datasource,
-   * interval and version.
+   * Retrieves the ID of the unused segment that has the highest partition
+   * number amongst all unused segments that exactly match the given interval
+   * and version.
    *
    * @return null if no unused segment exists for the given parameters.
    */
@@ -280,6 +281,37 @@ public class SqlSegmentsMetadataQuery
     }
     catch (IOException e) {
       throw new RuntimeException(e);
+    }
+  }
+
+  /**
+   * Retrieves unused segments that are fully contained within the given interval.
+   *
+   * @param interval       Returned segments must be fully contained within this
+   *                       interval
+   * @param versions       Optional list of segment versions. If passed as null,
+   *                       all segment versions are eligible.
+   * @param limit          Maximum number of segments to return. If passed as null,
+   *                       all segments are returned.
+   * @param maxUpdatedTime Returned segments must have a {@code used_status_last_updated}
+   *                       which is either null or earlier than this value.
+   */
+  public List<DataSegment> findUnusedSegments(
+      String dataSource,
+      Interval interval,
+      @Nullable List<String> versions,
+      @Nullable Integer limit,
+      @Nullable DateTime maxUpdatedTime
+  )
+  {
+    try (
+        final CloseableIterator<DataSegment> iterator =
+            retrieveUnusedSegments(dataSource, List.of(interval), versions, limit, null, null, maxUpdatedTime)
+    ) {
+      return ImmutableList.copyOf(iterator);
+    }
+    catch (IOException e) {
+      throw DruidException.defensive(e, "Error while reading unused segments");
     }
   }
 
