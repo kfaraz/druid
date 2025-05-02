@@ -63,6 +63,8 @@ import java.util.concurrent.atomic.AtomicReference;
  * Deletes unused segments from metadata store and the deep storage.
  * <p>
  * TODO:
+ *  - clean up the logging of deleted paths in DataSegmentKiller
+ *  - identify referenced items and log them or emit metric or something
  *  - verify that task finishes instantly if lock cannot be acquired
  *  - or if there are no eligible unused segments for that datasource-interval
  *

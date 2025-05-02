@@ -162,7 +162,7 @@ public class UnusedSegmentsKillerTest
     Assert.assertTrue(killExecutor.hasPendingTasks());
 
     finishQueuedKillJobs();
-    emitter.verifyValue(UnusedSegmentsKiller.Metric.PROCESSED_KILL_JOBS, 0L);
+    emitter.verifyNotEmitted(UnusedSegmentsKiller.Metric.PROCESSED_KILL_JOBS);
     Assert.assertFalse(killExecutor.hasPendingTasks());
   }
 
@@ -181,7 +181,7 @@ public class UnusedSegmentsKillerTest
     emitter.verifyNotEmitted(UnusedSegmentsKiller.Metric.PROCESSED_KILL_JOBS);
 
     finishQueuedKillJobs();
-    emitter.verifyValue(UnusedSegmentsKiller.Metric.PROCESSED_KILL_JOBS, 10L);
+    emitter.verifyEmitted(UnusedSegmentsKiller.Metric.PROCESSED_KILL_JOBS, 10);
 
     emitter.verifyEmitted(UnusedSegmentsKiller.Metric.QUEUE_PROCESS_TIME, 1);
     emitter.verifyEmitted(TaskMetrics.RUN_DURATION, 10);
@@ -261,7 +261,7 @@ public class UnusedSegmentsKillerTest
 
     // Verify that tasks are launched but no segment is killed
     emitter.verifyValue(UnusedSegmentsKiller.Metric.UNUSED_SEGMENT_INTERVALS, 10L);
-    emitter.verifyValue(UnusedSegmentsKiller.Metric.PROCESSED_KILL_JOBS, 10L);
+    emitter.verifyEmitted(UnusedSegmentsKiller.Metric.PROCESSED_KILL_JOBS, 10);
     emitter.verifyEmitted(TaskMetrics.RUN_DURATION, 10);
 
     emitter.verifySum(TaskMetrics.NUKED_SEGMENTS, 0L);

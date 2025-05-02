@@ -427,9 +427,9 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
       );
     }
 
-    // Identify the segments whose load specs are being used by other segments too
     // TODO: track the referenced segments here
-
+    //  Identify the segments whose load specs are being used by other segments too
+    //  and maybe log them or emit metrics for them
 
     // Filter using the used segment load specs as segment upgrades predate the above task action
     return parentIdToUnusedSegments.values()

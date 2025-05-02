@@ -262,7 +262,7 @@ public class CliOverlord extends ServerRunnable
             binder.bind(ShuffleClient.class).toProvider(Providers.of(null));
             binder.bind(ChatHandlerProvider.class).toProvider(Providers.of(new NoopChatHandlerProvider()));
 
-            CliPeon.bindPeonDataSegmentKiller(binder);
+            CliPeon.bindDataSegmentKiller(binder);
 
             PolyBind.createChoice(
                 binder,
