@@ -35,9 +35,12 @@ import org.apache.druid.segment.writeout.TmpFileSegmentWriteOutMediumFactory;
 
 import java.io.OutputStream;
 
+/**
+ * Wrapper over {@link TaskToolbox} used for embedded kill tasks launched by
+ * {@link UnusedSegmentsKiller}.
+ */
 public class KillTaskToolbox
 {
-
   /**
    * Creates a {@link TaskToolbox} with just enough dependencies to make the
    * embedded kill tasks work in {@link UnusedSegmentsKiller}.

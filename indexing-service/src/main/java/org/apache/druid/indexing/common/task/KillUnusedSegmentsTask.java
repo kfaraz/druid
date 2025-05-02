@@ -299,6 +299,8 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
 
       // TODO: have segment killer return the killed paths so that we can log
       //  them only if needed or add them to the kill task report instead
+      //  Having them in the Kill task report is fine, but how will it work for embedded kill task
+      //  since it is not going to do anything with the reports at all
 
       numBatchesProcessed++;
       numSegmentsKilled += segmentsToBeKilled.size();
