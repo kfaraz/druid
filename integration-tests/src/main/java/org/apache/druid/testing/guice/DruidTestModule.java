@@ -20,6 +20,7 @@
 package org.apache.druid.testing.guice;
 
 import com.google.inject.Binder;
+import com.google.inject.Inject;
 import com.google.inject.Module;
 import com.google.inject.Provides;
 import com.google.inject.multibindings.Multibinder;
@@ -40,10 +41,26 @@ import org.apache.druid.testing.IntegrationTestingConfig;
 import org.apache.druid.testing.IntegrationTestingConfigProvider;
 import org.apache.druid.testing.IntegrationTestingCuratorConfig;
 
+import java.net.URL;
+import java.util.Properties;
+
 /**
  */
 public class DruidTestModule implements Module
 {
+  private Properties properties;
+
+  @Inject
+  public void setProperties(Properties properties)
+  {
+    this.properties = properties;
+    if (useEmbeddedCluster()) {
+      final URL trustStoreUrl = DruidTestModule.class.getClassLoader().getResource("truststore.jks");
+      properties.setProperty("druid.emitter.http.ssl.trustStorePath", trustStoreUrl.getPath());
+      properties.setProperty("druid.client.https.trustStorePath", trustStoreUrl.getPath());
+    }
+  }
+
   @Override
   public void configure(Binder binder)
   {
@@ -85,5 +102,11 @@ public class DruidTestModule implements Module
     // Disabling metric emission since no useful metrics are emitted by the integration testing client
     // Use a LoggingEmitter here if needed in the future
     return new ServiceEmitter("", "", new NoopEmitter());
+  }
+
+  private boolean useEmbeddedCluster()
+  {
+    final String testConfigType = properties.getProperty("druid.test.config.type", "embeddedCluster");
+    return "embeddedCluster".equals(testConfigType);
   }
 }

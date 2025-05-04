@@ -23,6 +23,7 @@ import com.google.common.collect.ImmutableMap;
 import org.apache.druid.indexer.partitions.DynamicPartitionsSpec;
 import org.apache.druid.java.util.common.Pair;
 import org.apache.druid.java.util.common.StringUtils;
+import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.testing.guice.DruidTestModuleFactory;
 import org.apache.druid.tests.TestNGGroup;
 import org.testng.annotations.Guice;
@@ -37,6 +38,8 @@ import java.util.function.Function;
 @Guice(moduleFactory = DruidTestModuleFactory.class)
 public class ITOverwriteBatchIndexTest extends AbstractITBatchIndexTest
 {
+  private static final Logger log = new Logger(ITOverwriteBatchIndexTest.class);
+
   private static final String INDEX_TASK = "/indexer/wikipedia_local_input_source_index_task.json";
   private static final String INDEX_QUERIES_ALL_INGESTION_RESOURCE = "/indexer/wikipedia_index_queries.json";
   private static final String INDEX_QUERIES_WITH_DROP_INGESTION_RESOURCE = "/indexer/wikipedia_index_queries_only_data3.json";
@@ -121,7 +124,7 @@ public class ITOverwriteBatchIndexTest extends AbstractITBatchIndexTest
         spec = StringUtils.replace(
             spec,
             "%%INPUT_SOURCE_BASE_DIR%%",
-            "/resources/data/batch_index" + INPUT_FORMAT_DETAILS.getFolderSuffix()
+            getInputSourceBaseDir("/data/batch_index" + INPUT_FORMAT_DETAILS.getFolderSuffix())
         );
         spec = StringUtils.replace(
             spec,
