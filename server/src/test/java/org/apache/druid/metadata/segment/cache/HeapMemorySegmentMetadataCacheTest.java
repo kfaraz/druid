@@ -99,7 +99,7 @@ public class HeapMemorySegmentMetadataCacheTest
       throw new ISE("Test target has already been initialized with caching[%s]", cache.isEnabled());
     }
     final SegmentsMetadataManagerConfig metadataManagerConfig
-        = new SegmentsMetadataManagerConfig(null, cacheMode);
+        = new SegmentsMetadataManagerConfig(null, cacheMode, null);
     cache = new HeapMemorySegmentMetadataCache(
         TestHelper.JSON_MAPPER,
         () -> metadataManagerConfig,

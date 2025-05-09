@@ -151,6 +151,17 @@ public interface IndexerMetadataStorageCoordinator
   );
 
   /**
+   * Retrieves unused segments from the metadata store that match the given
+   * interval exactly.
+   */
+  List<DataSegment> retrieveUnusedSegmentsWithExactInterval(
+      String dataSource,
+      Interval interval,
+      DateTime maxUpdatedTime,
+      int limit
+  );
+
+  /**
    * Retrieves segments for the given IDs, regardless of their visibility
    * (visible, overshadowed or unused).
    */
@@ -456,6 +467,9 @@ public interface IndexerMetadataStorageCoordinator
 
   void updateSegmentMetadata(Set<DataSegment> segments);
 
+  /**
+   * Deletes unused segments from the metadata store.
+   */
   void deleteSegments(Set<DataSegment> segments);
 
   /**
@@ -555,6 +569,15 @@ public interface IndexerMetadataStorageCoordinator
       int limit,
       DateTime maxUsedStatusLastUpdatedTime
   );
+
+  /**
+   * Retrieves intervals of the specified datasource that contain any unused segments.
+   * There is no guarantee on the order of intervals in the list or on whether
+   * the limited list contains the earliest or latest intervals of the datasource.
+   *
+   * @return Unsorted list of unused segment intervals containing upto {@code limit} entries.
+   */
+  List<Interval> retrieveUnusedSegmentIntervals(String dataSource, int limit);
 
   /**
    * Returns the number of segment entries in the database whose state was changed as the result of this call (that is,

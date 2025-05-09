@@ -212,7 +212,7 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
     int nextBatchSize = computeNextBatchSize(numSegmentsKilled);
     @Nullable Integer numTotalBatches = getNumTotalBatches();
     List<DataSegment> unusedSegments;
-    LOG.info(
+    logInfo(
         "Starting kill for datasource[%s] in interval[%s] and versions[%s] with batchSize[%d], up to limit[%d]"
         + " segments before maxUsedStatusLastUpdatedTime[%s] will be deleted%s",
         getDataSource(), getInterval(), getVersions(), batchSize, limit, maxUsedStatusLastUpdatedTime,
@@ -236,9 +236,7 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
         break;
       }
 
-      unusedSegments = toolbox.getTaskActionClient().submit(
-          new RetrieveUnusedSegmentsAction(getDataSource(), getInterval(), getVersions(), nextBatchSize, maxUsedStatusLastUpdatedTime)
-      );
+      unusedSegments = fetchNextBatchOfUnusedSegments(toolbox, nextBatchSize);
 
       // Fetch locks each time as a revokal could have occurred in between batches
       final NavigableMap<DateTime, List<TaskLock>> taskLockMap
@@ -283,6 +281,7 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
 
       // Nuke Segments
       taskActionClient.submit(new SegmentNukeAction(new HashSet<>(unusedSegments)));
+      emitMetric(toolbox.getEmitter(), TaskMetrics.NUKED_SEGMENTS, unusedSegments.size());
 
       // Determine segments to be killed
       final List<DataSegment> segmentsToBeKilled
@@ -296,16 +295,21 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
       );
 
       toolbox.getDataSegmentKiller().kill(segmentsToBeKilled);
+      emitMetric(toolbox.getEmitter(), TaskMetrics.SEGMENTS_DELETED_FROM_DEEPSTORE, segmentsToBeKilled.size());
+
+      // TODO: have segment killer return the killed paths so that we can log
+      //  them only if needed or add them to the kill task report instead
+
       numBatchesProcessed++;
       numSegmentsKilled += segmentsToBeKilled.size();
 
-      LOG.info("Processed [%d] batches for kill task[%s].", numBatchesProcessed, getId());
+      logInfo("Processed [%d] batches for kill task[%s].", numBatchesProcessed, getId());
 
       nextBatchSize = computeNextBatchSize(numSegmentsKilled);
     } while (!unusedSegments.isEmpty() && (null == numTotalBatches || numBatchesProcessed < numTotalBatches));
 
     final String taskId = getId();
-    LOG.info(
+    logInfo(
         "Finished kill task[%s] for dataSource[%s] and interval[%s]."
         + " Deleted total [%d] unused segments in [%d] batches.",
         taskId, getDataSource(), getInterval(), numSegmentsKilled, numBatchesProcessed
@@ -322,9 +326,8 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
   }
 
   @JsonIgnore
-  @VisibleForTesting
   @Nullable
-  Integer getNumTotalBatches()
+  protected Integer getNumTotalBatches()
   {
     return null != limit ? (int) Math.ceil((double) limit / batchSize) : null;
   }
@@ -334,6 +337,31 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
   int computeNextBatchSize(int numSegmentsKilled)
   {
     return null != limit ? Math.min(limit - numSegmentsKilled, batchSize) : batchSize;
+  }
+
+  /**
+   * Fetches the next batch of unused segments that are eligible for kill.
+   */
+  protected List<DataSegment> fetchNextBatchOfUnusedSegments(TaskToolbox toolbox, int nextBatchSize) throws IOException
+  {
+    return toolbox.getTaskActionClient().submit(
+        new RetrieveUnusedSegmentsAction(
+            getDataSource(),
+            getInterval(),
+            getVersions(),
+            nextBatchSize,
+            maxUsedStatusLastUpdatedTime
+        )
+    );
+  }
+
+  /**
+   * Logs the given info message. Exposed here to allow embedded kill tasks to
+   * suppress info logs.
+   */
+  protected void logInfo(String message, Object... args)
+  {
+    LOG.info(message, args);
   }
 
   private NavigableMap<DateTime, List<TaskLock>> getNonRevokedTaskLockMap(TaskActionClient client) throws IOException
@@ -385,6 +413,7 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
         response.getUpgradedToSegmentIds().forEach((parent, children) -> {
           if (!CollectionUtils.isNullOrEmpty(children)) {
             // Do not kill segment if its parent or any of its siblings still exist in metadata store
+            // TODO: track the referenced segments here
             parentIdToUnusedSegments.remove(parent);
           }
         });
@@ -397,6 +426,10 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
           + " Overlord may be on an older version."
       );
     }
+
+    // TODO: track the referenced segments here
+    //  Identify the segments whose load specs are being used by other segments too
+    //  and maybe log them or emit metrics for them
 
     // Filter using the used segment load specs as segment upgrades predate the above task action
     return parentIdToUnusedSegments.values()

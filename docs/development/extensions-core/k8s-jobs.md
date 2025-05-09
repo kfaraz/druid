@@ -763,6 +763,17 @@ When configuring the `druid.indexer.runner.k8sTaskPodNamePrefix`, you should not
 - The prefix will be converted to lowercase.
 - All running tasks must be stopped during configuration. Failure to do so will cause the Overlord to lose track of running tasks, and re-launch them. This may lead to duplicate data and possibly metadata inconsistency issues.
 
+##### Differentiating Task Pods Created From Multiple Namespaces
+
+When we have task pods started by Overlord servers of different Druid clusters, running in different K8S namespaces, it will be difficult to tell which task pods are being started by which overlord or Druid cluster. You can specify a task name prefix, `druid.indexer.runner.k8sTaskPodNamePrefix`, to apply your specified prefix to all task pods created by your cluster.
+
+After configuration, you can witness the change from `coordinatorissuedcompactdataso-0e74d5132781cc950eecf04--1-vbx6t` to `yourtaskprefix-0e74d5132781cc950eecf04--1-vbx6t` by either doing `kubectl get pods` or by viewing the "Location" column under the web console.
+
+When configuring the `druid.indexer.runner.k8sTaskPodNamePrefix`, you should note that:
+- The prefix will cut off at 30 characters, as the task pod names must respect a character limit of 63 in Kubernetes.
+- Special characters `: - . _` will be ignored.
+- The prefix will be converted to lowercase.
+
 ##### Dealing with ZooKeeper Problems
 
 Ensure that when you are running task pods in another namespace, your task pods are able to communicate with ZooKeeper which might be deployed in the same namespace with overlord. If you are using custom pod templates as described below, you can configure `druid.zk.service.host` to your tasks.

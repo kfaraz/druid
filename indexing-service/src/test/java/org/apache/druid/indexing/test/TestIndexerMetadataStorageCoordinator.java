@@ -57,6 +57,29 @@ public class TestIndexerMetadataStorageCoordinator implements IndexerMetadataSto
   private int deleteSegmentsCount = 0;
 
   @Override
+  public Set<String> retrieveAllDatasourceNames()
+  {
+    return Set.of();
+  }
+
+  @Override
+  public List<Interval> retrieveUnusedSegmentIntervals(String dataSource, int limit)
+  {
+    return List.of();
+  }
+
+  @Override
+  public List<DataSegment> retrieveUnusedSegmentsWithExactInterval(
+      String dataSource,
+      Interval interval,
+      DateTime maxUpdatedTime,
+      int limit
+  )
+  {
+    return List.of();
+  }
+
+  @Override
   public DataSourceMetadata retrieveDataSourceMetadata(String dataSource)
   {
     throw new UnsupportedOperationException();
@@ -78,12 +101,6 @@ public class TestIndexerMetadataStorageCoordinator implements IndexerMetadataSto
   public boolean insertDataSourceMetadata(String dataSource, DataSourceMetadata dataSourceMetadata)
   {
     return false;
-  }
-
-  @Override
-  public Set<String> retrieveAllDatasourceNames()
-  {
-    return Set.of();
   }
 
   @Override
