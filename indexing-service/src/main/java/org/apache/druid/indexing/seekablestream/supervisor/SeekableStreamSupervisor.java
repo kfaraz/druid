@@ -98,6 +98,7 @@ import org.apache.druid.query.ordering.StringComparators;
 import org.apache.druid.segment.incremental.ParseExceptionReport;
 import org.apache.druid.segment.incremental.RowIngestionMetersFactory;
 import org.apache.druid.segment.indexing.DataSchema;
+import org.apache.druid.utils.CollectionUtils;
 import org.joda.time.DateTime;
 import org.joda.time.Duration;
 
@@ -284,6 +285,15 @@ public abstract class SeekableStreamSupervisor<PartitionIdType, SequenceOffsetTy
     {
       return baseSequenceName;
     }
+
+    @Override
+    public String toString()
+    {
+      return "TaskGroup{" +
+             "groupId=" + groupId +
+             ", tasks=" + tasks +
+             '}';
+    }
   }
 
   private class TaskData
@@ -462,7 +472,7 @@ public abstract class SeekableStreamSupervisor<PartitionIdType, SequenceOffsetTy
               log.info(
                   "Skipping DynamicAllocationTasksNotice execution for datasource [%s] because following tasks are pending [%s]",
                   dataSource,
-                  pendingCompletionTaskGroups
+                  list
               );
               return;
             }
@@ -1710,7 +1720,7 @@ public abstract class SeekableStreamSupervisor<PartitionIdType, SequenceOffsetTy
     }
     catch (Exception e) {
       stateManager.recordThrowableEvent(e);
-      log.warn(e, "Exception in supervisor run loop for dataSource [%s]", dataSource);
+      log.makeAlert(e, "Exception in supervisor run loop for dataSource [%s]", dataSource).emit();
     }
     finally {
       stateManager.markRunFinished();
@@ -4300,24 +4310,22 @@ public abstract class SeekableStreamSupervisor<PartitionIdType, SequenceOffsetTy
   }
 
   /**
-   * Get all active tasks from metadata storage
+   * Get all active tasks either from memory or metadata store, if not cached.
    *
    * @return map from taskId to Task
    */
   private Map<String, Task> getActiveTaskMap()
   {
-    final ImmutableMap.Builder<String, Task> activeTaskMap = ImmutableMap.builder();
     final Optional<TaskQueue> taskQueue = taskMaster.getTaskQueue();
-    final List<Task> tasks;
     if (taskQueue.isPresent()) {
-      tasks = taskQueue.get().getActiveTasksForDatasource(dataSource);
+      return taskQueue.get().getActiveTasksForDatasource(dataSource);
     } else {
-      tasks = taskStorage.getActiveTasksByDatasource(dataSource);
+      return CollectionUtils.toMap(
+          taskStorage.getActiveTasksByDatasource(dataSource),
+          Task::getId,
+          task -> task
+      );
     }
-    for (Task task : tasks) {
-      activeTaskMap.put(task.getId(), task);
-    }
-    return activeTaskMap.build();
   }
 
   /**
@@ -4598,7 +4606,7 @@ public abstract class SeekableStreamSupervisor<PartitionIdType, SequenceOffsetTy
           return;
         }
 
-        LagStats lagStats = computeLags(partitionLags);
+        final LagStats lagStats = aggregatePartitionLags(partitionLags);
         Map<String, Object> metricTags = spec.getContextValue(DruidMetrics.TAGS);
         for (Map.Entry<PartitionIdType, Long> entry : partitionLags.entrySet()) {
           emitter.emit(
@@ -4651,17 +4659,9 @@ public abstract class SeekableStreamSupervisor<PartitionIdType, SequenceOffsetTy
    *
    * @param partitionLags lags per partition
    */
-  protected LagStats computeLags(Map<PartitionIdType, Long> partitionLags)
+  protected LagStats aggregatePartitionLags(Map<PartitionIdType, Long> partitionLags)
   {
-    long maxLag = 0, totalLag = 0, avgLag;
-    for (long lag : partitionLags.values()) {
-      if (lag > maxLag) {
-        maxLag = lag;
-      }
-      totalLag += lag;
-    }
-    avgLag = partitionLags.size() == 0 ? 0 : totalLag / partitionLags.size();
-    return new LagStats(maxLag, totalLag, avgLag);
+    return spec.getIoConfig().getLagAggregator().aggregate(partitionLags);
   }
 
   /**

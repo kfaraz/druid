@@ -34,7 +34,6 @@ import org.apache.druid.data.input.impl.JsonInputFormat;
 import org.apache.druid.data.input.impl.ParseSpec;
 import org.apache.druid.data.input.impl.RegexInputFormat;
 import org.apache.druid.data.input.impl.RegexParseSpec;
-import org.apache.druid.discovery.NodeRole;
 import org.apache.druid.indexer.TaskStatus;
 import org.apache.druid.indexer.report.IngestionStatsAndErrors;
 import org.apache.druid.indexer.report.IngestionStatsAndErrorsTaskReport;
@@ -122,7 +121,7 @@ public abstract class IngestionTestBase extends InitializedNullHandlingTest
 
   @Rule
   public final TestDerbyConnector.DerbyConnectorRule derbyConnectorRule =
-      new TestDerbyConnector.DerbyConnectorRule(CentralizedDatasourceSchemaConfig.create(true));
+      new TestDerbyConnector.DerbyConnectorRule(CentralizedDatasourceSchemaConfig.enabled(true));
 
   protected final TestUtils testUtils = new TestUtils();
   private final ObjectMapper objectMapper = testUtils.getTestObjectMapper();
@@ -136,6 +135,7 @@ public abstract class IngestionTestBase extends InitializedNullHandlingTest
   private SupervisorManager supervisorManager;
   private TestDataSegmentKiller dataSegmentKiller;
   private SegmentMetadataCache segmentMetadataCache;
+  private SegmentSchemaCache segmentSchemaCache;
   protected File reportsFile;
 
   protected IngestionTestBase()
@@ -168,6 +168,7 @@ public abstract class IngestionTestBase extends InitializedNullHandlingTest
         derbyConnectorRule.getConnector()
     );
 
+    segmentSchemaCache = new SegmentSchemaCache();
     storageCoordinator = new IndexerSQLMetadataStorageCoordinator(
         createTransactionFactory(),
         objectMapper,
@@ -176,14 +177,13 @@ public abstract class IngestionTestBase extends InitializedNullHandlingTest
         segmentSchemaManager,
         CentralizedDatasourceSchemaConfig.create()
     );
-    SegmentSchemaCache segmentSchemaCache = new SegmentSchemaCache(NoopServiceEmitter.instance());
     segmentsMetadataManager = new SqlSegmentsMetadataManagerV2(
         segmentMetadataCache,
         segmentSchemaCache,
         derbyConnectorRule.getConnector(),
         () -> new SegmentsMetadataManagerConfig(null, null, null),
         derbyConnectorRule.metadataTablesConfigSupplier(),
-        CentralizedDatasourceSchemaConfig.create(),
+        CentralizedDatasourceSchemaConfig::create,
         NoopServiceEmitter.instance(),
         objectMapper
     );
@@ -290,7 +290,7 @@ public abstract class IngestionTestBase extends InitializedNullHandlingTest
 
   public TaskToolbox createTaskToolbox(TaskConfig config, Task task, SupervisorManager supervisorManager)
   {
-    CentralizedDatasourceSchemaConfig centralizedDatasourceSchemaConfig = CentralizedDatasourceSchemaConfig.create(true);
+    CentralizedDatasourceSchemaConfig centralizedDatasourceSchemaConfig = CentralizedDatasourceSchemaConfig.enabled(true);
     this.supervisorManager = supervisorManager;
     return new TaskToolbox.Builder()
         .config(config)
@@ -325,6 +325,7 @@ public abstract class IngestionTestBase extends InitializedNullHandlingTest
         objectMapper,
         Suppliers.ofInstance(new SegmentsMetadataManagerConfig(Period.millis(10), cacheMode, null)),
         derbyConnectorRule.metadataTablesConfigSupplier(),
+        segmentSchemaCache,
         derbyConnectorRule.getConnector(),
         ScheduledExecutors::fixed,
         NoopServiceEmitter.instance()
@@ -338,7 +339,6 @@ public abstract class IngestionTestBase extends InitializedNullHandlingTest
         derbyConnectorRule.metadataTablesConfigSupplier().get(),
         derbyConnectorRule.getConnector(),
         leaderSelector,
-        Set.of(NodeRole.OVERLORD),
         segmentMetadataCache,
         NoopServiceEmitter.instance()
     );
@@ -501,10 +501,9 @@ public abstract class IngestionTestBase extends InitializedNullHandlingTest
             StringUtils.format("ingestionTestBase-%s.json", System.currentTimeMillis())
         );
 
-        final TaskConfig config = new TaskConfigBuilder()
-            .build();
-        CentralizedDatasourceSchemaConfig centralizedDatasourceSchemaConfig = new CentralizedDatasourceSchemaConfig();
-        centralizedDatasourceSchemaConfig.setEnabled(true);
+        final TaskConfig config = new TaskConfigBuilder().build();
+        CentralizedDatasourceSchemaConfig centralizedDatasourceSchemaConfig
+            = CentralizedDatasourceSchemaConfig.enabled(true);
         final TaskToolbox box = new TaskToolbox.Builder()
             .config(config)
             .taskExecutorNode(new DruidNode("druid/middlemanager", "localhost", false, 8091, null, true, false))

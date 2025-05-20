@@ -21,14 +21,14 @@ package org.apache.druid.msq.test;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import org.apache.druid.msq.dart.controller.sql.DartSqlEngine;
 import org.apache.druid.query.QueryContexts;
 import org.apache.druid.sql.calcite.BaseCalciteQueryTest;
+import org.apache.druid.sql.calcite.NotYetSupported;
+import org.apache.druid.sql.calcite.NotYetSupported.Modes;
 import org.apache.druid.sql.calcite.QueryTestBuilder;
 import org.apache.druid.sql.calcite.SqlTestFrameworkConfig;
+import org.apache.druid.sql.calcite.util.CalciteTests;
 import org.junit.jupiter.api.Test;
-
-import java.util.UUID;
 
 @SqlTestFrameworkConfig.ComponentSupplier(DartComponentSupplier.class)
 public class CalciteDartTest extends BaseCalciteQueryTest
@@ -39,7 +39,6 @@ public class CalciteDartTest extends BaseCalciteQueryTest
     return new QueryTestBuilder(new CalciteTestConfig(true))
         .queryContext(
             ImmutableMap.<String, Object>builder()
-                .put(DartSqlEngine.CTX_DART_QUERY_ID, UUID.randomUUID().toString())
                 .put(QueryContexts.ENABLE_DEBUG, true)
                 .build()
         )
@@ -56,6 +55,7 @@ public class CalciteDartTest extends BaseCalciteQueryTest
         .run();
   }
 
+  @NotYetSupported(Modes.SUPPORT_SORT)
   @Test
   public void testOrderBy()
   {
@@ -74,6 +74,40 @@ public class CalciteDartTest extends BaseCalciteQueryTest
         .run();
   }
 
+  @NotYetSupported(Modes.RESTRICTED_DATASOURCE_SUPPORT)
+  @Test
+  public void testSelectFromRestricted()
+  {
+    testBuilder()
+        .sql("SELECT 2 from restrictedDatasource_m1_is_6")
+        .expectedResults(
+            ImmutableList.of(
+                new Object[]{2}
+            )
+        )
+        .run();
+  }
+
+  @Test
+  public void testSelectFromRestricted_superuser()
+  {
+    testBuilder()
+        .authResult(CalciteTests.SUPER_USER_AUTH_RESULT)
+        .sql("SELECT 2 from restrictedDatasource_m1_is_6")
+        .expectedResults(
+            ImmutableList.of(
+                new Object[]{2},
+                new Object[]{2},
+                new Object[]{2},
+                new Object[]{2},
+                new Object[]{2},
+                new Object[]{2}
+            )
+        )
+        .run();
+  }
+
+  @NotYetSupported(Modes.SUPPORT_SORT)
   @Test
   public void testSelectFromFooLimit2()
   {
@@ -88,6 +122,7 @@ public class CalciteDartTest extends BaseCalciteQueryTest
         .run();
   }
 
+  @NotYetSupported(Modes.SUPPORT_AGGREGATE)
   @Test
   public void testCount()
   {
@@ -172,6 +207,7 @@ public class CalciteDartTest extends BaseCalciteQueryTest
         .run();
   }
 
+  @NotYetSupported(Modes.SUPPORT_AGGREGATE)
   @Test
   public void testGroupBy()
   {
@@ -188,6 +224,7 @@ public class CalciteDartTest extends BaseCalciteQueryTest
         .run();
   }
 
+  @NotYetSupported(Modes.SUPPORT_AGGREGATE)
   @Test
   public void testSubQuery()
   {

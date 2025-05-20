@@ -48,7 +48,7 @@ public class SqlSegmentsMetadataManagerProviderTest
     final TestDerbyConnector connector = derbyConnectorRule.getConnector();
     final SegmentsMetadataManagerConfig config = new SegmentsMetadataManagerConfig(null, null, null);
     final Lifecycle lifecycle = new Lifecycle();
-    final SegmentSchemaCache segmentSchemaCache = new SegmentSchemaCache(new NoopServiceEmitter());
+    final SegmentSchemaCache segmentSchemaCache = new SegmentSchemaCache();
     SqlSegmentsMetadataManagerProvider provider = new SqlSegmentsMetadataManagerProvider(
         NoopSegmentMetadataCache.instance(),
         jsonMapper,
@@ -57,7 +57,7 @@ public class SqlSegmentsMetadataManagerProviderTest
         connector,
         lifecycle,
         segmentSchemaCache,
-        CentralizedDatasourceSchemaConfig.create(),
+        CentralizedDatasourceSchemaConfig::create,
         NoopServiceEmitter.instance()
     );
     SegmentsMetadataManager manager = provider.get();

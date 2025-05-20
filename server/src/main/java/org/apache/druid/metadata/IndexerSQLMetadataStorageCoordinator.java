@@ -209,7 +209,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
   @Override
   public List<Pair<DataSegment, String>> retrieveUsedSegmentsAndCreatedDates(String dataSource, List<Interval> intervals)
   {
-    return inReadWriteDatasourceTransaction(
+    return inReadOnlyDatasourceTransaction(
         dataSource,
         transaction -> transaction.findUsedSegmentsPlusOverlappingAnyOf(intervals)
                                   .stream()
@@ -862,7 +862,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
       boolean reduceMetadataIO
   )
   {
-    return inReadWriteDatasourceTransaction(
+    return inReadOnlyDatasourceTransaction(
         dataSource,
         transaction -> {
           if (reduceMetadataIO) {
@@ -1658,7 +1658,8 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
   private void persistSchema(
       final SegmentMetadataTransaction transaction,
       final Set<DataSegment> segments,
-      final SegmentSchemaMapping segmentSchemaMapping
+      final SegmentSchemaMapping segmentSchemaMapping,
+      final DateTime updateTime
   ) throws JsonProcessingException
   {
     if (segmentSchemaMapping.getSchemaVersion() != CentralizedDatasourceSchemaConfig.SCHEMA_VERSION) {
@@ -1677,7 +1678,8 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
         transaction.getHandle(),
         dataSource,
         segmentSchemaMapping.getSchemaVersion(),
-        segmentSchemaMapping.getSchemaFingerprintToPayloadMap()
+        segmentSchemaMapping.getSchemaFingerprintToPayloadMap(),
+        updateTime
     );
   }
 
@@ -1689,10 +1691,11 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
   {
     final Set<DataSegment> toInsertSegments = new HashSet<>();
     try {
+      final DateTime createdTime = DateTimes.nowUtc();
       boolean shouldPersistSchema = shouldPersistSchema(segmentSchemaMapping);
 
       if (shouldPersistSchema) {
-        persistSchema(transaction, segments, segmentSchemaMapping);
+        persistSchema(transaction, segments, segmentSchemaMapping, createdTime);
       }
 
       final Set<SegmentId> segmentIds = segments.stream().map(DataSegment::getId).collect(Collectors.toSet());
@@ -1705,7 +1708,6 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
         }
       }
 
-      final DateTime createdTime = DateTimes.nowUtc();
       final Set<DataSegment> usedSegments = findNonOvershadowedSegments(segments);
 
       final Set<DataSegmentPlus> segmentPlusToInsert = toInsertSegments.stream().map(segment -> {
@@ -1732,7 +1734,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
       }
     }
     catch (Exception e) {
-      log.errorSegments(segments, "Exception inserting segments");
+      log.errorSegments(e, segments, "Exception inserting segments");
       throw e;
     }
 
@@ -1908,8 +1910,9 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
       Map<String, String> upgradedFromSegmentIdMap
   ) throws Exception
   {
+    final DateTime createdTime = DateTimes.nowUtc();
     if (shouldPersistSchema(segmentSchemaMapping)) {
-      persistSchema(transaction, segments, segmentSchemaMapping);
+      persistSchema(transaction, segments, segmentSchemaMapping, createdTime);
     }
 
     // Do not insert segment IDs which already exist
@@ -1919,7 +1922,6 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
         s -> !existingSegmentIds.contains(s.getId().toString())
     ).collect(Collectors.toSet());
 
-    final DateTime createdTime = DateTimes.nowUtc();
     final Set<DataSegmentPlus> segmentPlusToInsert = segmentsToInsert.stream().map(segment -> {
       SegmentMetadata segmentMetadata = getSegmentMetadataFromSchemaMappingOrUpgradeMetadata(
           segment.getId(),
@@ -2408,7 +2410,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
 
   @VisibleForTesting
   Set<DataSegment> retrieveUsedSegmentsForAllocation(
-      final SegmentMetadataTransaction transaction,
+      final SegmentMetadataReadTransaction transaction,
       final String dataSource,
       final Interval interval
   )
@@ -2468,22 +2470,20 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
   }
 
   @Override
-  public DataSegment retrieveSegmentForId(final String dataSource, final String segmentId)
+  public DataSegment retrieveSegmentForId(SegmentId segmentId)
   {
-    final SegmentId parsedSegmentId = IdUtils.getValidSegmentId(dataSource, segmentId);
-    return inReadWriteDatasourceTransaction(
-        dataSource,
-        transaction -> transaction.findSegment(parsedSegmentId)
+    return inReadOnlyDatasourceTransaction(
+        segmentId.getDataSource(),
+        transaction -> transaction.findSegment(segmentId)
     );
   }
 
   @Override
-  public DataSegment retrieveUsedSegmentForId(String dataSource, String segmentId)
+  public DataSegment retrieveUsedSegmentForId(SegmentId segmentId)
   {
-    final SegmentId parsedSegmentId = IdUtils.getValidSegmentId(dataSource, segmentId);
-    return inReadWriteDatasourceTransaction(
-        dataSource,
-        transaction -> transaction.findUsedSegment(parsedSegmentId)
+    return inReadOnlyDatasourceTransaction(
+        segmentId.getDataSource(),
+        transaction -> transaction.findUsedSegment(segmentId)
     );
   }
 

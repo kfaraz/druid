@@ -238,7 +238,7 @@ public class TestIndexerMetadataStorageCoordinator implements IndexerMetadataSto
       Map<DataSegment, ReplaceTaskLock> appendSegmentToReplaceLock,
       DataSourceMetadata startMetadata,
       DataSourceMetadata endMetadata,
-      String taskGroup,
+      String taskAllocatorId,
       SegmentSchemaMapping segmentSchemaMapping
   )
   {
@@ -316,13 +316,13 @@ public class TestIndexerMetadataStorageCoordinator implements IndexerMetadataSto
   }
 
   @Override
-  public DataSegment retrieveSegmentForId(String dataSource, String segmentId)
+  public DataSegment retrieveSegmentForId(SegmentId segmentId)
   {
     return null;
   }
 
   @Override
-  public DataSegment retrieveUsedSegmentForId(String dataSource, String segmentId)
+  public DataSegment retrieveUsedSegmentForId(SegmentId segmentId)
   {
     return null;
   }

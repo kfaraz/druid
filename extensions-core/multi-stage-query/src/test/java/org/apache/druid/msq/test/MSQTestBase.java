@@ -350,6 +350,8 @@ public class MSQTestBase extends BaseCalciteQueryTest
   private TestGroupByBuffers groupByBuffers;
   protected final WorkerMemoryParameters workerMemoryParameters = Mockito.spy(makeTestWorkerMemoryParameters());
   protected static final String TEST_CONTROLLER_TASK_ID = "query-test-query";
+  // Fields in the query context to ignore during assertion.
+  protected Set<String> ignoreFields = Set.of(MultiStageQueryContext.CTX_START_TIME);
 
   protected static class MSQBaseComponentSupplier extends StandardComponentSupplier
   {
@@ -726,15 +728,14 @@ public class MSQTestBase extends BaseCalciteQueryTest
 
         @Nullable
         @Override
-        public QueryableIndex asQueryableIndex()
+        public <T> T as(@Nonnull Class<T> clazz)
         {
-          return index;
-        }
-
-        @Override
-        public CursorFactory asCursorFactory()
-        {
-          return new QueryableIndexCursorFactory(index);
+          if (CursorFactory.class.equals(clazz)) {
+            return (T) new QueryableIndexCursorFactory(index);
+          } else if (QueryableIndex.class.equals(clazz)) {
+            return (T) index;
+          }
+          return null;
         }
 
         @Override
@@ -864,7 +865,15 @@ public class MSQTestBase extends BaseCalciteQueryTest
 
   private void assertMSQSpec(LegacyMSQSpec expectedMSQSpec, LegacyMSQSpec querySpecForTask)
   {
-    Assert.assertEquals(expectedMSQSpec.getQuery(), querySpecForTask.getQuery());
+    final Map<String, Object> ignoredContext = new HashMap<>();
+    final Map<String, Object> actualQueryContext = querySpecForTask.getQuery().getContext();
+    for (String ignoredField : ignoreFields) {
+      if (actualQueryContext.containsKey(ignoredField)) {
+        ignoredContext.put(ignoredField, actualQueryContext.get(ignoredField));
+      }
+    }
+
+    Assert.assertEquals(expectedMSQSpec.getQuery().withOverriddenContext(ignoredContext), querySpecForTask.getQuery());
     Assert.assertEquals(expectedMSQSpec.getAssignmentStrategy(), querySpecForTask.getAssignmentStrategy());
     Assert.assertEquals(expectedMSQSpec.getColumnMappings(), querySpecForTask.getColumnMappings());
     Assert.assertEquals(expectedMSQSpec.getDestination(), querySpecForTask.getDestination());
