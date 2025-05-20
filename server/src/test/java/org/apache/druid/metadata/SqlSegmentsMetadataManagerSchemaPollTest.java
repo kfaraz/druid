@@ -191,15 +191,9 @@ public class SqlSegmentsMetadataManagerSchemaPollTest extends SqlSegmentsMetadat
 
     segmentSchemaManager.persistSchemaAndUpdateSegmentsTable("wikipedia", list, 0);
 
-<<<<<<< HEAD
-    CentralizedDatasourceSchemaConfig centralizedDatasourceSchemaConfig = new CentralizedDatasourceSchemaConfig();
-    centralizedDatasourceSchemaConfig.setEnabled(true);
-    config = new SegmentsMetadataManagerConfig(Period.seconds(3), null, null);
-=======
     CentralizedDatasourceSchemaConfig centralizedDatasourceSchemaConfig
         = CentralizedDatasourceSchemaConfig.enabled(true);
-    config = new SegmentsMetadataManagerConfig(Period.seconds(3), null);
->>>>>>> 1097b40e89d5df14d8b5c1df36340ee64547189b
+    config = new SegmentsMetadataManagerConfig(Period.seconds(3), null, null);
     sqlSegmentsMetadataManager = new SqlSegmentsMetadataManager(
         jsonMapper,
         Suppliers.ofInstance(config),
