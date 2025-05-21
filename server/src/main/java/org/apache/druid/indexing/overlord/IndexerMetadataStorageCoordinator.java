@@ -469,8 +469,10 @@ public interface IndexerMetadataStorageCoordinator
 
   /**
    * Deletes unused segments from the metadata store.
+   *
+   * @return Number of segments actually deleted.
    */
-  void deleteSegments(Set<DataSegment> segments);
+  int deleteSegments(Set<DataSegment> segments);
 
   /**
    * Retrieve the segment for a given id from the metadata store. Return null if no such segment exists

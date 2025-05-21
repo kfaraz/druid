@@ -47,6 +47,7 @@ import org.apache.druid.indexing.overlord.Segments;
 import org.apache.druid.java.util.common.ISE;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.logger.Logger;
+import org.apache.druid.segment.loading.SegmentKillResult;
 import org.apache.druid.server.coordination.BroadcastDatasourceLoadingSpec;
 import org.apache.druid.server.lookup.cache.LookupLoadingSpec;
 import org.apache.druid.server.security.ResourceAction;
@@ -289,18 +290,16 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
 
       final Set<DataSegment> segmentsNotKilled = new HashSet<>(unusedSegments);
       segmentsToBeKilled.forEach(segmentsNotKilled::remove);
-      LOG.infoSegments(
-          segmentsNotKilled,
-          "Skipping segment kill from deep storage as their load specs are referenced by other segments."
-      );
+
+      if (!segmentsNotKilled.isEmpty()) {
+        LOG.warn(
+            "Skipping kill of [%d] segments from deep storage as their load specs are used by other segments.",
+            segmentsNotKilled.size()
+        );
+      }
 
       toolbox.getDataSegmentKiller().kill(segmentsToBeKilled);
       emitMetric(toolbox.getEmitter(), TaskMetrics.SEGMENTS_DELETED_FROM_DEEPSTORE, segmentsToBeKilled.size());
-
-      // TODO: have segment killer return the killed paths so that we can log
-      //  them only if needed or add them to the kill task report instead
-      //  Having them in the Kill task report is fine, but how will it work for embedded kill task
-      //  since it is not going to do anything with the reports at all
 
       numBatchesProcessed++;
       numSegmentsKilled += segmentsToBeKilled.size();
@@ -415,7 +414,10 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
         response.getUpgradedToSegmentIds().forEach((parent, children) -> {
           if (!CollectionUtils.isNullOrEmpty(children)) {
             // Do not kill segment if its parent or any of its siblings still exist in metadata store
-            // TODO: track the referenced segments here
+            LOG.warn(
+                "Skipping kill of segments[%s] as its load spec is also used by segment IDs[%s].",
+                parentIdToUnusedSegments.get(parent), children
+            );
             parentIdToUnusedSegments.remove(parent);
           }
         });
@@ -429,18 +431,29 @@ public class KillUnusedSegmentsTask extends AbstractFixedIntervalTask
       );
     }
 
-    // TODO: track the referenced segments here
-    //  Identify the segments whose load specs are being used by other segments too
-    //  and maybe log them or emit metrics for them
-
     // Filter using the used segment load specs as segment upgrades predate the above task action
     return parentIdToUnusedSegments.values()
                                    .stream()
                                    .flatMap(Set::stream)
-                                   .filter(segment -> !usedSegmentLoadSpecs.contains(segment.getLoadSpec()))
+                                   .filter(segment -> !isSegmentLoadSpecPresentIn(segment, usedSegmentLoadSpecs))
                                    .collect(Collectors.toList());
   }
 
+  /**
+   * @return true if the load spec of the segment is present in the given set of
+   * used load specs.
+   */
+  private boolean isSegmentLoadSpecPresentIn(
+      DataSegment segment,
+      Set<Map<String, Object>> usedSegmentLoadSpecs
+  )
+  {
+    boolean isPresent = usedSegmentLoadSpecs.contains(segment.getLoadSpec());
+    if (isPresent) {
+      LOG.warn("Skipping kill of segment[%s] as its load spec is also used by other segments.", segment);
+    }
+    return isPresent;
+  }
 
   @Override
   public LookupLoadingSpec getLookupLoadingSpec()

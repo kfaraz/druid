@@ -60,14 +60,10 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Deletes unused segments from metadata store and the deep storage.
+ * {@link OverlordDuty} to delete unused segments from metadata store and the
+ * deep storage. Launches {@link EmbeddedKillTask}s to clean unused segments
+ * of a single datasource-interval.
  * <p>
- * TODO:
- *  - clean up the logging of deleted paths in DataSegmentKiller
- *  - identify referenced items and log them or emit metric or something
- *  - verify that task finishes instantly if lock cannot be acquired
- *  - or if there are no eligible unused segments for that datasource-interval
- *
  * @see SegmentsMetadataManagerConfig to enable the cleanup
  */
 public class UnusedSegmentsKiller implements OverlordDuty
@@ -346,8 +342,12 @@ public class UnusedSegmentsKiller implements OverlordDuty
   /**
    * Embedded kill task. Unlike other task types, this task is not persisted and
    * does not run on a worker or indexer. Hence, it doesn't take up any task slots.
-   * Also, this kill task targets only a single unused segment interval at a time
-   * to ensure that locks are held over short intervals over brief periods of time.
+   * To ensure that locks are held very briefly over short segment intervals,
+   * this kill task processes:
+   * <ul>
+   * <li>only 1 unused segment interval</li>
+   * <li>only 1 batch of upto 1000 unused segments</li>
+   * </ul>
    */
   private class EmbeddedKillTask extends KillUnusedSegmentsTask
   {
@@ -380,6 +380,7 @@ public class UnusedSegmentsKiller implements OverlordDuty
     @Override
     protected List<DataSegment> fetchNextBatchOfUnusedSegments(TaskToolbox toolbox, int nextBatchSize)
     {
+      // Kill only 1000 segments in the batch so that locks are not held for very long
       return storageCoordinator.retrieveUnusedSegmentsWithExactInterval(
           getDataSource(),
           getInterval(),
@@ -391,6 +392,7 @@ public class UnusedSegmentsKiller implements OverlordDuty
     @Override
     protected void logInfo(String message, Object... args)
     {
+      // Reduce the level of embedded task info logs to reduce noise on the Overlord
       log.debug(message, args);
     }
   }

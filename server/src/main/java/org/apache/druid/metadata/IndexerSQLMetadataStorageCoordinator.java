@@ -2332,11 +2332,11 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
   }
 
   @Override
-  public void deleteSegments(final Set<DataSegment> segments)
+  public int deleteSegments(final Set<DataSegment> segments)
   {
     if (segments.isEmpty()) {
       log.info("No segments to delete.");
-      return;
+      return 0;
     }
 
     final String dataSource = verifySegmentsToCommit(segments);
@@ -2349,7 +2349,7 @@ public class IndexerSQLMetadataStorageCoordinator implements IndexerMetadataStor
     );
 
     log.debugSegments(segments, "Delete the metadata of segments");
-    log.info("Deleted [%d] segments from metadata storage for dataSource [%s].", numDeletedSegments, dataSource);
+    return numDeletedSegments;
   }
 
   @Override
