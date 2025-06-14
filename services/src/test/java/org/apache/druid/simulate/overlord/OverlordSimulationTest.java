@@ -20,6 +20,7 @@
 package org.apache.druid.simulate.overlord;
 
 import com.google.common.util.concurrent.ListenableFuture;
+import org.apache.druid.client.indexing.IndexingWorkerInfo;
 import org.apache.druid.client.indexing.TaskStatusResponse;
 import org.apache.druid.common.guava.FutureUtils;
 import org.apache.druid.indexer.TaskState;
@@ -28,10 +29,11 @@ import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.rpc.indexing.OverlordClient;
 import org.apache.druid.simulate.EmbeddedDruidCluster;
 import org.junit.Assert;
-import org.junit.Rule;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.rules.RuleChain;
 
+import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -47,10 +49,31 @@ import java.util.stream.IntStream;
  */
 public class OverlordSimulationTest
 {
-  private final EmbeddedOverlord overlord = EmbeddedOverlord.create();
+  private static final EmbeddedOverlord overlord = EmbeddedOverlord.create();
 
-  @Rule
-  public final RuleChain cluster = EmbeddedDruidCluster.builder().withServer(overlord).withDb().build();
+  @ClassRule
+  public static final RuleChain cluster = EmbeddedDruidCluster.builder().withServer(overlord).withDb().build();
+
+  @Test
+  public void test_getCurrentLeader()
+  {
+    final URI uri = run(OverlordClient::findCurrentLeader);
+    Assert.assertEquals(8090, uri.getPort());
+  }
+
+  @Test
+  public void test_getWorkers()
+  {
+    final List<IndexingWorkerInfo> workers = run(OverlordClient::getWorkers);
+    Assert.assertEquals(1, workers.size());
+    Assert.assertEquals(500, workers.get(0).getWorker().getCapacity());
+  }
+
+  @Test(timeout = 60_000L)
+  public void test_run10kTasks_again()
+  {
+    test_run10kTasks();
+  }
 
   @Test(timeout = 60_000L)
   public void test_run10kTasks()
@@ -81,6 +104,8 @@ public class OverlordSimulationTest
       );
     }
   }
+
+
 
   private <T> T run(Function<OverlordClient, ListenableFuture<T>> function)
   {
