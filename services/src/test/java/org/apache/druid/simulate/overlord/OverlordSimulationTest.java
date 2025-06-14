@@ -55,7 +55,7 @@ public class OverlordSimulationTest
   @Test
   public void test_run5Tasks()
   {
-    final List<String> taskIds = IntStream.range(0, 5)
+    final List<String> taskIds = IntStream.range(0, 1_000)
                                           .mapToObj(i -> "test-task-" + i)
                                           .collect(Collectors.toList());
 
