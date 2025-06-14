@@ -52,10 +52,10 @@ public class OverlordSimulationTest
   @Rule
   public final RuleChain cluster = EmbeddedDruidCluster.builder().withServer(overlord).withDb().build();
 
-  @Test
-  public void test_run5Tasks()
+  @Test(timeout = 60_000L)
+  public void test_run10kTasks()
   {
-    final List<String> taskIds = IntStream.range(0, 1_000)
+    final List<String> taskIds = IntStream.range(0, 10_000)
                                           .mapToObj(i -> "test-task-" + i)
                                           .collect(Collectors.toList());
 
