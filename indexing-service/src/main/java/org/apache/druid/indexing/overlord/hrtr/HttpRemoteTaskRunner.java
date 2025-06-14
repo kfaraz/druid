@@ -597,7 +597,7 @@ public class HttpRemoteTaskRunner implements WorkerTaskRunner, TaskLogStreamer
   }
 
   @VisibleForTesting
-  void addWorker(final Worker worker)
+  protected void addWorker(final Worker worker)
   {
     synchronized (workers) {
       log.info("Worker[%s] reportin' for duty!", worker.getHost());

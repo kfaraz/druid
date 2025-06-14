@@ -103,17 +103,7 @@ public class WorkerHolder
     //worker holder is created disabled and gets enabled after first sync success.
     this.disabled = new AtomicBoolean(true);
 
-    this.syncer = new ChangeRequestHttpSyncer<>(
-        smileMapper,
-        httpClient,
-        workersSyncExec,
-        TaskRunnerUtils.makeWorkerURL(worker, "/"),
-        "/druid-internal/v1/worker",
-        WORKER_SYNC_RESP_TYPE_REF,
-        config.getSyncRequestTimeout().toStandardDuration().getMillis(),
-        config.getServerUnstabilityTimeout().toStandardDuration().getMillis(),
-        createSyncListener()
-    );
+    this.syncer = createChangeRequestSyncer(workersSyncExec);
 
     ConcurrentMap<String, TaskAnnouncement> announcements = new ConcurrentHashMap<>();
     if (knownAnnouncements != null) {
@@ -312,6 +302,23 @@ public class WorkerHolder
   public ChangeRequestHttpSyncer<WorkerHistoryItem> getUnderlyingSyncer()
   {
     return syncer;
+  }
+
+  protected ChangeRequestHttpSyncer<WorkerHistoryItem> createChangeRequestSyncer(
+      ScheduledExecutorService workersSyncExec
+  )
+  {
+    return new ChangeRequestHttpSyncer<>(
+        smileMapper,
+        httpClient,
+        workersSyncExec,
+        TaskRunnerUtils.makeWorkerURL(worker, "/"),
+        "/druid-internal/v1/worker",
+        WorkerHolder.WORKER_SYNC_RESP_TYPE_REF,
+        config.getSyncRequestTimeout().toStandardDuration().getMillis(),
+        config.getServerUnstabilityTimeout().toStandardDuration().getMillis(),
+        createSyncListener()
+    );
   }
 
   public ChangeRequestHttpSyncer.Listener<WorkerHistoryItem> createSyncListener()
