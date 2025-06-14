@@ -296,7 +296,7 @@ public class EmbeddedOverlord extends EmbeddedDruidServer
       this.taskToolboxFactory = taskToolboxFactory;
 
       addWorker(
-          new Worker(null, "LocalWorker", "007", 100, "v1", WorkerConfig.DEFAULT_CATEGORY)
+          new Worker(null, "LocalWorker", "007", 1000, "v1", WorkerConfig.DEFAULT_CATEGORY)
       );
     }
 
