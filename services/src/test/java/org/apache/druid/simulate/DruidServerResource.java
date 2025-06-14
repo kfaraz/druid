@@ -22,13 +22,25 @@ package org.apache.druid.simulate;
 import com.amazonaws.util.Throwables;
 import com.google.inject.Binder;
 import com.google.inject.Injector;
+import com.google.inject.Key;
 import com.google.inject.Module;
 import org.apache.druid.cli.ServerRunnable;
+import org.apache.druid.guice.LazySingleton;
+import org.apache.druid.guice.PolyBind;
+import org.apache.druid.guice.SQLMetadataStorageDruidModule;
 import org.apache.druid.guice.StartupInjectorBuilder;
 import org.apache.druid.java.util.common.concurrent.Execs;
 import org.apache.druid.java.util.common.lifecycle.Lifecycle;
 import org.apache.druid.java.util.common.logger.Logger;
+import org.apache.druid.metadata.DerbyMetadataStorageActionHandlerFactory;
+import org.apache.druid.metadata.MetadataStorage;
+import org.apache.druid.metadata.MetadataStorageActionHandlerFactory;
+import org.apache.druid.metadata.MetadataStorageConnector;
+import org.apache.druid.metadata.MetadataStorageProvider;
+import org.apache.druid.metadata.NoopMetadataStorageProvider;
+import org.apache.druid.metadata.SQLMetadataConnector;
 import org.apache.druid.metadata.TestDerbyConnector;
+import org.apache.druid.metadata.storage.derby.DerbyMetadataStorageProvider;
 import org.apache.druid.query.DruidProcessingConfigTest;
 import org.apache.druid.utils.JvmUtils;
 import org.apache.druid.utils.RuntimeInfo;
@@ -186,7 +198,7 @@ public class DruidServerResource extends ExternalResource
   }
 
   /**
-   * Module to limit the resources used by an embedded server.
+   * Guice module to limit the resources used by an embedded server.
    */
   private static class TestRuntimeInfoModule implements Module
   {
@@ -203,4 +215,46 @@ public class DruidServerResource extends ExternalResource
     }
   }
 
+  /**
+   * Guice module to bind {@link SQLMetadataConnector} to {@link TestDerbyConnector}.
+   * Used in Coordinator and Overlord simulations to connect to an in-memory Derby
+   * database.
+   */
+  private static class TestDerbyModule extends SQLMetadataStorageDruidModule
+  {
+    public static final String TYPE = "derbyInMemory";
+    private final TestDerbyConnector connector;
+
+    public TestDerbyModule(TestDerbyConnector connector)
+    {
+      super(TYPE);
+      this.connector = connector;
+    }
+
+    @Override
+    public void configure(Binder binder)
+    {
+      super.configure(binder);
+
+      binder.bind(MetadataStorage.class).toProvider(NoopMetadataStorageProvider.class);
+
+      PolyBind.optionBinder(binder, Key.get(MetadataStorageProvider.class))
+              .addBinding(TYPE)
+              .to(DerbyMetadataStorageProvider.class)
+              .in(LazySingleton.class);
+
+      PolyBind.optionBinder(binder, Key.get(MetadataStorageConnector.class))
+              .addBinding(TYPE)
+              .toInstance(connector);
+
+      PolyBind.optionBinder(binder, Key.get(SQLMetadataConnector.class))
+              .addBinding(TYPE)
+              .toInstance(connector);
+
+      PolyBind.optionBinder(binder, Key.get(MetadataStorageActionHandlerFactory.class))
+              .addBinding(TYPE)
+              .to(DerbyMetadataStorageActionHandlerFactory.class)
+              .in(LazySingleton.class);
+    }
+  }
 }
