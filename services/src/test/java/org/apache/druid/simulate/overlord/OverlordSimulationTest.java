@@ -70,16 +70,21 @@ public class OverlordSimulationTest
   }
 
   @Test(timeout = 60_000L)
-  public void test_run10kTasks_again()
+  public void test_run10kTasks()
   {
-    test_run10kTasks();
+    runTasks(10_000, "test-task-");
   }
 
   @Test(timeout = 60_000L)
-  public void test_run10kTasks()
+  public void test_run10kTasks_again()
   {
-    final List<String> taskIds = IntStream.range(0, 10_000)
-                                          .mapToObj(i -> "test-task-" + i)
+    runTasks(10_000, "test-task2-");
+  }
+
+  private void runTasks(int count, String idPrefix)
+  {
+    final List<String> taskIds = IntStream.range(0, count)
+                                          .mapToObj(i -> idPrefix + i)
                                           .collect(Collectors.toList());
 
     for (String taskId : taskIds) {
@@ -104,7 +109,6 @@ public class OverlordSimulationTest
       );
     }
   }
-
 
 
   private <T> T run(Function<OverlordClient, ListenableFuture<T>> function)
