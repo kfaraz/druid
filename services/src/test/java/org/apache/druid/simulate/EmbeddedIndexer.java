@@ -33,6 +33,7 @@ public class EmbeddedIndexer extends EmbeddedDruidServer
 {
   private static final Map<String, String> STANDARD_PROPERTIES = Map.of(
       "druid.lookup.enableLookupSyncOnStartup", "false"
+      //"druid.server.http.gracefulShutdownTimeout", "PT0.1s"
   );
 
   public static EmbeddedIndexer create()

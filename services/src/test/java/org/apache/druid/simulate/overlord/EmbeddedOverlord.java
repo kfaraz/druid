@@ -74,7 +74,10 @@ public class EmbeddedOverlord extends EmbeddedDruidServer
   private static final Map<String, String> STANDARD_PROPERTIES = Map.of(
       "druid.indexer.runner.type", "simulation",
       "druid.indexer.queue.startDelay", "PT0S",
-      "druid.indexer.queue.restartDelay", "PT0S"
+      "druid.indexer.queue.restartDelay", "PT0S",
+      // Keep a small sync timeout so that Peons and Indexers are not stuck
+      // handling a change request when Overlord has already shutdown
+      "druid.indexer.runner.syncRequestTimeout", "PT1S"
   );
 
   private final TaskRunnerListener taskRunnerListener;

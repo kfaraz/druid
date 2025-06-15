@@ -19,7 +19,6 @@
 
 package org.apache.druid.simulate.overlord;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.util.concurrent.ListenableFuture;
 import org.apache.druid.client.indexing.IndexingWorkerInfo;
 import org.apache.druid.client.indexing.TaskStatusResponse;
@@ -36,7 +35,6 @@ import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.rpc.indexing.OverlordClient;
 import org.apache.druid.segment.TestDataSource;
-import org.apache.druid.segment.TestHelper;
 import org.apache.druid.segment.indexing.DataSchema;
 import org.apache.druid.simulate.EmbeddedDruidCluster;
 import org.apache.druid.simulate.EmbeddedIndexer;
@@ -54,21 +52,19 @@ import java.util.stream.IntStream;
 
 /**
  * TODO:
- * - run a batch task
  * - try to run a streaming supervisor with this setup
  * - try to run existing tests with this setup
  * - write more tests
  */
 public class OverlordSimulationTest
 {
-  private static final ObjectMapper MAPPER = TestHelper.JSON_MAPPER;
   private static final EmbeddedOverlord OVERLORD = EmbeddedOverlord.create();
 
   @ClassRule
   public static final RuleChain cluster
       = EmbeddedDruidCluster.builder()
-                            .with(OVERLORD)
                             .with(EmbeddedIndexer.create())
+                            .with(OVERLORD)
                             .withDb()
                             .build();
 
