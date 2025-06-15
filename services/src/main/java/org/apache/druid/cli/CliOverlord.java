@@ -515,7 +515,7 @@ public class CliOverlord extends ServerRunnable
       );
 
       // add some paths not to be redirected to leader.
-      final FilterHolder guiceFilterHolder = JettyServerInitUtils.getGuiceFilterHolder(injector);
+      final FilterHolder guiceFilterHolder = new FilterHolder(injector.getInstance(GuiceFilter.class));
       root.addFilter(guiceFilterHolder, "/status/*", null);
       root.addFilter(guiceFilterHolder, "/druid-internal/*", null);
 
