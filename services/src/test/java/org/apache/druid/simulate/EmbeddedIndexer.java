@@ -26,19 +26,31 @@ import org.apache.druid.cli.ServerRunnable;
 import org.apache.druid.java.util.common.lifecycle.Lifecycle;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 public class EmbeddedIndexer extends EmbeddedDruidServer
 {
   private static final Map<String, String> STANDARD_PROPERTIES = Map.of(
+      // Don't sync lookups by default as some embedded clusters might not be
+      // using a Coordinator
       "druid.lookup.enableLookupSyncOnStartup", "false"
-      //"druid.server.http.gracefulShutdownTimeout", "PT0.1s"
   );
 
   public static EmbeddedIndexer create()
   {
     return new EmbeddedIndexer(STANDARD_PROPERTIES);
+  }
+
+  public static EmbeddedIndexer withProps(
+      Map<String, String> properties
+  )
+  {
+    final Map<String, String> overrideProps = new HashMap<>(STANDARD_PROPERTIES);
+    overrideProps.putAll(properties);
+
+    return new EmbeddedIndexer(overrideProps);
   }
 
   private EmbeddedIndexer(Map<String, String> properties)

@@ -190,14 +190,14 @@ public class CuratorModule implements Module
           @Override
           public void start()
           {
-            log.info("Starting Curator");
+            log.debug("Starting Curator");
             framework.start();
           }
 
           @Override
           public void stop()
           {
-            log.info("Stopping Curator");
+            log.debug("Stopping Curator");
             framework.close();
           }
         }

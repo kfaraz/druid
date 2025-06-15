@@ -251,6 +251,9 @@ public class EmbeddedOverlord extends EmbeddedDruidServer
     }
   }
 
+  /**
+   * Holder for references to various objects being used by the embedded Overlord.
+   */
   private static class References
   {
     @Inject

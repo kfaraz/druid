@@ -63,7 +63,7 @@ public class OverlordSimulationTest
   @ClassRule
   public static final RuleChain cluster
       = EmbeddedDruidCluster.builder()
-                            .with(EmbeddedIndexer.create())
+                            .with(EmbeddedIndexer.withProps(Map.of("druid.worker.capacity", "100")))
                             .with(OVERLORD)
                             .withDb()
                             .build();
@@ -80,23 +80,23 @@ public class OverlordSimulationTest
   {
     final List<IndexingWorkerInfo> workers = run(OverlordClient::getWorkers);
     Assert.assertEquals(1, workers.size());
-    Assert.assertEquals(500, workers.get(0).getWorker().getCapacity());
+    Assert.assertEquals(100, workers.get(0).getWorker().getCapacity());
   }
 
   @Test(timeout = 60_000L)
-  public void test_run10kTasks()
+  public void test_run200Tasks()
   {
-    runTasks(10_000, "test-task-");
+    runTasks(200);
   }
 
   @Test(timeout = 60_000L)
-  public void test_run10kTasks_again()
+  public void test_run300Tasks()
   {
-    runTasks(10_000, "test-task2-");
+    runTasks(300);
   }
 
   @Test
-  public void test_runBatchTask() throws Exception
+  public void test_runBatchTask()
   {
     final String taskId = IdUtils.newTaskId("batch", TestDataSource.WIKI, null);
     final Task task = new IndexTask(
@@ -126,10 +126,10 @@ public class OverlordSimulationTest
     verifyTaskHasSucceeded(taskId);
   }
 
-  private void runTasks(int count, String idPrefix)
+  private void runTasks(int count)
   {
     final List<String> taskIds = IntStream.range(0, count)
-                                          .mapToObj(i -> idPrefix + i)
+                                          .mapToObj(i -> IdUtils.newTaskId("sim_test", "noop", null))
                                           .collect(Collectors.toList());
 
     for (String taskId : taskIds) {

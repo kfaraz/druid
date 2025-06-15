@@ -109,7 +109,7 @@ public class WorkerHolder
         workersSyncExec,
         TaskRunnerUtils.makeWorkerURL(worker, "/"),
         "/druid-internal/v1/worker",
-        WorkerHolder.WORKER_SYNC_RESP_TYPE_REF,
+        WORKER_SYNC_RESP_TYPE_REF,
         config.getSyncRequestTimeout().toStandardDuration().getMillis(),
         config.getServerUnstabilityTimeout().toStandardDuration().getMillis(),
         createSyncListener()

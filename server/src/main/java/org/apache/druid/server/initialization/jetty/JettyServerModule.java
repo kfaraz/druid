@@ -448,7 +448,7 @@ public class JettyServerModule extends JerseyServletModule
               } else {
                 log.debug("Skipping unannounce wait.");
               }
-              log.info("Kashif: Stopping Jetty Server...[%s]", server.getURI());
+              log.debug("Stopping Jetty Server...");
               server.stop();
             }
             catch (InterruptedException e) {
