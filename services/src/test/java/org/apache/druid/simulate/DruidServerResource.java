@@ -45,6 +45,7 @@ import org.apache.druid.query.DruidProcessingConfigTest;
 import org.apache.druid.utils.JvmUtils;
 import org.apache.druid.utils.RuntimeInfo;
 import org.junit.rules.ExternalResource;
+import org.junit.rules.TemporaryFolder;
 
 import javax.annotation.Nullable;
 import java.util.List;
@@ -62,6 +63,8 @@ public class DruidServerResource extends ExternalResource
   private static final Logger log = new Logger(DruidServerResource.class);
 
   private final EmbeddedDruidServer server;
+
+  private final TemporaryFolder tempDir;
   private final EmbeddedZookeeper zk;
   private final TestDerbyConnector.DerbyConnectorRule dbRule;
 
@@ -70,6 +73,7 @@ public class DruidServerResource extends ExternalResource
 
   DruidServerResource(
       EmbeddedDruidServer server,
+      TemporaryFolder tempDir,
       EmbeddedZookeeper zk,
       @Nullable TestDerbyConnector.DerbyConnectorRule dbRule
   )
@@ -77,6 +81,7 @@ public class DruidServerResource extends ExternalResource
     this.server = server;
     this.zk = zk;
     this.dbRule = dbRule;
+    this.tempDir = tempDir;
   }
 
   @Override
@@ -167,7 +172,16 @@ public class DruidServerResource extends ExternalResource
       serverProperties.putAll(server.getProperties());
 
       // Add properties for Zookeeper and metadata store
+      final String serverTaskDirectory = tempDir.newFolder().getAbsolutePath();
+      log.info("Using task directory[%s].", serverTaskDirectory);
+
+      final String storageDirectory = tempDir.newFolder().getAbsolutePath();
+      log.info("Using storage directory[%s]", storageDirectory);
+
       serverProperties.setProperty("druid.zk.service.host", zk.getConnectString());
+      serverProperties.setProperty("druid.indexer.task.baseDir", serverTaskDirectory);
+      serverProperties.setProperty("druid.indexer.logs.directory", serverTaskDirectory);
+      serverProperties.setProperty("druid.storage.storageDirectory", storageDirectory);
       if (dbRule != null) {
         serverProperties.setProperty("druid.metadata.storage.type", TestDerbyModule.TYPE);
         serverProperties.setProperty(

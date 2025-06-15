@@ -22,6 +22,7 @@ package org.apache.druid.simulate;
 import com.google.common.base.Preconditions;
 import org.apache.druid.metadata.TestDerbyConnector;
 import org.junit.rules.RuleChain;
+import org.junit.rules.TemporaryFolder;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -78,8 +79,11 @@ public class EmbeddedDruidCluster
     final EmbeddedZookeeper zk = new EmbeddedZookeeper();
     ruleChain = ruleChain.around(zk);
 
+    final TemporaryFolder tempDir = new TemporaryFolder();
+    ruleChain = ruleChain.around(tempDir);
+
     for (EmbeddedDruidServer server : servers) {
-      ruleChain = ruleChain.around(server.junitResource(zk, dbRule));
+      ruleChain = ruleChain.around(server.junitResource(tempDir, zk, dbRule));
     }
 
     return ruleChain;

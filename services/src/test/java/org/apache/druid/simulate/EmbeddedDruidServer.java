@@ -24,6 +24,7 @@ import org.apache.druid.cli.ServerRunnable;
 import org.apache.druid.java.util.common.lifecycle.Lifecycle;
 import org.apache.druid.metadata.TestDerbyConnector;
 import org.junit.rules.ExternalResource;
+import org.junit.rules.TemporaryFolder;
 
 import java.util.List;
 import java.util.Map;
@@ -64,11 +65,12 @@ public abstract class EmbeddedDruidServer
    * with {@code Rule}, {@code ClassRule} or in a {@code RuleChain}.
    */
   ExternalResource junitResource(
+      TemporaryFolder tempDir,
       EmbeddedZookeeper zk,
       TestDerbyConnector.DerbyConnectorRule dbRule
   )
   {
-    return new DruidServerResource(this, zk, dbRule);
+    return new DruidServerResource(this, tempDir, zk, dbRule);
   }
 
   public interface LifecycleInitHandler

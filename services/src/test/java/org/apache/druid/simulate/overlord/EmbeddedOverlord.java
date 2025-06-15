@@ -26,9 +26,11 @@ import com.google.inject.Inject;
 import com.google.inject.Injector;
 import com.google.inject.Key;
 import com.google.inject.Module;
+import com.google.inject.Provider;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.druid.cli.CliOverlord;
 import org.apache.druid.cli.ServerRunnable;
+import org.apache.druid.curator.ZkEnablementConfig;
 import org.apache.druid.discovery.DruidNodeDiscoveryProvider;
 import org.apache.druid.guice.LazySingleton;
 import org.apache.druid.guice.PolyBind;
@@ -36,44 +38,23 @@ import org.apache.druid.guice.annotations.EscalatedGlobal;
 import org.apache.druid.guice.annotations.Smile;
 import org.apache.druid.indexer.TaskLocation;
 import org.apache.druid.indexer.TaskStatus;
-import org.apache.druid.indexer.report.TaskReport;
-import org.apache.druid.indexer.report.TaskReportFileWriter;
-import org.apache.druid.indexing.common.MultipleFileTaskReportFileWriter;
-import org.apache.druid.indexing.common.TaskToolbox;
-import org.apache.druid.indexing.common.TaskToolboxFactory;
-import org.apache.druid.indexing.common.actions.TaskActionClientFactory;
-import org.apache.druid.indexing.common.config.TaskConfig;
-import org.apache.druid.indexing.common.stats.DropwizardRowIngestionMetersFactory;
-import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.indexing.overlord.TaskRunnerFactory;
 import org.apache.druid.indexing.overlord.TaskRunnerListener;
 import org.apache.druid.indexing.overlord.TaskStorage;
+import org.apache.druid.indexing.overlord.autoscaling.ProvisioningSchedulerConfig;
 import org.apache.druid.indexing.overlord.autoscaling.ProvisioningStrategy;
 import org.apache.druid.indexing.overlord.config.HttpRemoteTaskRunnerConfig;
 import org.apache.druid.indexing.overlord.hrtr.HttpRemoteTaskRunner;
-import org.apache.druid.indexing.overlord.hrtr.WorkerHolder;
+import org.apache.druid.indexing.overlord.hrtr.HttpRemoteTaskRunnerFactory;
 import org.apache.druid.indexing.overlord.setup.WorkerBehaviorConfig;
-import org.apache.druid.indexing.worker.TaskAnnouncement;
-import org.apache.druid.indexing.worker.Worker;
-import org.apache.druid.indexing.worker.config.WorkerConfig;
-import org.apache.druid.java.util.common.concurrent.ScheduledExecutorFactory;
 import org.apache.druid.java.util.common.lifecycle.Lifecycle;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.java.util.emitter.service.ServiceEmitter;
 import org.apache.druid.java.util.http.client.HttpClient;
 import org.apache.druid.rpc.indexing.OverlordClient;
-import org.apache.druid.segment.IndexIO;
-import org.apache.druid.segment.IndexMergerV9;
-import org.apache.druid.segment.realtime.NoopChatHandlerProvider;
-import org.apache.druid.segment.realtime.appenderator.PeonAppenderatorsManager;
-import org.apache.druid.segment.writeout.TmpFileSegmentWriteOutMediumFactory;
 import org.apache.druid.server.initialization.IndexerZkConfig;
 import org.apache.druid.simulate.EmbeddedDruidServer;
-import org.jetbrains.annotations.Nullable;
 
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -81,7 +62,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -92,13 +72,13 @@ public class EmbeddedOverlord extends EmbeddedDruidServer
   private static final Logger log = new Logger(EmbeddedOverlord.class);
 
   private static final Map<String, String> STANDARD_PROPERTIES = Map.of(
-      //"druid.indexer.runner.type", "threading",
+      "druid.indexer.runner.type", "simulation",
       "druid.indexer.queue.startDelay", "PT0S",
       "druid.indexer.queue.restartDelay", "PT0S"
   );
 
   private final TaskRunnerListener taskRunnerListener;
-  private final OverlordClientReference clientReference;
+  private final References injectedReferences;
   private final ConcurrentHashMap<String, CountDownLatch> taskHasCompleted;
 
   public static EmbeddedOverlord create()
@@ -119,14 +99,14 @@ public class EmbeddedOverlord extends EmbeddedDruidServer
   private EmbeddedOverlord(Map<String, String> serverProperties)
   {
     super("Overlord", serverProperties);
-    this.clientReference = new OverlordClientReference();
+    this.injectedReferences = new References();
     this.taskHasCompleted = new ConcurrentHashMap<>();
     this.taskRunnerListener = new TaskRunnerListener()
     {
       @Override
       public String getListenerId()
       {
-        return "TestRunnerFactory";
+        return "EmbeddedOverlord.TaskRunnerListener";
       }
 
       @Override
@@ -167,14 +147,14 @@ public class EmbeddedOverlord extends EmbeddedDruidServer
    */
   public OverlordClient client()
   {
-    return clientReference.client;
+    return injectedReferences.client;
   }
 
   public void waitUntilTaskFinishes(String taskId)
   {
     try {
       final CountDownLatch latch = taskHasCompleted.computeIfAbsent(taskId, t -> new CountDownLatch(1));
-      if (!latch.await(10, TimeUnit.SECONDS)) {
+      if (!latch.await(30, TimeUnit.SECONDS)) {
         log.error("Timed out waiting for task[%s] to finish.", taskId);
       }
     }
@@ -209,196 +189,72 @@ public class EmbeddedOverlord extends EmbeddedDruidServer
     {
       final List<Module> modules = new ArrayList<>(handler.getInitModules());
       modules.addAll(super.getModules());
-      /*modules.add(
-          binder -> binder.bind(TaskToolboxFactory.class).to(TestTaskToolboxFactory.class)
-      );
       modules.add(
-          binder -> binder.bind(TaskReportFileWriter.class).toInstance(
-              new MultipleFileTaskReportFileWriter()
-              {
-                @Override
-                public void write(String id, TaskReport.ReportMap reports)
-                {
-                }
-
-                @Override
-                public OutputStream openReportOutputStream(String taskId)
-                {
-                  // Stream to nowhere.
-                  return new ByteArrayOutputStream();
-                }
-
-                @Override
-                public void setObjectMapper(ObjectMapper objectMapper)
-                {
-
-                }
-
-                @Override
-                public void add(String taskId, File reportsFile)
-                {
-
-                }
-              }
-          )
-      );*/
-      modules.add(
-          binder -> binder.bind(OverlordClientReference.class).toInstance(clientReference)
+          binder -> binder.bind(References.class).toInstance(injectedReferences)
       );
       modules.add(
           binder -> binder.bind(TaskRunnerListener.class).toInstance(taskRunnerListener)
       );
-      /*modules.add(
+      modules.add(
           binder -> PolyBind.optionBinder(binder, Key.get(TaskRunnerFactory.class))
-                            .addBinding("threading")
+                            .addBinding("simulation")
                             .to(TestHttpRemoteTaskRunnerFactory.class)
                             .in(LazySingleton.class)
-      );*/
+      );
       return modules;
     }
   }
 
-  private static class TestHttpRemoteTaskRunnerFactory
-      extends HttpRemoteTaskRunner
-      implements TaskRunnerFactory<HttpRemoteTaskRunner>
+  /**
+   * Overrides {@link HttpRemoteTaskRunnerFactory} to be able to register the
+   * {@link #taskRunnerListener} on the created {@link HttpRemoteTaskRunner}.
+   */
+  private static class TestHttpRemoteTaskRunnerFactory extends HttpRemoteTaskRunnerFactory
   {
-    private final TaskToolboxFactory taskToolboxFactory;
-    private final ScheduledExecutorFactory executorFactory;
+    private final TaskRunnerListener listener;
 
     @Inject
     public TestHttpRemoteTaskRunnerFactory(
-        @Smile ObjectMapper smileMapper,
-        HttpRemoteTaskRunnerConfig config,
-        @EscalatedGlobal HttpClient httpClient,
-        Supplier<WorkerBehaviorConfig> workerConfigRef,
-        ProvisioningStrategy provisioningStrategy,
-        DruidNodeDiscoveryProvider druidNodeDiscoveryProvider,
-        TaskStorage taskStorage,
-        @Nullable CuratorFramework cf,
-        IndexerZkConfig indexerZkConfig,
-        ServiceEmitter emitter,
-        // Fields not needed by HttpRemoteTaskRunner but used by LocalWorkerHolder
-        TaskRunnerListener listener,
-        ScheduledExecutorFactory executorFactory,
-        TaskToolboxFactory taskToolboxFactory
+        @Smile final ObjectMapper smileMapper,
+        final HttpRemoteTaskRunnerConfig httpRemoteTaskRunnerConfig,
+        @EscalatedGlobal final HttpClient httpClient,
+        final Supplier<WorkerBehaviorConfig> workerConfigRef,
+        final ProvisioningSchedulerConfig provisioningSchedulerConfig,
+        final ProvisioningStrategy provisioningStrategy,
+        final DruidNodeDiscoveryProvider druidNodeDiscoveryProvider,
+        final TaskStorage taskStorage,
+        final Provider<CuratorFramework> cfProvider,
+        final IndexerZkConfig indexerZkConfig,
+        final ZkEnablementConfig zkEnablementConfig,
+        final ServiceEmitter emitter,
+        // Fields not needed by HttpRemoteTaskRunner but used by EmbeddedOverlord
+        TaskRunnerListener listener
     )
     {
       super(
-          smileMapper,
-          config,
-          httpClient,
-          workerConfigRef,
-          provisioningStrategy,
-          druidNodeDiscoveryProvider,
-          taskStorage,
-          cf,
-          indexerZkConfig,
-          emitter
+          smileMapper, httpRemoteTaskRunnerConfig, httpClient, workerConfigRef,
+          provisioningSchedulerConfig, provisioningStrategy, druidNodeDiscoveryProvider,
+          taskStorage, cfProvider, indexerZkConfig, zkEnablementConfig, emitter
       );
-      registerListener(listener, MoreExecutors.directExecutor());
-      this.executorFactory = executorFactory;
-      this.taskToolboxFactory = taskToolboxFactory;
-
-      addWorker(
-          new Worker(null, "LocalWorker", "007", 500, "v1", WorkerConfig.DEFAULT_CATEGORY)
-      );
-    }
-
-    @Override
-    protected WorkerHolder createWorkerHolder(
-        ObjectMapper smileMapper,
-        HttpClient httpClient,
-        HttpRemoteTaskRunnerConfig config,
-        ScheduledExecutorService workersSyncExec,
-        WorkerHolder.Listener listener,
-        Worker worker,
-        List<TaskAnnouncement> knownAnnouncements
-    )
-    {
-      return new LocalWorkerHolder(
-          executorFactory,
-          taskToolboxFactory,
-          smileMapper,
-          httpClient,
-          config,
-          workersSyncExec,
-          listener,
-          worker,
-          knownAnnouncements
-      );
+      this.listener = listener;
     }
 
     @Override
     public HttpRemoteTaskRunner build()
     {
-      return this;
-    }
+      final HttpRemoteTaskRunner runner = super.build();
+      runner.registerListener(listener, MoreExecutors.directExecutor());
 
-    @Override
-    public HttpRemoteTaskRunner get()
-    {
-      return this;
+      return runner;
     }
   }
 
-  private static class TestTaskToolboxFactory extends TaskToolboxFactory
+  private static class References
   {
-    private final TaskActionClientFactory taskActionClientFactory;
-    private final TaskReportFileWriter taskReportFileWriter;
-    private final ServiceEmitter serviceEmitter;
-    private final TaskConfig taskConfig;
-    private final ObjectMapper mapper;
-    private final IndexIO indexIO;
+    @Inject
+    OverlordClient client;
 
     @Inject
-    TestTaskToolboxFactory(
-        TaskActionClientFactory taskActionClientFactory,
-        TaskReportFileWriter taskReportFileWriter,
-        ServiceEmitter serviceEmitter,
-        TaskConfig taskConfig,
-        ObjectMapper mapper,
-        IndexIO indexIO
-    )
-    {
-      super(
-          null, null, null, null, null, null, null, null, null, null,
-          null, null, null, null, null, null, null, null, null, null,
-          indexIO, null, null, null, null, null, null, null, null, null, null,
-          null, null, null, null, null, null, null, null, null, null, null
-      );
-      this.taskActionClientFactory = taskActionClientFactory;
-      this.taskReportFileWriter = taskReportFileWriter;
-      this.serviceEmitter = serviceEmitter;
-      this.taskConfig = taskConfig;
-      this.mapper = mapper;
-      this.indexIO = indexIO;
-    }
-
-    @Override
-    public TaskToolbox build(Task task)
-    {
-      return new TaskToolbox.Builder()
-          .taskActionClient(taskActionClientFactory.create(task))
-          .taskReportFileWriter(taskReportFileWriter)
-          .indexIO(indexIO)
-          .chatHandlerProvider(new NoopChatHandlerProvider())
-          .rowIngestionMetersFactory(new DropwizardRowIngestionMetersFactory())
-          .appenderatorsManager(new PeonAppenderatorsManager())
-          .indexMergerV9(new IndexMergerV9(mapper, indexIO, TmpFileSegmentWriteOutMediumFactory.instance(), false))
-          .config(taskConfig)
-          .emitter(serviceEmitter)
-          .build();
-    }
-  }
-
-  private static class OverlordClientReference
-  {
-    private OverlordClient client;
-
-    @Inject
-    void setOverlordClient(OverlordClient client)
-    {
-      this.client = client;
-    }
+    ServiceEmitter emitter;
   }
 }

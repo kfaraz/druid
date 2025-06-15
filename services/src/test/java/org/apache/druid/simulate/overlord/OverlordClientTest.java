@@ -27,6 +27,7 @@ import org.apache.druid.client.indexing.IndexingTotalWorkerCapacityInfo;
 import org.apache.druid.client.indexing.IndexingWorkerInfo;
 import org.apache.druid.client.indexing.TaskStatusResponse;
 import org.apache.druid.common.guava.FutureUtils;
+import org.apache.druid.common.utils.IdUtils;
 import org.apache.druid.indexer.TaskState;
 import org.apache.druid.indexer.TaskStatus;
 import org.apache.druid.indexer.TaskStatusPlus;
@@ -61,13 +62,18 @@ import static org.junit.Assert.assertNotNull;
  */
 public class OverlordClientTest
 {
+  private static final String UNKNOWN_TASK_ID
+      = IdUtils.newTaskId("sim_test_noop", "dummy", null);
+  private static final String UNKNOWN_TASK_ERROR
+      = StringUtils.format("Cannot find any task with id: [%s]", UNKNOWN_TASK_ID);
+
   private static final EmbeddedOverlord OVERLORD = EmbeddedOverlord.create();
 
   @ClassRule
   public static final RuleChain cluster
       = EmbeddedDruidCluster.builder()
-                            .with(OVERLORD)
                             .with(EmbeddedIndexer.create())
+                            .with(OVERLORD)
                             .withDb()
                             .build();
 
@@ -79,9 +85,9 @@ public class OverlordClientTest
   }
 
   @Test
-  public void test_runTask()
+  public void test_runTask_ofTypeNoop()
   {
-    final String taskId = "test-sim-noop-task";
+    final String taskId = IdUtils.newTaskId("sim_test_noop", TestDataSource.WIKI, null);
     getResult(
         OVERLORD.client().runTask(taskId, new NoopTask(taskId, null, null, 1L, 0L, null))
     );
@@ -93,17 +99,17 @@ public class OverlordClientTest
   public void test_runKillTask()
   {
     final String taskId = getResult(
-        OVERLORD.client().runKillTask("kill-sim-", TestDataSource.WIKI, Intervals.ETERNITY, null, null, null)
+        OVERLORD.client().runKillTask("sim_test", TestDataSource.WIKI, Intervals.ETERNITY, null, null, null)
     );
-    assertNotNull(taskId);
+    verifyTaskHasSucceeded(taskId);
   }
 
   @Test
   public void test_cancelTask_withUnknownTaskId()
   {
     verifyFailsWith(
-        OVERLORD.client().cancelTask("task-id"),
-        "Cannot find any task with id: [task-id]"
+        OVERLORD.client().cancelTask(UNKNOWN_TASK_ID),
+        UNKNOWN_TASK_ERROR
     );
   }
 
@@ -117,28 +123,30 @@ public class OverlordClientTest
   }
 
   @Test
-  public void test_taskStatuses_byIds()
+  public void test_taskStatuses_byIds_returnsEmpty_forUnknownTaskIds()
   {
     Map<String, TaskStatus> result = getResult(
-        OVERLORD.client().taskStatuses(Set.of("task-id-1", "task-id-2"))
+        OVERLORD.client().taskStatuses(Set.of(UNKNOWN_TASK_ID))
     );
-    assertNotNull(result);
+    Assert.assertTrue(result.isEmpty());
   }
 
   @Test
-  public void test_taskStatus_ofUnknownTaskId()
+  public void test_taskStatus_fails_forUnknownTaskId()
   {
     verifyFailsWith(
-        OVERLORD.client().taskStatus("task-id"),
-        "Cannot find any task with id: [task-id]"
+        OVERLORD.client().taskStatus(UNKNOWN_TASK_ID),
+        UNKNOWN_TASK_ERROR
     );
   }
 
   @Test
-  public void test_taskPayload()
+  public void test_taskPayload_fails_forUnknownTaskId()
   {
-    Object result = getResult(OVERLORD.client().taskPayload("task-id"));
-    assertNotNull(result);
+    verifyFailsWith(
+        OVERLORD.client().taskPayload(UNKNOWN_TASK_ID),
+        UNKNOWN_TASK_ERROR
+    );
   }
 
   @Test
@@ -151,7 +159,7 @@ public class OverlordClientTest
   }
 
   @Test
-  public void test_findLockedIntervals_withNoFilter_fails()
+  public void test_findLockedIntervals_fails_whenNoFilter()
   {
     verifyFailsWith(
         OVERLORD.client().findLockedIntervals(List.of()),
@@ -162,17 +170,18 @@ public class OverlordClientTest
   @Test
   public void test_killPendingSegments()
   {
-    Integer result = getResult(
+    Integer numPendingSegmentsDeleted = getResult(
         OVERLORD.client().killPendingSegments(TestDataSource.WIKI, Intervals.ETERNITY)
     );
-    assertNotNull(result);
+    Assert.assertEquals(0, numPendingSegmentsDeleted.intValue());
   }
 
   @Test
   public void test_getWorkers()
   {
-    List<IndexingWorkerInfo> result = getResult(OVERLORD.client().getWorkers());
-    assertNotNull(result);
+    List<IndexingWorkerInfo> workers = getResult(OVERLORD.client().getWorkers());
+    Assert.assertEquals(1, workers.size());
+    Assert.assertEquals(3, workers.get(0).getWorker().getCapacity());
   }
 
   @Test
@@ -181,7 +190,7 @@ public class OverlordClientTest
     IndexingTotalWorkerCapacityInfo result = getResult(
         OVERLORD.client().getTotalWorkerCapacity()
     );
-    assertNotNull(result);
+    Assert.assertEquals(3, result.getCurrentClusterCapacity());
   }
 
   @Test
@@ -222,7 +231,9 @@ public class OverlordClientTest
   @Test
   public void test_markSegmentsAsUnused_basic()
   {
-    final SegmentUpdateResponse result = getResult(OVERLORD.client().markSegmentsAsUnused(TestDataSource.WIKI));
+    final SegmentUpdateResponse result = getResult(
+        OVERLORD.client().markSegmentsAsUnused(TestDataSource.WIKI)
+    );
     assertNotNull(result);
   }
 
@@ -289,7 +300,7 @@ public class OverlordClientTest
     Assert.assertTrue(capturedError.get().getMessage().contains(message));
   }
 
-  private void verifyTaskHasSucceeded(String taskId)
+  private static void verifyTaskHasSucceeded(String taskId)
   {
     OVERLORD.waitUntilTaskFinishes(taskId);
     final TaskStatusResponse currentStatus = getResult(
