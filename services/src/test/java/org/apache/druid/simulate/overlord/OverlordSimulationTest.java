@@ -19,15 +19,27 @@
 
 package org.apache.druid.simulate.overlord;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.util.concurrent.ListenableFuture;
 import org.apache.druid.client.indexing.IndexingWorkerInfo;
 import org.apache.druid.client.indexing.TaskStatusResponse;
 import org.apache.druid.common.guava.FutureUtils;
+import org.apache.druid.common.utils.IdUtils;
+import org.apache.druid.data.input.impl.CsvInputFormat;
+import org.apache.druid.data.input.impl.DimensionsSpec;
+import org.apache.druid.data.input.impl.InlineInputSource;
+import org.apache.druid.data.input.impl.TimestampSpec;
 import org.apache.druid.indexer.TaskState;
+import org.apache.druid.indexing.common.task.IndexTask;
 import org.apache.druid.indexing.common.task.NoopTask;
+import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.rpc.indexing.OverlordClient;
+import org.apache.druid.segment.TestDataSource;
+import org.apache.druid.segment.TestHelper;
+import org.apache.druid.segment.indexing.DataSchema;
 import org.apache.druid.simulate.EmbeddedDruidCluster;
+import org.apache.druid.simulate.EmbeddedIndexer;
 import org.junit.Assert;
 import org.junit.ClassRule;
 import org.junit.Test;
@@ -49,10 +61,16 @@ import java.util.stream.IntStream;
  */
 public class OverlordSimulationTest
 {
-  private static final EmbeddedOverlord overlord = EmbeddedOverlord.create();
+  private static final ObjectMapper MAPPER = TestHelper.JSON_MAPPER;
+  private static final EmbeddedOverlord OVERLORD = EmbeddedOverlord.create();
 
   @ClassRule
-  public static final RuleChain cluster = EmbeddedDruidCluster.builder().withServer(overlord).withDb().build();
+  public static final RuleChain cluster
+      = EmbeddedDruidCluster.builder()
+                            .with(OVERLORD)
+                            .with(EmbeddedIndexer.create())
+                            .withDb()
+                            .build();
 
   @Test
   public void test_getCurrentLeader()
@@ -81,6 +99,37 @@ public class OverlordSimulationTest
     runTasks(10_000, "test-task2-");
   }
 
+  @Test
+  public void test_runBatchTask() throws Exception
+  {
+    final String taskId = IdUtils.newTaskId("batch", TestDataSource.WIKI, null);
+    final Task task = new IndexTask(
+        taskId,
+        null,
+        new IndexTask.IndexIngestionSpec(
+            DataSchema.builder()
+                      .withTimestamp(new TimestampSpec("time", null, null))
+                      .withDimensions(DimensionsSpec.EMPTY)
+                      .withDataSource(TestDataSource.WIKI)
+                      .build(),
+            new IndexTask.IndexIOConfig(
+                new InlineInputSource("time,name,value\n2024,a,1"),
+                new CsvInputFormat(null, null, null, true, 0, false),
+                false,
+                false
+            ),
+            null
+        ),
+        Map.of()
+    );
+    run(
+        client -> client.runTask(taskId, task)
+    );
+
+    OVERLORD.waitUntilTaskFinishes(taskId);
+    verifyTaskHasSucceeded(taskId);
+  }
+
   private void runTasks(int count, String idPrefix)
   {
     final List<String> taskIds = IntStream.range(0, count)
@@ -97,22 +146,27 @@ public class OverlordSimulationTest
     }
 
     for (String taskId : taskIds) {
-      overlord.waitUntilTaskFinishes(taskId);
-      final TaskStatusResponse currentStatus = run(
-          client -> client.taskStatus(taskId)
-      );
-      Assert.assertNotNull(currentStatus.getStatus());
-      Assert.assertEquals(
-          StringUtils.format("Task[%s] has failed", taskId),
-          TaskState.SUCCESS,
-          currentStatus.getStatus().getStatusCode()
-      );
+      OVERLORD.waitUntilTaskFinishes(taskId);
+      verifyTaskHasSucceeded(taskId);
     }
+  }
+
+  private void verifyTaskHasSucceeded(String taskId)
+  {
+    final TaskStatusResponse currentStatus = run(
+        client -> client.taskStatus(taskId)
+    );
+    Assert.assertNotNull(currentStatus.getStatus());
+    Assert.assertEquals(
+        StringUtils.format("Task[%s] has failed", taskId),
+        TaskState.SUCCESS,
+        currentStatus.getStatus().getStatusCode()
+    );
   }
 
 
   private <T> T run(Function<OverlordClient, ListenableFuture<T>> function)
   {
-    return FutureUtils.getUnchecked(function.apply(overlord.client()), true);
+    return FutureUtils.getUnchecked(function.apply(OVERLORD.client()), true);
   }
 }

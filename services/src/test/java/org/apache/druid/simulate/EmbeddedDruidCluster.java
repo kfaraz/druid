@@ -19,15 +19,19 @@
 
 package org.apache.druid.simulate;
 
+import com.google.common.base.Preconditions;
 import org.apache.druid.metadata.TestDerbyConnector;
 import org.junit.rules.RuleChain;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Builder for an embedded Druid cluster that can be used in simulation tests.
  */
 public class EmbeddedDruidCluster
 {
-  private EmbeddedDruidServer server;
+  private final List<EmbeddedDruidServer> servers = new ArrayList<>();
   private boolean hasMetadataStore = false;
 
   public static EmbeddedDruidCluster builder()
@@ -47,9 +51,9 @@ public class EmbeddedDruidCluster
   /**
    * Adds a server to this cluster.
    */
-  public EmbeddedDruidCluster withServer(EmbeddedDruidServer server)
+  public EmbeddedDruidCluster with(EmbeddedDruidServer server)
   {
-    this.server = server;
+    servers.add(server);
     return this;
   }
 
@@ -59,6 +63,8 @@ public class EmbeddedDruidCluster
    */
   public RuleChain build()
   {
+    Preconditions.checkArgument(!servers.isEmpty(), "Cluster must have atleast one server");
+
     RuleChain ruleChain = RuleChain.emptyRuleChain();
 
     final TestDerbyConnector.DerbyConnectorRule dbRule;
@@ -72,8 +78,10 @@ public class EmbeddedDruidCluster
     final EmbeddedZookeeper zk = new EmbeddedZookeeper();
     ruleChain = ruleChain.around(zk);
 
-    return ruleChain.around(
-        server.junitResource(zk, dbRule)
-    );
+    for (EmbeddedDruidServer server : servers) {
+      ruleChain = ruleChain.around(server.junitResource(zk, dbRule));
+    }
+
+    return ruleChain;
   }
 }

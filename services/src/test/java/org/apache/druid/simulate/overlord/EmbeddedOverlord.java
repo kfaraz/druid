@@ -43,6 +43,7 @@ import org.apache.druid.indexing.common.TaskToolbox;
 import org.apache.druid.indexing.common.TaskToolboxFactory;
 import org.apache.druid.indexing.common.actions.TaskActionClientFactory;
 import org.apache.druid.indexing.common.config.TaskConfig;
+import org.apache.druid.indexing.common.stats.DropwizardRowIngestionMetersFactory;
 import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.indexing.overlord.TaskRunnerFactory;
 import org.apache.druid.indexing.overlord.TaskRunnerListener;
@@ -63,6 +64,8 @@ import org.apache.druid.java.util.http.client.HttpClient;
 import org.apache.druid.rpc.indexing.OverlordClient;
 import org.apache.druid.segment.IndexIO;
 import org.apache.druid.segment.IndexMergerV9;
+import org.apache.druid.segment.realtime.NoopChatHandlerProvider;
+import org.apache.druid.segment.realtime.appenderator.PeonAppenderatorsManager;
 import org.apache.druid.segment.writeout.TmpFileSegmentWriteOutMediumFactory;
 import org.apache.druid.server.initialization.IndexerZkConfig;
 import org.apache.druid.simulate.EmbeddedDruidServer;
@@ -89,7 +92,7 @@ public class EmbeddedOverlord extends EmbeddedDruidServer
   private static final Logger log = new Logger(EmbeddedOverlord.class);
 
   private static final Map<String, String> STANDARD_PROPERTIES = Map.of(
-      "druid.indexer.runner.type", "threading",
+      //"druid.indexer.runner.type", "threading",
       "druid.indexer.queue.startDelay", "PT0S",
       "druid.indexer.queue.restartDelay", "PT0S"
   );
@@ -135,6 +138,7 @@ public class EmbeddedOverlord extends EmbeddedDruidServer
       @Override
       public void statusChanged(String taskId, TaskStatus status)
       {
+        log.info("Task[%s] has updated status[%s]", taskId, status);
         if (status.isComplete()) {
           taskHasCompleted.compute(
               taskId,
@@ -205,7 +209,7 @@ public class EmbeddedOverlord extends EmbeddedDruidServer
     {
       final List<Module> modules = new ArrayList<>(handler.getInitModules());
       modules.addAll(super.getModules());
-      modules.add(
+      /*modules.add(
           binder -> binder.bind(TaskToolboxFactory.class).to(TestTaskToolboxFactory.class)
       );
       modules.add(
@@ -237,19 +241,19 @@ public class EmbeddedOverlord extends EmbeddedDruidServer
                 }
               }
           )
-      );
+      );*/
       modules.add(
           binder -> binder.bind(OverlordClientReference.class).toInstance(clientReference)
       );
       modules.add(
           binder -> binder.bind(TaskRunnerListener.class).toInstance(taskRunnerListener)
       );
-      modules.add(
+      /*modules.add(
           binder -> PolyBind.optionBinder(binder, Key.get(TaskRunnerFactory.class))
                             .addBinding("threading")
                             .to(TestHttpRemoteTaskRunnerFactory.class)
                             .in(LazySingleton.class)
-      );
+      );*/
       return modules;
     }
   }
@@ -377,6 +381,9 @@ public class EmbeddedOverlord extends EmbeddedDruidServer
           .taskActionClient(taskActionClientFactory.create(task))
           .taskReportFileWriter(taskReportFileWriter)
           .indexIO(indexIO)
+          .chatHandlerProvider(new NoopChatHandlerProvider())
+          .rowIngestionMetersFactory(new DropwizardRowIngestionMetersFactory())
+          .appenderatorsManager(new PeonAppenderatorsManager())
           .indexMergerV9(new IndexMergerV9(mapper, indexIO, TmpFileSegmentWriteOutMediumFactory.instance(), false))
           .config(taskConfig)
           .emitter(serviceEmitter)
