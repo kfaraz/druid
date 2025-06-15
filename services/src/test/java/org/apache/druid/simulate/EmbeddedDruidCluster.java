@@ -29,6 +29,30 @@ import java.util.List;
 
 /**
  * Builder for an embedded Druid cluster that can be used in simulation tests.
+ * A cluster is initialized with the following:
+ * <ul>
+ * <li>One or more Druid servers</li>
+ * <li>A single Zookeeper server used by all the Druid services</li>
+ * <li>An optional in-memory Derby metadata store</li>
+ * <li>Temporary folder for segment and task storage</li>
+ * </ul>
+ * <p>
+ * Example usage:
+ * <pre>
+ * private final EmbeddedOverlord overlord = EmbeddedOverlord.create();
+ * private final EmbeddedIndexer indexer = EmbeddedIndexer.create();
+ *
+ * &#64;Rule
+ * public RuleChain cluster = EmbeddedDruidCluster.builder()
+ *                                                .withDb()
+ *                                                .with(overlord)
+ *                                                .with(indexer)
+ *                                                .build();
+ * </pre>
+ *
+ * @see EmbeddedZookeeper
+ * @see TestDerbyConnector
+ * @see EmbeddedDruidServer
  */
 public class EmbeddedDruidCluster
 {

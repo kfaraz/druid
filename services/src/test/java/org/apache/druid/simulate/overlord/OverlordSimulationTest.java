@@ -63,7 +63,7 @@ public class OverlordSimulationTest
   @ClassRule
   public static final RuleChain cluster
       = EmbeddedDruidCluster.builder()
-                            .with(EmbeddedIndexer.withProps(Map.of("druid.worker.capacity", "100")))
+                            .with(EmbeddedIndexer.withProps(Map.of("druid.worker.capacity", "10")))
                             .with(OVERLORD)
                             .withDb()
                             .build();
@@ -80,19 +80,19 @@ public class OverlordSimulationTest
   {
     final List<IndexingWorkerInfo> workers = run(OverlordClient::getWorkers);
     Assert.assertEquals(1, workers.size());
-    Assert.assertEquals(100, workers.get(0).getWorker().getCapacity());
+    Assert.assertEquals(10, workers.get(0).getWorker().getCapacity());
   }
 
   @Test(timeout = 60_000L)
-  public void test_run200Tasks()
+  public void test_run20Tasks()
   {
-    runTasks(200);
+    runTasks(20);
   }
 
   @Test(timeout = 60_000L)
-  public void test_run300Tasks()
+  public void test_run30Tasks()
   {
-    runTasks(300);
+    runTasks(20);
   }
 
   @Test

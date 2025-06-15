@@ -56,6 +56,9 @@ public abstract class EmbeddedDruidServer
     return properties;
   }
 
+  /**
+   * Creates a {@link ServerRunnable} corresponding to a specific Druid service.
+   */
   protected abstract ServerRunnable createRunnable(
       LifecycleInitHandler handler
   );
@@ -73,6 +76,9 @@ public abstract class EmbeddedDruidServer
     return new DruidServerResource(this, tempDir, zk, dbRule);
   }
 
+  /**
+   * Handler used during initialization of the lifecycle of an embedded server.
+   */
   public interface LifecycleInitHandler
   {
     List<? extends Module> getInitModules();

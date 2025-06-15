@@ -56,7 +56,9 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * JUnit {@link ExternalResource} for an {@link EmbeddedDruidServer} server.
- * This class can be used with {@code Rule}, {@code ClassRule} or a {@code RuleChain}.
+ * This class can be used with {@code Rule}, {@code ClassRule} or {@code RuleChain}.
+ *
+ * @see EmbeddedDruidCluster
  */
 public class DruidServerResource extends ExternalResource
 {
