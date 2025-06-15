@@ -37,7 +37,6 @@ import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.handler.DefaultHandler;
 import org.eclipse.jetty.server.handler.HandlerList;
 import org.eclipse.jetty.servlet.DefaultServlet;
-import org.eclipse.jetty.servlet.FilterHolder;
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHolder;
 
@@ -94,8 +93,7 @@ class MiddleManagerJettyServerInitializer implements JettyServerInitializer
         jsonMapper
     );
 
-    final FilterHolder guiceFilterHolder = new FilterHolder(injector.getInstance(GuiceFilter.class));
-    root.addFilter(guiceFilterHolder, "/*", null);
+    root.addFilter(GuiceFilter.class, "/*", null);
 
     final HandlerList handlerList = new HandlerList();
     JettyServerInitUtils.maybeAddHSTSRewriteHandler(serverConfig, handlerList);
