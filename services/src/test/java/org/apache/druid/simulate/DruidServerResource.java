@@ -218,14 +218,14 @@ public class DruidServerResource extends ExternalResource
    */
   private static class TestRuntimeInfoModule implements Module
   {
-    static final long XMX_1_GB = 1_000_000_000;
+    static final long XMX_500_MB = 500_000_000;
     static final int NUM_PROCESSORS = 4;
 
     @Override
     public void configure(Binder binder)
     {
       binder.bind(RuntimeInfo.class).toInstance(
-          new DruidProcessingConfigTest.MockRuntimeInfo(NUM_PROCESSORS, XMX_1_GB, XMX_1_GB)
+          new DruidProcessingConfigTest.MockRuntimeInfo(NUM_PROCESSORS, XMX_500_MB, XMX_500_MB)
       );
       binder.requestStaticInjection(JvmUtils.class);
     }
