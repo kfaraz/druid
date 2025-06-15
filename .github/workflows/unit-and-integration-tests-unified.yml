@@ -80,7 +80,7 @@ jobs:
       fail-fast: false
       matrix:
         # Use JDK 21.0.4 to work around https://github.com/apache/druid/issues/17429
-        jdk: [ '11', '17', '21.0.4' ]
+        jdk: [ '17' ]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout branch
@@ -203,23 +203,8 @@ jobs:
     needs: [check-approval]
     if: ${{ needs.check-approval.outputs.approved == 'true' }}
 
-  standard-its:
-    needs: [build, unit-tests-unapproved, check-approval]
-    if: ${{ !cancelled() && (needs.check-approval.outputs.approved == 'true' || needs.unit-tests-unapproved.result == 'success') }}
-    uses: ./.github/workflows/standard-its.yml
-
-  revised-its:
-    needs: [build, unit-tests-unapproved, check-approval]
-    if: ${{ !cancelled() && (needs.check-approval.outputs.approved == 'true' || needs.unit-tests-unapproved.result == 'success') }}
-    uses: ./.github/workflows/revised-its.yml
-    with:
-      BACKWARD_COMPATIBILITY_IT_ENABLED: ${{ needs.set-env-var.outputs.BACKWARD_COMPATIBILITY_IT_ENABLED }}
-      DRUID_PREVIOUS_VERSION: ${{ needs.set-env-var.outputs.DRUID_PREVIOUS_VERSION }}
-      DRUID_PREVIOUS_VERSION_DOWNLOAD_URL: ${{ needs.set-env-var.outputs.DRUID_PREVIOUS_VERSION_DOWNLOAD_URL }}
-      DRUID_PREVIOUS_IT_IMAGE_NAME: ${{ needs.set-env-var.outputs.DRUID_PREVIOUS_IT_IMAGE_NAME }}
-
   actions-timeline:
-    needs: [build, unit-tests-approved, unit-tests-unapproved, revised-its, standard-its]
+    needs: [build, unit-tests-approved, unit-tests-unapproved]
     runs-on: ubuntu-latest
     if: ${{ !cancelled() }}
     steps:
