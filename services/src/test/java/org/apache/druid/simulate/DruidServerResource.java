@@ -177,13 +177,13 @@ public class DruidServerResource extends ExternalResource
       final String serverTaskDirectory = tempDir.newFolder().getAbsolutePath();
       log.info("Using task directory[%s].", serverTaskDirectory);
 
-      final String storageDirectory = tempDir.newFolder().getAbsolutePath();
-      log.info("Using storage directory[%s]", storageDirectory);
+      final String serverStorageDirectory = tempDir.newFolder().getAbsolutePath();
+      log.info("Using storage directory[%s]", serverStorageDirectory);
 
       serverProperties.setProperty("druid.zk.service.host", zk.getConnectString());
       serverProperties.setProperty("druid.indexer.task.baseDir", serverTaskDirectory);
-      serverProperties.setProperty("druid.indexer.logs.directory", serverTaskDirectory);
-      serverProperties.setProperty("druid.storage.storageDirectory", storageDirectory);
+      serverProperties.setProperty("druid.indexer.logs.directory", tempDir.getRoot().getAbsolutePath());
+      serverProperties.setProperty("druid.storage.storageDirectory", serverStorageDirectory);
       if (dbRule != null) {
         serverProperties.setProperty("druid.metadata.storage.type", TestDerbyModule.TYPE);
         serverProperties.setProperty(

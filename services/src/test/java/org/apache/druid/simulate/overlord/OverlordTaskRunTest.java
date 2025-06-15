@@ -20,7 +20,6 @@
 package org.apache.druid.simulate.overlord;
 
 import com.google.common.util.concurrent.ListenableFuture;
-import org.apache.druid.client.indexing.IndexingWorkerInfo;
 import org.apache.druid.client.indexing.TaskStatusResponse;
 import org.apache.druid.common.guava.FutureUtils;
 import org.apache.druid.common.utils.IdUtils;
@@ -32,21 +31,25 @@ import org.apache.druid.indexer.TaskState;
 import org.apache.druid.indexing.common.task.IndexTask;
 import org.apache.druid.indexing.common.task.NoopTask;
 import org.apache.druid.indexing.common.task.Task;
+import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.common.StringUtils;
-import org.apache.druid.rpc.indexing.OverlordClient;
+import org.apache.druid.java.util.common.guava.Comparators;
 import org.apache.druid.segment.TestDataSource;
 import org.apache.druid.segment.indexing.DataSchema;
 import org.apache.druid.simulate.EmbeddedDruidCluster;
 import org.apache.druid.simulate.EmbeddedIndexer;
+import org.apache.druid.timeline.DataSegment;
+import org.joda.time.DateTime;
+import org.joda.time.Interval;
+import org.joda.time.Period;
 import org.junit.Assert;
 import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.rules.RuleChain;
 
-import java.net.URI;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -56,54 +59,61 @@ import java.util.stream.IntStream;
  * - run some existing tests with this setup
  * - write more tests
  */
-public class OverlordSimulationTest
+public class OverlordTaskRunTest
 {
   private static final EmbeddedOverlord OVERLORD = EmbeddedOverlord.create();
-
-  @ClassRule
-  public static final RuleChain CLUSTER
+  private static final EmbeddedDruidCluster CLUSTER
       = EmbeddedDruidCluster.builder()
                             .with(EmbeddedIndexer.withProps(Map.of("druid.worker.capacity", "25")))
                             .with(OVERLORD)
                             .withDb()
                             .build();
 
-  @Test
-  public void test_getCurrentLeader()
-  {
-    final URI uri = run(OverlordClient::findCurrentLeader);
-    Assert.assertEquals(8090, uri.getPort());
-  }
-
-  @Test
-  public void test_getWorkers()
-  {
-    final List<IndexingWorkerInfo> workers = run(OverlordClient::getWorkers);
-    Assert.assertEquals(1, workers.size());
-    Assert.assertEquals(25, workers.get(0).getWorker().getCapacity());
-  }
+  @ClassRule
+  public static final RuleChain CLUSTER_RULE_CHAIN = CLUSTER.ruleChain();
 
   @Test(timeout = 60_000L)
-  public void test_run10Tasks()
+  public void test_run10Tasks_concurrently()
   {
     runTasks(10);
   }
 
   @Test(timeout = 60_000L)
-  public void test_run50Tasks()
+  public void test_run50Tasks_oneByOne()
+  {
+    for (int i = 0; i < 50; ++i) {
+      runTasks(1);
+    }
+  }
+
+  @Test(timeout = 60_000L)
+  public void test_run25Tasks_concurrently()
   {
     runTasks(25);
   }
 
   @Test(timeout = 60_000L)
-  public void test_run100Tasks()
+  public void test_run100Tasks_concurrently()
   {
     runTasks(100);
   }
 
   @Test
-  public void test_runBatchTask()
+  public void test_runIndexTask_forInlineDatasource()
   {
+    final String txnData10Days
+        = "time,item,value"
+          + "\n2025-06-01,shirt,105"
+          + "\n2025-06-02,trousers,210"
+          + "\n2025-06-03,jeans,150"
+          + "\n2025-06-04,t-shirt,53"
+          + "\n2025-06-05,microwave,1099"
+          + "\n2025-06-06,spoon,11"
+          + "\n2025-06-07,television,1100"
+          + "\n2025-06-08,plant pots,75"
+          + "\n2025-06-09,shirt,99"
+          + "\n2025-06-10,toys,101";
+
     final String taskId = IdUtils.newTaskId("batch", TestDataSource.WIKI, null);
     final Task task = new IndexTask(
         taskId,
@@ -115,7 +125,7 @@ public class OverlordSimulationTest
                       .withDataSource(TestDataSource.WIKI)
                       .build(),
             new IndexTask.IndexIOConfig(
-                new InlineInputSource("time,name,value\n2024,a,1"),
+                new InlineInputSource(txnData10Days),
                 new CsvInputFormat(null, null, null, true, 0, false),
                 false,
                 false
@@ -124,12 +134,28 @@ public class OverlordSimulationTest
         ),
         Map.of()
     );
-    run(
-        client -> client.runTask(taskId, task)
+
+    getResult(OVERLORD.client().runTask(taskId, task));
+    verifyTaskHasSucceeded(taskId);
+
+    final List<DataSegment> segments = new ArrayList<>(
+        OVERLORD.segmentsMetadata().retrieveAllUsedSegments(TestDataSource.WIKI, null)
+    );
+    segments.sort(
+        (o1, o2) -> Comparators.intervalsByStartThenEnd()
+                               .compare(o1.getInterval(), o2.getInterval())
     );
 
-    OVERLORD.waitUntilTaskFinishes(taskId);
-    verifyTaskHasSucceeded(taskId);
+    Assert.assertEquals(10, segments.size());
+
+    DateTime start = DateTimes.of("2025-06-01");
+    for (DataSegment segment : segments) {
+      Assert.assertEquals(
+          new Interval(start, Period.days(1)),
+          segment.getInterval()
+      );
+      start = start.plusDays(1);
+    }
   }
 
   private void runTasks(int count)
@@ -139,8 +165,8 @@ public class OverlordSimulationTest
     ).collect(Collectors.toList());
 
     for (String taskId : taskIds) {
-      run(
-          client -> client.runTask(
+      getResult(
+          OVERLORD.client().runTask(
               taskId,
               new NoopTask(taskId, null, null, 1L, 0L, Map.of())
           )
@@ -148,15 +174,15 @@ public class OverlordSimulationTest
     }
 
     for (String taskId : taskIds) {
-      OVERLORD.waitUntilTaskFinishes(taskId);
       verifyTaskHasSucceeded(taskId);
     }
   }
 
-  private void verifyTaskHasSucceeded(String taskId)
+  private static void verifyTaskHasSucceeded(String taskId)
   {
-    final TaskStatusResponse currentStatus = run(
-        client -> client.taskStatus(taskId)
+    OVERLORD.waitUntilTaskFinishes(taskId);
+    final TaskStatusResponse currentStatus = getResult(
+        OVERLORD.client().taskStatus(taskId)
     );
     Assert.assertNotNull(currentStatus.getStatus());
     Assert.assertEquals(
@@ -167,8 +193,8 @@ public class OverlordSimulationTest
   }
 
 
-  private <T> T run(Function<OverlordClient, ListenableFuture<T>> function)
+  private static <T> T getResult(ListenableFuture<T> future)
   {
-    return FutureUtils.getUnchecked(function.apply(OVERLORD.client()), true);
+    return FutureUtils.getUnchecked(future, true);
   }
 }

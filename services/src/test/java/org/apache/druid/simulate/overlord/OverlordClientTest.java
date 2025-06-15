@@ -71,14 +71,15 @@ public class OverlordClientTest
       = StringUtils.format("Cannot find any task with id: [%s]", UNKNOWN_TASK_ID);
 
   private static final EmbeddedOverlord OVERLORD = EmbeddedOverlord.create();
-
-  @ClassRule
-  public static final RuleChain CLUSTER
+  private static final EmbeddedDruidCluster CLUSTER
       = EmbeddedDruidCluster.builder()
                             .with(EmbeddedIndexer.create())
                             .with(OVERLORD)
                             .withDb()
                             .build();
+
+  @ClassRule
+  public static final RuleChain CLUSTER_RULE_CHAIN = CLUSTER.ruleChain();
 
   @Test
   public void test_findCurrentLeader()

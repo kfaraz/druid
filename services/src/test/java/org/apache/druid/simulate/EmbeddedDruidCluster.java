@@ -24,6 +24,7 @@ import org.apache.druid.metadata.TestDerbyConnector;
 import org.junit.rules.RuleChain;
 import org.junit.rules.TemporaryFolder;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -56,60 +57,93 @@ import java.util.List;
  */
 public class EmbeddedDruidCluster
 {
-  private final List<EmbeddedDruidServer> servers = new ArrayList<>();
-  private boolean hasMetadataStore = false;
+  private final List<EmbeddedDruidServer> servers;
+  private final EmbeddedZookeeper zookeeper;
+  private final TestDerbyConnector.DerbyConnectorRule dbRule;
 
-  public static EmbeddedDruidCluster builder()
+  private EmbeddedDruidCluster(
+      List<EmbeddedDruidServer> servers,
+      EmbeddedZookeeper zookeeper,
+      @Nullable TestDerbyConnector.DerbyConnectorRule dbRule
+  )
   {
-    return new EmbeddedDruidCluster();
+    this.servers = List.copyOf(servers);
+    this.zookeeper = zookeeper;
+    this.dbRule = dbRule;
+  }
+
+  public static EmbeddedDruidCluster.Builder builder()
+  {
+    return new EmbeddedDruidCluster.Builder();
   }
 
   /**
-   * Adds a metadata store to this cluster.
+   * @return Handle to the metadata store used by this cluster.
    */
-  public EmbeddedDruidCluster withDb()
+  public TestDerbyConnector.DerbyConnectorRule getDb()
   {
-    this.hasMetadataStore = true;
-    return this;
-  }
-
-  /**
-   * Adds a server to this cluster.
-   */
-  public EmbeddedDruidCluster with(EmbeddedDruidServer server)
-  {
-    servers.add(server);
-    return this;
+    return dbRule;
   }
 
   /**
    * Builds a {@link RuleChain} that can be used with JUnit {@code Rule} or
    * {@code ClassRule} to run simulation tests with this cluster.
    */
-  public RuleChain build()
+  public RuleChain ruleChain()
   {
     Preconditions.checkArgument(!servers.isEmpty(), "Cluster must have atleast one server");
 
     RuleChain ruleChain = RuleChain.emptyRuleChain();
 
-    final TestDerbyConnector.DerbyConnectorRule dbRule;
-    if (hasMetadataStore) {
-      dbRule = new TestDerbyConnector.DerbyConnectorRule();
+    if (dbRule != null) {
       ruleChain = ruleChain.around(dbRule);
-    } else {
-      dbRule = null;
     }
 
-    final EmbeddedZookeeper zk = new EmbeddedZookeeper();
-    ruleChain = ruleChain.around(zk);
+    ruleChain = ruleChain.around(zookeeper);
 
     final TemporaryFolder tempDir = new TemporaryFolder();
     ruleChain = ruleChain.around(tempDir);
 
     for (EmbeddedDruidServer server : servers) {
-      ruleChain = ruleChain.around(server.junitResource(tempDir, zk, dbRule));
+      ruleChain = ruleChain.around(server.junitResource(tempDir, zookeeper, dbRule));
     }
 
     return ruleChain;
+  }
+
+  /**
+   * Builder for an {@link EmbeddedDruidCluster}.
+   */
+  public static class Builder
+  {
+    private final List<EmbeddedDruidServer> servers = new ArrayList<>();
+    private boolean hasMetadataStore = false;
+
+    /**
+     * Adds a metadata store to this cluster.
+     */
+    public Builder withDb()
+    {
+      this.hasMetadataStore = true;
+      return this;
+    }
+
+    /**
+     * Adds a server to this cluster.
+     */
+    public Builder with(EmbeddedDruidServer server)
+    {
+      servers.add(server);
+      return this;
+    }
+
+    public EmbeddedDruidCluster build()
+    {
+      return new EmbeddedDruidCluster(
+          servers,
+          new EmbeddedZookeeper(),
+          hasMetadataStore ? new TestDerbyConnector.DerbyConnectorRule() : null
+      );
+    }
   }
 }

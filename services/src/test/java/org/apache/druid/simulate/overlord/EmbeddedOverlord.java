@@ -38,6 +38,7 @@ import org.apache.druid.guice.annotations.EscalatedGlobal;
 import org.apache.druid.guice.annotations.Smile;
 import org.apache.druid.indexer.TaskLocation;
 import org.apache.druid.indexer.TaskStatus;
+import org.apache.druid.indexing.overlord.IndexerMetadataStorageCoordinator;
 import org.apache.druid.indexing.overlord.TaskRunnerFactory;
 import org.apache.druid.indexing.overlord.TaskRunnerListener;
 import org.apache.druid.indexing.overlord.TaskStorage;
@@ -153,6 +154,15 @@ public class EmbeddedOverlord extends EmbeddedDruidServer
     return injectedReferences.client;
   }
 
+  /**
+   * Metadata storage coordinator to query and update segment metadata directly
+   * in the metadata store.
+   */
+  public IndexerMetadataStorageCoordinator segmentsMetadata()
+  {
+    return injectedReferences.indexerMetadataStorageCoordinator;
+  }
+
   public void waitUntilTaskFinishes(String taskId)
   {
     try {
@@ -262,5 +272,8 @@ public class EmbeddedOverlord extends EmbeddedDruidServer
 
     @Inject
     ServiceEmitter emitter;
+
+    @Inject
+    IndexerMetadataStorageCoordinator indexerMetadataStorageCoordinator;
   }
 }
