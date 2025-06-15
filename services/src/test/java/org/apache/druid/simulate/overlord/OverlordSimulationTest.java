@@ -84,13 +84,13 @@ public class OverlordSimulationTest
   }
 
   @Test(timeout = 60_000L)
-  public void test_run20Tasks()
+  public void test_run300Tasks()
   {
-    runTasks(20);
+    runTasks(300);
   }
 
   @Test(timeout = 60_000L)
-  public void test_run30Tasks()
+  public void test_run20Tasks()
   {
     runTasks(20);
   }
