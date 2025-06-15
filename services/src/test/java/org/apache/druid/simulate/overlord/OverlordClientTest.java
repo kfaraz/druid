@@ -19,6 +19,7 @@
 
 package org.apache.druid.simulate.overlord;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -53,6 +54,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 import static org.junit.Assert.assertNotNull;
 
@@ -105,7 +107,7 @@ public class OverlordClientTest
   }
 
   @Test
-  public void test_cancelTask_withUnknownTaskId()
+  public void test_cancelTask_fails_forUnknownTaskId()
   {
     verifyFailsWith(
         OVERLORD.client().cancelTask(UNKNOWN_TASK_ID),
@@ -114,12 +116,42 @@ public class OverlordClientTest
   }
 
   @Test
-  public void test_taskStatuses_all()
+  public void test_taskStatuses_returnsEmpty_forRunningTasks()
   {
     CloseableIterator<TaskStatusPlus> result = getResult(
-        OVERLORD.client().taskStatuses(null, null, null)
+        OVERLORD.client().taskStatuses("running", null, null)
     );
-    assertNotNull(result);
+    final List<TaskStatusPlus> runningTasks = ImmutableList.copyOf(result);
+    Assert.assertTrue(runningTasks.isEmpty());
+  }
+
+  @Test
+  public void test_taskStatuses_forCompleteTasks()
+  {
+    // Run multiple tasks
+    final String task1 = IdUtils.newTaskId("sim_test_noop", TestDataSource.WIKI, null);
+    getResult(
+        OVERLORD.client().runTask(task1, new NoopTask(task1, null, null, 1L, 0L, null))
+    );
+    verifyTaskHasSucceeded(task1);
+
+    final String task2 = IdUtils.newTaskId("sim_test_noop", TestDataSource.WIKI, null);
+    getResult(
+        OVERLORD.client().runTask(task2, new NoopTask(task2, null, null, 1L, 0L, null))
+    );
+    verifyTaskHasSucceeded(task2);
+
+    CloseableIterator<TaskStatusPlus> result = getResult(
+        OVERLORD.client().taskStatuses("complete", null, null)
+    );
+    final Map<String, TaskStatusPlus> completeTaskIdToStatus
+        = ImmutableList.copyOf(result)
+                       .stream()
+                       .collect(Collectors.toMap(TaskStatusPlus::getId, status -> status));
+    Assert.assertTrue(completeTaskIdToStatus.size() >= 2);
+
+    Assert.assertEquals(TaskState.SUCCESS, completeTaskIdToStatus.get(task1).getStatusCode());
+    Assert.assertEquals(TaskState.SUCCESS, completeTaskIdToStatus.get(task2).getStatusCode());
   }
 
   @Test

@@ -92,7 +92,7 @@ public class OverlordSimulationTest
   @Test(timeout = 60_000L)
   public void test_run100Tasks()
   {
-    runTasks(25);
+    runTasks(50);
   }
 
   @Test
@@ -128,9 +128,9 @@ public class OverlordSimulationTest
 
   private void runTasks(int count)
   {
-    final List<String> taskIds = IntStream.range(0, count)
-                                          .mapToObj(i -> IdUtils.newTaskId("sim_test", "noop", null))
-                                          .collect(Collectors.toList());
+    final List<String> taskIds = IntStream.range(0, count).mapToObj(
+        i -> IdUtils.newTaskId("sim_test_" + i, "noop", null)
+    ).collect(Collectors.toList());
 
     for (String taskId : taskIds) {
       run(
