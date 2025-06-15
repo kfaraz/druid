@@ -230,8 +230,7 @@ public class EmbeddedOverlord extends EmbeddedDruidServer
         final IndexerZkConfig indexerZkConfig,
         final ZkEnablementConfig zkEnablementConfig,
         final ServiceEmitter emitter,
-        // Fields not needed by HttpRemoteTaskRunner but used by EmbeddedOverlord
-        TaskRunnerListener listener
+        final TaskRunnerListener listener
     )
     {
       super(
