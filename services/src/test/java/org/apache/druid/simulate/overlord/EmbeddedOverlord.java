@@ -234,7 +234,8 @@ public class EmbeddedOverlord extends EmbeddedDruidServer
     )
     {
       super(
-          smileMapper, httpRemoteTaskRunnerConfig, httpClient, workerConfigRef,
+          smileMapper,
+          httpRemoteTaskRunnerConfig, httpClient, workerConfigRef,
           provisioningSchedulerConfig, provisioningStrategy, druidNodeDiscoveryProvider,
           taskStorage, cfProvider, indexerZkConfig, zkEnablementConfig, emitter
       );

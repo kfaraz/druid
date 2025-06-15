@@ -45,6 +45,7 @@ import org.apache.druid.simulate.EmbeddedIndexer;
 import org.apache.druid.timeline.SegmentId;
 import org.junit.Assert;
 import org.junit.ClassRule;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.rules.RuleChain;
 
@@ -72,7 +73,7 @@ public class OverlordClientTest
   private static final EmbeddedOverlord OVERLORD = EmbeddedOverlord.create();
 
   @ClassRule
-  public static final RuleChain cluster
+  public static final RuleChain CLUSTER
       = EmbeddedDruidCluster.builder()
                             .with(EmbeddedIndexer.create())
                             .with(OVERLORD)
@@ -113,6 +114,33 @@ public class OverlordClientTest
         OVERLORD.client().cancelTask(UNKNOWN_TASK_ID),
         UNKNOWN_TASK_ERROR
     );
+  }
+
+  @Test
+  @Ignore
+  public void test_cancelTask_ofTypeNoop_andLongRunDuration()
+  {
+    // TODO: Discovered race condition here
+    //  even though task is being immediately shutdown, it is still being sent to the worker
+
+    // Start a long-running task
+    final long taskRunDuration = 10_000L;
+    final String taskId = IdUtils.newTaskId("sim_test_noop", TestDataSource.WIKI, null);
+    getResult(
+        OVERLORD.client().runTask(taskId, new NoopTask(taskId, null, null, taskRunDuration, 0L, null))
+    );
+
+    Assert.assertEquals(
+        TaskState.RUNNING,
+        getResult(OVERLORD.client().taskStatus(taskId)).getStatus().getStatusCode()
+    );
+
+    getResult(OVERLORD.client().cancelTask(taskId));
+
+    final TaskStatusPlus status = getResult(OVERLORD.client().taskStatus(taskId)).getStatus();
+    Assert.assertNotNull(status);
+    Assert.assertEquals(TaskState.FAILED, status.getStatusCode());
+    Assert.assertEquals("Shutdown request from user", status.getErrorMsg());
   }
 
   @Test

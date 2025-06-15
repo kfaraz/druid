@@ -52,8 +52,8 @@ import java.util.stream.IntStream;
 
 /**
  * TODO:
- * - try to run a streaming supervisor with this setup
- * - try to run existing tests with this setup
+ * - run a streaming supervisor with this setup
+ * - run some existing tests with this setup
  * - write more tests
  */
 public class OverlordSimulationTest
@@ -61,7 +61,7 @@ public class OverlordSimulationTest
   private static final EmbeddedOverlord OVERLORD = EmbeddedOverlord.create();
 
   @ClassRule
-  public static final RuleChain cluster
+  public static final RuleChain CLUSTER
       = EmbeddedDruidCluster.builder()
                             .with(EmbeddedIndexer.withProps(Map.of("druid.worker.capacity", "25")))
                             .with(OVERLORD)
@@ -84,6 +84,12 @@ public class OverlordSimulationTest
   }
 
   @Test(timeout = 60_000L)
+  public void test_run10Tasks()
+  {
+    runTasks(10);
+  }
+
+  @Test(timeout = 60_000L)
   public void test_run50Tasks()
   {
     runTasks(25);
@@ -92,7 +98,7 @@ public class OverlordSimulationTest
   @Test(timeout = 60_000L)
   public void test_run100Tasks()
   {
-    runTasks(50);
+    runTasks(100);
   }
 
   @Test
