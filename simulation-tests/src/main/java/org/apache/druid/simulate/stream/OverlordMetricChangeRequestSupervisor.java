@@ -17,14 +17,11 @@
  * under the License.
  */
 
-package org.apache.druid.testing.simulate.task;
+package org.apache.druid.simulate.stream;
 
-/**
- * TODO:
- * - add a streaming supervisor
- * - find an Overlord API that can be read as a ChangeRequest thing
- * - run some tests
- */
-public class StreamingTaskSimTest
+import org.apache.druid.indexing.seekablestream.supervisor.SeekableStreamSupervisor;
+
+public class OverlordMetricChangeRequestSupervisor
 {
+
 }
