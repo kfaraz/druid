@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.druid.simulate;
+package org.apache.druid.testing.simulate.server;
 
 import org.apache.druid.curator.CuratorTestBase;
 import org.apache.druid.java.util.common.logger.Logger;
@@ -62,7 +62,7 @@ public class EmbeddedZookeeper extends ExternalResource
    * Connection string for this embedded Zookeeper.
    * @return A valid Zookeeper string only after {@link #before()} has been called.
    */
-  public String getConnectString()
+  String getConnectString()
   {
     return zk.getConnectString();
   }

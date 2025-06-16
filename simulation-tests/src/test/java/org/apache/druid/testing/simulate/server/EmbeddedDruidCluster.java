@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.druid.simulate;
+package org.apache.druid.testing.simulate.server;
 
 import com.google.common.base.Preconditions;
 import org.apache.druid.metadata.TestDerbyConnector;
@@ -75,14 +75,6 @@ public class EmbeddedDruidCluster
   public static EmbeddedDruidCluster.Builder builder()
   {
     return new EmbeddedDruidCluster.Builder();
-  }
-
-  /**
-   * @return Handle to the metadata store used by this cluster.
-   */
-  public TestDerbyConnector.DerbyConnectorRule getDb()
-  {
-    return dbRule;
   }
 
   /**

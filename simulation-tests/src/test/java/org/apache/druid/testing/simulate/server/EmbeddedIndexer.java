@@ -17,37 +17,44 @@
  * under the License.
  */
 
-package org.apache.druid.simulate;
+package org.apache.druid.testing.simulate.server;
 
 import com.google.inject.Injector;
 import com.google.inject.Module;
 import org.apache.druid.cli.CliIndexer;
 import org.apache.druid.cli.ServerRunnable;
 import org.apache.druid.java.util.common.lifecycle.Lifecycle;
+import org.apache.druid.query.DruidProcessingConfigTest;
+import org.apache.druid.utils.RuntimeInfo;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Embeddded mode of {@link CliIndexer} used in simulation tests.
+ */
 public class EmbeddedIndexer extends EmbeddedDruidServer
 {
-  private static final Map<String, String> STANDARD_PROPERTIES = Map.of(
+  private static final Map<String, String> DEFAULT_PROPERTIES = Map.of(
       // Don't sync lookups by default as some embedded clusters might not be
       // using a Coordinator
       "druid.lookup.enableLookupSyncOnStartup", "false"
   );
 
+  private final Map<String, String> properties;
+
   public static EmbeddedIndexer create()
   {
-    return new EmbeddedIndexer(STANDARD_PROPERTIES);
+    return new EmbeddedIndexer(DEFAULT_PROPERTIES);
   }
 
   public static EmbeddedIndexer withProps(
       Map<String, String> properties
   )
   {
-    final Map<String, String> overrideProps = new HashMap<>(STANDARD_PROPERTIES);
+    final Map<String, String> overrideProps = new HashMap<>(DEFAULT_PROPERTIES);
     overrideProps.putAll(properties);
 
     return new EmbeddedIndexer(overrideProps);
@@ -55,15 +62,31 @@ public class EmbeddedIndexer extends EmbeddedDruidServer
 
   private EmbeddedIndexer(Map<String, String> properties)
   {
-    super("Indexer", properties);
+    this.properties = properties;
   }
 
   @Override
-  protected ServerRunnable createRunnable(LifecycleInitHandler handler)
+  ServerRunnable createRunnable(LifecycleInitHandler handler)
   {
     return new Indexer(handler);
   }
 
+  @Override
+  RuntimeInfo getRuntimeInfo()
+  {
+    final long mem100Mb = 100_000_000;
+    return new DruidProcessingConfigTest.MockRuntimeInfo(4, mem100Mb, mem100Mb);
+  }
+
+  @Override
+  public Map<String, String> getProperties()
+  {
+    return properties;
+  }
+
+  /**
+   * Extends {@link CliIndexer} to allow handling the lifecycle.
+   */
   private static class Indexer extends CliIndexer
   {
     private final LifecycleInitHandler handler;

@@ -17,9 +17,9 @@
  * under the License.
  */
 
-package org.apache.druid.simulate;
+package org.apache.druid.testing.simulate.server;
 
-import com.amazonaws.util.Throwables;
+import com.google.common.base.Throwables;
 import com.google.inject.Binder;
 import com.google.inject.Injector;
 import com.google.inject.Key;
@@ -41,7 +41,6 @@ import org.apache.druid.metadata.NoopMetadataStorageProvider;
 import org.apache.druid.metadata.SQLMetadataConnector;
 import org.apache.druid.metadata.TestDerbyConnector;
 import org.apache.druid.metadata.storage.derby.DerbyMetadataStorageProvider;
-import org.apache.druid.query.DruidProcessingConfigTest;
 import org.apache.druid.utils.JvmUtils;
 import org.apache.druid.utils.RuntimeInfo;
 import org.junit.rules.ExternalResource;
@@ -58,11 +57,11 @@ import java.util.concurrent.atomic.AtomicReference;
  * JUnit {@link ExternalResource} for an {@link EmbeddedDruidServer} server.
  * This class can be used with {@code Rule}, {@code ClassRule} or {@code RuleChain}.
  *
- * @see EmbeddedDruidCluster
+ * @see EmbeddedDruidCluster#ruleChain()
  */
-public class DruidServerResource extends ExternalResource
+public class DruidServerJunitResource extends ExternalResource
 {
-  private static final Logger log = new Logger(DruidServerResource.class);
+  private static final Logger log = new Logger(DruidServerJunitResource.class);
 
   private final EmbeddedDruidServer server;
 
@@ -73,7 +72,7 @@ public class DruidServerResource extends ExternalResource
   private ExecutorService executorService;
   private final AtomicReference<Lifecycle> lifecycle = new AtomicReference<>();
 
-  DruidServerResource(
+  DruidServerJunitResource(
       EmbeddedDruidServer server,
       TemporaryFolder tempDir,
       EmbeddedZookeeper zk,
@@ -106,12 +105,12 @@ public class DruidServerResource extends ExternalResource
           public void onLifecycleInit(Lifecycle lifecycle)
           {
             lifecycleCreated.countDown();
-            DruidServerResource.this.lifecycle.set(lifecycle);
+            DruidServerJunitResource.this.lifecycle.set(lifecycle);
           }
         }
     );
 
-    executorService = Execs.multiThreaded(1, "Lifecycle-EmbeddedServer-" + server.getName());
+    executorService = Execs.multiThreaded(1, "Lifecycle-" + server.getName());
     executorService.submit(() -> runServer(serverRunnable));
 
     // Wait for lifecycle to be created and started
@@ -173,17 +172,20 @@ public class DruidServerResource extends ExternalResource
       final Properties serverProperties = new Properties();
       serverProperties.putAll(server.getProperties());
 
+      // Add properties for temporary directories used by the servers
+      final String logsDirectory = tempDir.getRoot().getAbsolutePath();
+      final String taskDirectory = tempDir.newFolder().getAbsolutePath();
+      final String storageDirectory = tempDir.newFolder().getAbsolutePath();
+      log.info(
+          "Using directories: task directory[%s], logs directory[%s], storage directory[%s].",
+          taskDirectory, logsDirectory, storageDirectory
+      );
+      serverProperties.setProperty("druid.indexer.task.baseDir", taskDirectory);
+      serverProperties.setProperty("druid.indexer.logs.directory", logsDirectory);
+      serverProperties.setProperty("druid.storage.storageDirectory", storageDirectory);
+
       // Add properties for Zookeeper and metadata store
-      final String serverTaskDirectory = tempDir.newFolder().getAbsolutePath();
-      log.info("Using task directory[%s].", serverTaskDirectory);
-
-      final String serverStorageDirectory = tempDir.newFolder().getAbsolutePath();
-      log.info("Using storage directory[%s]", serverStorageDirectory);
-
       serverProperties.setProperty("druid.zk.service.host", zk.getConnectString());
-      serverProperties.setProperty("druid.indexer.task.baseDir", serverTaskDirectory);
-      serverProperties.setProperty("druid.indexer.logs.directory", tempDir.getRoot().getAbsolutePath());
-      serverProperties.setProperty("druid.storage.storageDirectory", serverStorageDirectory);
       if (dbRule != null) {
         serverProperties.setProperty("druid.metadata.storage.type", TestDerbyModule.TYPE);
         serverProperties.setProperty(
@@ -194,7 +196,10 @@ public class DruidServerResource extends ExternalResource
 
       final Injector injector = new StartupInjectorBuilder()
           .withProperties(serverProperties)
-          .add(new TestRuntimeInfoModule())
+          .add(binder -> {
+            binder.bind(RuntimeInfo.class).toInstance(server.getRuntimeInfo());
+            binder.requestStaticInjection(JvmUtils.class);
+          })
           .build();
 
       injector.injectMembers(runnable);
@@ -210,24 +215,6 @@ public class DruidServerResource extends ExternalResource
     }
     finally {
       log.info("Stopped server[%s].", server.getName());
-    }
-  }
-
-  /**
-   * Guice module to limit the resources used by an embedded server.
-   */
-  private static class TestRuntimeInfoModule implements Module
-  {
-    static final long XMX_500_MB = 500_000_000;
-    static final int NUM_PROCESSORS = 4;
-
-    @Override
-    public void configure(Binder binder)
-    {
-      binder.bind(RuntimeInfo.class).toInstance(
-          new DruidProcessingConfigTest.MockRuntimeInfo(NUM_PROCESSORS, XMX_500_MB, XMX_500_MB)
-      );
-      binder.requestStaticInjection(JvmUtils.class);
     }
   }
 

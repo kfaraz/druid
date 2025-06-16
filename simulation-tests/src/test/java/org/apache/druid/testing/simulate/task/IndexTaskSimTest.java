@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.druid.simulate.overlord;
+package org.apache.druid.testing.simulate.task;
 
 import com.google.common.util.concurrent.ListenableFuture;
 import org.apache.druid.client.indexing.TaskStatusResponse;
@@ -29,15 +29,15 @@ import org.apache.druid.data.input.impl.InlineInputSource;
 import org.apache.druid.data.input.impl.TimestampSpec;
 import org.apache.druid.indexer.TaskState;
 import org.apache.druid.indexing.common.task.IndexTask;
-import org.apache.druid.indexing.common.task.NoopTask;
 import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.guava.Comparators;
 import org.apache.druid.segment.TestDataSource;
 import org.apache.druid.segment.indexing.DataSchema;
-import org.apache.druid.simulate.EmbeddedDruidCluster;
-import org.apache.druid.simulate.EmbeddedIndexer;
+import org.apache.druid.testing.simulate.server.EmbeddedDruidCluster;
+import org.apache.druid.testing.simulate.server.EmbeddedIndexer;
+import org.apache.druid.testing.simulate.server.EmbeddedOverlord;
 import org.apache.druid.timeline.DataSegment;
 import org.joda.time.DateTime;
 import org.joda.time.Interval;
@@ -54,12 +54,9 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 /**
- * TODO:
- * - run a streaming supervisor with this setup
- * - run some existing tests with this setup
- * - write more tests
+ * Simulation tests for batch {@link IndexTask} using inline datasources.
  */
-public class OverlordTaskRunTest
+public class IndexTaskSimTest
 {
   private static final EmbeddedOverlord OVERLORD = EmbeddedOverlord.create();
   private static final EmbeddedDruidCluster CLUSTER
@@ -75,27 +72,27 @@ public class OverlordTaskRunTest
   @Test(timeout = 60_000L)
   public void test_run10Tasks_concurrently()
   {
-    runTasks(10);
+    runTasksConcurrently(10);
   }
 
   @Test(timeout = 60_000L)
-  public void test_run50Tasks_oneByOne()
+  public void test_run100Tasks_oneByOne()
   {
-    for (int i = 0; i < 50; ++i) {
-      runTasks(1);
+    for (int i = 0; i < 100; ++i) {
+      runTasksConcurrently(1);
     }
   }
 
   @Test(timeout = 60_000L)
   public void test_run25Tasks_concurrently()
   {
-    runTasks(25);
+    runTasksConcurrently(25);
   }
 
   @Test(timeout = 60_000L)
   public void test_run100Tasks_concurrently()
   {
-    runTasks(100);
+    runTasksConcurrently(100);
   }
 
   @Test
@@ -114,32 +111,15 @@ public class OverlordTaskRunTest
           + "\n2025-06-09,shirt,99"
           + "\n2025-06-10,toys,101";
 
-    final String taskId = IdUtils.newTaskId("batch", TestDataSource.WIKI, null);
-    final Task task = new IndexTask(
-        taskId,
-        null,
-        new IndexTask.IndexIngestionSpec(
-            DataSchema.builder()
-                      .withTimestamp(new TimestampSpec("time", null, null))
-                      .withDimensions(DimensionsSpec.EMPTY)
-                      .withDataSource(TestDataSource.WIKI)
-                      .build(),
-            new IndexTask.IndexIOConfig(
-                new InlineInputSource(txnData10Days),
-                new CsvInputFormat(null, null, null, true, 0, false),
-                false,
-                false
-            ),
-            null
-        ),
-        Map.of()
-    );
+    final Task task = createIndexTaskForInlineData(TestDataSource.WIKI, txnData10Days);
+    final String taskId = task.getId();
 
-    getResult(OVERLORD.client().runTask(taskId, task));
+    getResult(OVERLORD.leaderClient().runTask(taskId, task));
     verifyTaskHasSucceeded(taskId);
 
+    // Verify that the task created 10 DAY-granularity segments
     final List<DataSegment> segments = new ArrayList<>(
-        OVERLORD.segmentsMetadata().retrieveAllUsedSegments(TestDataSource.WIKI, null)
+        OVERLORD.segmentsMetadataStorage().retrieveAllUsedSegments(TestDataSource.WIKI, null)
     );
     segments.sort(
         (o1, o2) -> Comparators.intervalsByStartThenEnd()
@@ -147,9 +127,9 @@ public class OverlordTaskRunTest
     );
 
     Assert.assertEquals(10, segments.size());
-
     DateTime start = DateTimes.of("2025-06-01");
     for (DataSegment segment : segments) {
+      Assert.assertEquals(TestDataSource.WIKI, segment.getDataSource());
       Assert.assertEquals(
           new Interval(start, Period.days(1)),
           segment.getInterval()
@@ -158,23 +138,50 @@ public class OverlordTaskRunTest
     }
   }
 
-  private void runTasks(int count)
+  private static Task createIndexTaskForInlineData(String dataSource, String inlineData)
   {
-    final List<String> taskIds = IntStream.range(0, count).mapToObj(
-        i -> IdUtils.newTaskId("sim_test_" + i, "noop", null)
+    final String taskId = IdUtils.newTaskId("sim_test_index_inline", TestDataSource.WIKI, null);
+    return new IndexTask(
+        taskId,
+        null,
+        new IndexTask.IndexIngestionSpec(
+            DataSchema.builder()
+                      .withTimestamp(new TimestampSpec("time", null, null))
+                      .withDimensions(DimensionsSpec.EMPTY)
+                      .withDataSource(dataSource)
+                      .build(),
+            new IndexTask.IndexIOConfig(
+                new InlineInputSource(inlineData),
+                new CsvInputFormat(null, null, null, true, 0, false),
+                true,
+                false
+            ),
+            null
+        ),
+        Map.of()
+    );
+  }
+
+  private void runTasksConcurrently(int count)
+  {
+    final DateTime jan1 = DateTimes.of("2025-01-01");
+    final List<Task> tasks = IntStream.range(0, count).mapToObj(
+        i -> createIndexTaskForInlineData(
+            TestDataSource.KOALA,
+            StringUtils.format(
+                "time,item,value\n%s,%s,%d",
+                jan1.plusDays(i), "item " + i, i
+            )
+        )
     ).collect(Collectors.toList());
 
-    for (String taskId : taskIds) {
+    for (Task task : tasks) {
       getResult(
-          OVERLORD.client().runTask(
-              taskId,
-              new NoopTask(taskId, null, null, 1L, 0L, Map.of())
-          )
+          OVERLORD.leaderClient().runTask(task.getId(), task)
       );
     }
-
-    for (String taskId : taskIds) {
-      verifyTaskHasSucceeded(taskId);
+    for (Task task : tasks) {
+      verifyTaskHasSucceeded(task.getId());
     }
   }
 
@@ -182,7 +189,7 @@ public class OverlordTaskRunTest
   {
     OVERLORD.waitUntilTaskFinishes(taskId);
     final TaskStatusResponse currentStatus = getResult(
-        OVERLORD.client().taskStatus(taskId)
+        OVERLORD.leaderClient().taskStatus(taskId)
     );
     Assert.assertNotNull(currentStatus.getStatus());
     Assert.assertEquals(

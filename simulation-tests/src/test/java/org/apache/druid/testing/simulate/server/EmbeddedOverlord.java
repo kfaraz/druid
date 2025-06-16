@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.druid.simulate.overlord;
+package org.apache.druid.testing.simulate.server;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Supplier;
@@ -52,9 +52,10 @@ import org.apache.druid.java.util.common.lifecycle.Lifecycle;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.java.util.emitter.service.ServiceEmitter;
 import org.apache.druid.java.util.http.client.HttpClient;
+import org.apache.druid.query.DruidProcessingConfigTest;
 import org.apache.druid.rpc.indexing.OverlordClient;
 import org.apache.druid.server.initialization.IndexerZkConfig;
-import org.apache.druid.simulate.EmbeddedDruidServer;
+import org.apache.druid.utils.RuntimeInfo;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -66,13 +67,13 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Embedded Overlord service used in simulation tests.
+ * Embedded mode of {@link CliOverlord} used in simulation tests.
  */
 public class EmbeddedOverlord extends EmbeddedDruidServer
 {
   private static final Logger log = new Logger(EmbeddedOverlord.class);
 
-  private static final Map<String, String> STANDARD_PROPERTIES = Map.of(
+  private static final Map<String, String> DEFAULT_PROPERTIES = Map.of(
       "druid.indexer.runner.type", "simulation",
       "druid.indexer.queue.startDelay", "PT0S",
       "druid.indexer.queue.restartDelay", "PT0S",
@@ -81,8 +82,9 @@ public class EmbeddedOverlord extends EmbeddedDruidServer
       "druid.indexer.runner.syncRequestTimeout", "PT1S"
   );
 
+  private final Map<String, String> properties;
+  private final ReferenceHolder referenceHolder;
   private final TaskRunnerListener taskRunnerListener;
-  private final References injectedReferences;
   private final ConcurrentHashMap<String, CountDownLatch> taskHasCompleted;
 
   public static EmbeddedOverlord create()
@@ -94,7 +96,7 @@ public class EmbeddedOverlord extends EmbeddedDruidServer
       Map<String, String> properties
   )
   {
-    final Map<String, String> overrideProps = new HashMap<>(STANDARD_PROPERTIES);
+    final Map<String, String> overrideProps = new HashMap<>(DEFAULT_PROPERTIES);
     overrideProps.putAll(properties);
 
     return new EmbeddedOverlord(overrideProps);
@@ -102,8 +104,8 @@ public class EmbeddedOverlord extends EmbeddedDruidServer
 
   private EmbeddedOverlord(Map<String, String> serverProperties)
   {
-    super("Overlord", serverProperties);
-    this.injectedReferences = new References();
+    this.properties = serverProperties;
+    this.referenceHolder = new ReferenceHolder();
     this.taskHasCompleted = new ConcurrentHashMap<>();
     this.taskRunnerListener = new TaskRunnerListener()
     {
@@ -141,26 +143,39 @@ public class EmbeddedOverlord extends EmbeddedDruidServer
   }
 
   @Override
-  protected ServerRunnable createRunnable(LifecycleInitHandler handler)
+  ServerRunnable createRunnable(LifecycleInitHandler handler)
   {
     return new Overlord(handler);
   }
 
-  /**
-   * Client to communicate with this Overlord.
-   */
-  public OverlordClient client()
+  @Override
+  RuntimeInfo getRuntimeInfo()
   {
-    return injectedReferences.client;
+    final long mem1gb = 1_000_000_000;
+    return new DruidProcessingConfigTest.MockRuntimeInfo(4, mem1gb, mem1gb);
+  }
+
+  @Override
+  public Map<String, String> getProperties()
+  {
+    return properties;
+  }
+
+  /**
+   * Client to communicate with the leader Overlord.
+   */
+  public OverlordClient leaderClient()
+  {
+    return referenceHolder.client;
   }
 
   /**
    * Metadata storage coordinator to query and update segment metadata directly
    * in the metadata store.
    */
-  public IndexerMetadataStorageCoordinator segmentsMetadata()
+  public IndexerMetadataStorageCoordinator segmentsMetadataStorage()
   {
-    return injectedReferences.indexerMetadataStorageCoordinator;
+    return referenceHolder.indexerMetadataStorageCoordinator;
   }
 
   public void waitUntilTaskFinishes(String taskId)
@@ -177,8 +192,12 @@ public class EmbeddedOverlord extends EmbeddedDruidServer
   }
 
   /**
-   * Extends {@link CliOverlord} to allow passing extra modules, properties and
-   * getting a reference to the lifecycle.
+   * Extends {@link CliOverlord} to for the following:
+   * <ul>
+   * <li>Get reference to lifecycle and other dependencies used by the server.</li>
+   * <li>Override {@link HttpRemoteTaskRunnerFactory} to register a
+   * {@link TaskRunnerListener} to get completion callbacks.</li>
+   * </ul>
    */
   private class Overlord extends CliOverlord
   {
@@ -203,8 +222,10 @@ public class EmbeddedOverlord extends EmbeddedDruidServer
       final List<Module> modules = new ArrayList<>(handler.getInitModules());
       modules.addAll(super.getModules());
       modules.add(
-          binder -> binder.bind(References.class).toInstance(injectedReferences)
+          binder -> binder.bind(ReferenceHolder.class).toInstance(referenceHolder)
       );
+
+      // Override TaskRunnerFactory to register a TaskRunnerListener
       modules.add(
           binder -> binder.bind(TaskRunnerListener.class).toInstance(taskRunnerListener)
       );
@@ -263,15 +284,12 @@ public class EmbeddedOverlord extends EmbeddedDruidServer
   }
 
   /**
-   * Holder for references to various objects being used by the embedded Overlord.
+   * Holder for references to various objects being used by this embedded Overlord.
    */
-  private static class References
+  private static class ReferenceHolder
   {
     @Inject
     OverlordClient client;
-
-    @Inject
-    ServiceEmitter emitter;
 
     @Inject
     IndexerMetadataStorageCoordinator indexerMetadataStorageCoordinator;
