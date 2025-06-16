@@ -21,7 +21,7 @@ package org.apache.druid.testing.simulate.embedded;
 
 import com.google.inject.Injector;
 import com.google.inject.Module;
-import org.apache.druid.cli.CliIndexer;
+import org.apache.druid.cli.CliCoordinator;
 import org.apache.druid.cli.ServerRunnable;
 import org.apache.druid.java.util.common.lifecycle.Lifecycle;
 import org.apache.druid.metadata.TestDerbyConnector;
@@ -33,49 +33,24 @@ import org.junit.rules.TemporaryFolder;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Properties;
 
 /**
- * Embeddded mode of {@link CliIndexer} used in simulation tests.
+ * Embedded mode of {@link CliCoordinator} used in simulation tests.
  */
-public class EmbeddedIndexer extends EmbeddedDruidServer
+public class EmbeddedCoordinator extends EmbeddedDruidServer
 {
-  private static final Map<String, String> DEFAULT_PROPERTIES = Map.of(
-      // Don't sync lookups as cluster might not have a Coordinator
-      "druid.lookup.enableLookupSyncOnStartup", "false"
-  );
-
-  private final Map<String, String> overrideProperties;
-
-  public static EmbeddedIndexer create()
-  {
-    return new EmbeddedIndexer(Map.of());
-  }
-
-  public static EmbeddedIndexer withProps(
-      Map<String, String> overrideProps
-  )
-  {
-    return new EmbeddedIndexer(overrideProps);
-  }
-
-  private EmbeddedIndexer(Map<String, String> overrideProperties)
-  {
-    this.overrideProperties = overrideProperties;
-  }
-
   @Override
   ServerRunnable createRunnable(LifecycleInitHandler handler)
   {
-    return new Indexer(handler);
+    return new Coordinator(handler);
   }
 
   @Override
   RuntimeInfo getRuntimeInfo()
   {
     final long mem100Mb = 100_000_000;
-    return new DruidProcessingConfigTest.MockRuntimeInfo(4, mem100Mb, mem100Mb);
+    return new DruidProcessingConfigTest.MockRuntimeInfo(2, mem100Mb, mem100Mb);
   }
 
   @Override
@@ -86,29 +61,20 @@ public class EmbeddedIndexer extends EmbeddedDruidServer
   ) throws IOException
   {
     final Properties properties = super.buildStartupProperties(tempDir, zk, dbRule);
-    properties.putAll(DEFAULT_PROPERTIES);
-    properties.putAll(overrideProperties);
+
+    properties.setProperty("druid.coordinator.startDelay", "PT0.1S");
+    properties.setProperty("druid.coordinator.period", "PT1S");
+
     return properties;
   }
 
-  /**
-   * Extends {@link CliIndexer} to allow handling the lifecycle.
-   */
-  private static class Indexer extends CliIndexer
+  private static class Coordinator extends CliCoordinator
   {
     private final LifecycleInitHandler handler;
 
-    private Indexer(LifecycleInitHandler handler)
+    private Coordinator(LifecycleInitHandler handler)
     {
       this.handler = handler;
-    }
-
-    @Override
-    protected List<? extends Module> getModules()
-    {
-      final List<Module> modules = new ArrayList<>(handler.getInitModules());
-      modules.addAll(super.getModules());
-      return modules;
     }
 
     @Override
@@ -117,6 +83,14 @@ public class EmbeddedIndexer extends EmbeddedDruidServer
       final Lifecycle lifecycle = super.initLifecycle(injector);
       handler.onLifecycleInit(lifecycle);
       return lifecycle;
+    }
+
+    @Override
+    protected List<? extends Module> getModules()
+    {
+      final List<Module> modules = new ArrayList<>(handler.getInitModules());
+      modules.addAll(super.getModules());
+      return modules;
     }
   }
 }

@@ -83,7 +83,7 @@ public class OverlordClientSimTest
   @Test
   public void test_findCurrentLeader()
   {
-    URI currentLeader = getResult(OVERLORD.leaderClient().findCurrentLeader());
+    URI currentLeader = getResult(OVERLORD.client().findCurrentLeader());
     Assert.assertEquals(8090, currentLeader.getPort());
   }
 
@@ -92,7 +92,7 @@ public class OverlordClientSimTest
   {
     final String taskId = IdUtils.newTaskId("sim_test_noop", TestDataSource.WIKI, null);
     getResult(
-        OVERLORD.leaderClient().runTask(taskId, new NoopTask(taskId, null, null, 1L, 0L, null))
+        OVERLORD.client().runTask(taskId, new NoopTask(taskId, null, null, 1L, 0L, null))
     );
 
     verifyTaskHasSucceeded(taskId);
@@ -102,7 +102,7 @@ public class OverlordClientSimTest
   public void test_runKillTask()
   {
     final String taskId = getResult(
-        OVERLORD.leaderClient().runKillTask("sim_test", TestDataSource.WIKI, Intervals.ETERNITY, null, null, null)
+        OVERLORD.client().runKillTask("sim_test", TestDataSource.WIKI, Intervals.ETERNITY, null, null, null)
     );
     verifyTaskHasSucceeded(taskId);
   }
@@ -111,7 +111,7 @@ public class OverlordClientSimTest
   public void test_cancelTask_fails_forUnknownTaskId()
   {
     verifyFailsWith(
-        OVERLORD.leaderClient().cancelTask(UNKNOWN_TASK_ID),
+        OVERLORD.client().cancelTask(UNKNOWN_TASK_ID),
         UNKNOWN_TASK_ERROR
     );
   }
@@ -127,17 +127,17 @@ public class OverlordClientSimTest
     final long taskRunDuration = 10_000L;
     final String taskId = IdUtils.newTaskId("sim_test_noop", TestDataSource.WIKI, null);
     getResult(
-        OVERLORD.leaderClient().runTask(taskId, new NoopTask(taskId, null, null, taskRunDuration, 0L, null))
+        OVERLORD.client().runTask(taskId, new NoopTask(taskId, null, null, taskRunDuration, 0L, null))
     );
 
     Assert.assertEquals(
         TaskState.RUNNING,
-        getResult(OVERLORD.leaderClient().taskStatus(taskId)).getStatus().getStatusCode()
+        getResult(OVERLORD.client().taskStatus(taskId)).getStatus().getStatusCode()
     );
 
-    getResult(OVERLORD.leaderClient().cancelTask(taskId));
+    getResult(OVERLORD.client().cancelTask(taskId));
 
-    final TaskStatusPlus status = getResult(OVERLORD.leaderClient().taskStatus(taskId)).getStatus();
+    final TaskStatusPlus status = getResult(OVERLORD.client().taskStatus(taskId)).getStatus();
     Assert.assertNotNull(status);
     Assert.assertEquals(TaskState.FAILED, status.getStatusCode());
     Assert.assertEquals("Shutdown request from user", status.getErrorMsg());
@@ -147,7 +147,7 @@ public class OverlordClientSimTest
   public void test_taskStatuses_returnsEmpty_forRunningTasks()
   {
     CloseableIterator<TaskStatusPlus> result = getResult(
-        OVERLORD.leaderClient().taskStatuses("running", null, null)
+        OVERLORD.client().taskStatuses("running", null, null)
     );
     final List<TaskStatusPlus> runningTasks = ImmutableList.copyOf(result);
     Assert.assertTrue(runningTasks.isEmpty());
@@ -159,18 +159,18 @@ public class OverlordClientSimTest
     // Run multiple tasks
     final String task1 = IdUtils.newTaskId("sim_test_noop", TestDataSource.WIKI, null);
     getResult(
-        OVERLORD.leaderClient().runTask(task1, new NoopTask(task1, null, null, 1L, 0L, null))
+        OVERLORD.client().runTask(task1, new NoopTask(task1, null, null, 1L, 0L, null))
     );
     verifyTaskHasSucceeded(task1);
 
     final String task2 = IdUtils.newTaskId("sim_test_noop", TestDataSource.WIKI, null);
     getResult(
-        OVERLORD.leaderClient().runTask(task2, new NoopTask(task2, null, null, 1L, 0L, null))
+        OVERLORD.client().runTask(task2, new NoopTask(task2, null, null, 1L, 0L, null))
     );
     verifyTaskHasSucceeded(task2);
 
     CloseableIterator<TaskStatusPlus> result = getResult(
-        OVERLORD.leaderClient().taskStatuses("complete", null, null)
+        OVERLORD.client().taskStatuses("complete", null, null)
     );
     final Map<String, TaskStatusPlus> completeTaskIdToStatus
         = ImmutableList.copyOf(result)
@@ -186,7 +186,7 @@ public class OverlordClientSimTest
   public void test_taskStatuses_byIds_returnsEmpty_forUnknownTaskIds()
   {
     Map<String, TaskStatus> result = getResult(
-        OVERLORD.leaderClient().taskStatuses(Set.of(UNKNOWN_TASK_ID))
+        OVERLORD.client().taskStatuses(Set.of(UNKNOWN_TASK_ID))
     );
     Assert.assertTrue(result.isEmpty());
   }
@@ -195,7 +195,7 @@ public class OverlordClientSimTest
   public void test_taskStatus_fails_forUnknownTaskId()
   {
     verifyFailsWith(
-        OVERLORD.leaderClient().taskStatus(UNKNOWN_TASK_ID),
+        OVERLORD.client().taskStatus(UNKNOWN_TASK_ID),
         UNKNOWN_TASK_ERROR
     );
   }
@@ -204,7 +204,7 @@ public class OverlordClientSimTest
   public void test_taskPayload_fails_forUnknownTaskId()
   {
     verifyFailsWith(
-        OVERLORD.leaderClient().taskPayload(UNKNOWN_TASK_ID),
+        OVERLORD.client().taskPayload(UNKNOWN_TASK_ID),
         UNKNOWN_TASK_ERROR
     );
   }
@@ -213,7 +213,7 @@ public class OverlordClientSimTest
   public void test_supervisorStatuses()
   {
     CloseableIterator<SupervisorStatus> result = getResult(
-        OVERLORD.leaderClient().supervisorStatuses()
+        OVERLORD.client().supervisorStatuses()
     );
     Assert.assertNotNull(result);
   }
@@ -222,7 +222,7 @@ public class OverlordClientSimTest
   public void test_findLockedIntervals_fails_whenNoFilter()
   {
     verifyFailsWith(
-        OVERLORD.leaderClient().findLockedIntervals(List.of()),
+        OVERLORD.client().findLockedIntervals(List.of()),
         "No filter provided"
     );
   }
@@ -231,7 +231,7 @@ public class OverlordClientSimTest
   public void test_killPendingSegments()
   {
     Integer numPendingSegmentsDeleted = getResult(
-        OVERLORD.leaderClient().killPendingSegments(TestDataSource.WIKI, Intervals.ETERNITY)
+        OVERLORD.client().killPendingSegments(TestDataSource.WIKI, Intervals.ETERNITY)
     );
     Assert.assertEquals(0, numPendingSegmentsDeleted.intValue());
   }
@@ -239,7 +239,7 @@ public class OverlordClientSimTest
   @Test
   public void test_getWorkers()
   {
-    List<IndexingWorkerInfo> workers = getResult(OVERLORD.leaderClient().getWorkers());
+    List<IndexingWorkerInfo> workers = getResult(OVERLORD.client().getWorkers());
     Assert.assertEquals(1, workers.size());
     Assert.assertEquals(3, workers.get(0).getWorker().getCapacity());
   }
@@ -248,7 +248,7 @@ public class OverlordClientSimTest
   public void test_getTotalWorkerCapacity()
   {
     IndexingTotalWorkerCapacityInfo result = getResult(
-        OVERLORD.leaderClient().getTotalWorkerCapacity()
+        OVERLORD.client().getTotalWorkerCapacity()
     );
     Assert.assertEquals(3, result.getCurrentClusterCapacity());
   }
@@ -256,14 +256,14 @@ public class OverlordClientSimTest
   @Test
   public void test_isCompactionSupervisorEnabled()
   {
-    Boolean result = getResult(OVERLORD.leaderClient().isCompactionSupervisorEnabled());
+    Boolean result = getResult(OVERLORD.client().isCompactionSupervisorEnabled());
     Assert.assertNotNull(result);
   }
 
   @Test
   public void test_markNonOvershadowedSegmentsAsUsed_basic()
   {
-    SegmentUpdateResponse result = getResult(OVERLORD.leaderClient().markNonOvershadowedSegmentsAsUsed(TestDataSource.WIKI));
+    SegmentUpdateResponse result = getResult(OVERLORD.client().markNonOvershadowedSegmentsAsUsed(TestDataSource.WIKI));
     Assert.assertNotNull(result);
   }
 
@@ -271,7 +271,7 @@ public class OverlordClientSimTest
   public void test_markNonOvershadowedSegmentsAsUsed_filtered()
   {
     SegmentUpdateResponse result = getResult(
-        OVERLORD.leaderClient().markNonOvershadowedSegmentsAsUsed(
+        OVERLORD.client().markNonOvershadowedSegmentsAsUsed(
             TestDataSource.WIKI,
             new SegmentsToUpdateFilter(Intervals.ETERNITY, null, null)
         )
@@ -283,7 +283,7 @@ public class OverlordClientSimTest
   public void test_markSegmentAsUsed()
   {
     SegmentUpdateResponse result = getResult(
-        OVERLORD.leaderClient().markSegmentAsUsed(SegmentId.dummy(TestDataSource.WIKI))
+        OVERLORD.client().markSegmentAsUsed(SegmentId.dummy(TestDataSource.WIKI))
     );
     Assert.assertNotNull(result);
   }
@@ -292,7 +292,7 @@ public class OverlordClientSimTest
   public void test_markSegmentsAsUnused_basic()
   {
     final SegmentUpdateResponse result = getResult(
-        OVERLORD.leaderClient().markSegmentsAsUnused(TestDataSource.WIKI)
+        OVERLORD.client().markSegmentsAsUnused(TestDataSource.WIKI)
     );
     Assert.assertNotNull(result);
   }
@@ -301,7 +301,7 @@ public class OverlordClientSimTest
   public void test_markSegmentsAsUnused_filtered()
   {
     SegmentUpdateResponse result = getResult(
-        OVERLORD.leaderClient().markSegmentsAsUnused(
+        OVERLORD.client().markSegmentsAsUnused(
             TestDataSource.WIKI,
             new SegmentsToUpdateFilter(Intervals.ETERNITY, null, null)
         )
@@ -313,7 +313,7 @@ public class OverlordClientSimTest
   public void test_markSegmentAsUnused()
   {
     SegmentUpdateResponse result = getResult(
-        OVERLORD.leaderClient().markSegmentAsUnused(
+        OVERLORD.client().markSegmentAsUnused(
             SegmentId.dummy(TestDataSource.WIKI)
         )
     );
@@ -364,7 +364,7 @@ public class OverlordClientSimTest
   {
     OVERLORD.waitUntilTaskFinishes(taskId);
     final TaskStatusResponse currentStatus = getResult(
-        OVERLORD.leaderClient().taskStatus(taskId)
+        OVERLORD.client().taskStatus(taskId)
     );
     Assert.assertNotNull(currentStatus.getStatus());
     Assert.assertEquals(

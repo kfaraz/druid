@@ -20,27 +20,14 @@
 package org.apache.druid.testing.simulate.embedded;
 
 import com.google.common.base.Throwables;
-import com.google.inject.Binder;
 import com.google.inject.Injector;
-import com.google.inject.Key;
 import com.google.inject.Module;
 import org.apache.druid.cli.ServerRunnable;
-import org.apache.druid.guice.LazySingleton;
-import org.apache.druid.guice.PolyBind;
-import org.apache.druid.guice.SQLMetadataStorageDruidModule;
 import org.apache.druid.guice.StartupInjectorBuilder;
 import org.apache.druid.java.util.common.concurrent.Execs;
 import org.apache.druid.java.util.common.lifecycle.Lifecycle;
 import org.apache.druid.java.util.common.logger.Logger;
-import org.apache.druid.metadata.DerbyMetadataStorageActionHandlerFactory;
-import org.apache.druid.metadata.MetadataStorage;
-import org.apache.druid.metadata.MetadataStorageActionHandlerFactory;
-import org.apache.druid.metadata.MetadataStorageConnector;
-import org.apache.druid.metadata.MetadataStorageProvider;
-import org.apache.druid.metadata.NoopMetadataStorageProvider;
-import org.apache.druid.metadata.SQLMetadataConnector;
 import org.apache.druid.metadata.TestDerbyConnector;
-import org.apache.druid.metadata.storage.derby.DerbyMetadataStorageProvider;
 import org.apache.druid.utils.JvmUtils;
 import org.apache.druid.utils.RuntimeInfo;
 import org.junit.rules.ExternalResource;
@@ -48,7 +35,6 @@ import org.junit.rules.TemporaryFolder;
 
 import javax.annotation.Nullable;
 import java.util.List;
-import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicReference;
@@ -98,7 +84,7 @@ public class DruidServerJunitResource extends ExternalResource
           @Override
           public List<? extends Module> getInitModules()
           {
-            return dbRule == null ? List.of() : List.of(new TestDerbyModule(dbRule.getConnector()));
+            return server.getInitModules(dbRule);
           }
 
           @Override
@@ -169,33 +155,8 @@ public class DruidServerJunitResource extends ExternalResource
   private void runServer(ServerRunnable runnable)
   {
     try {
-      final Properties serverProperties = new Properties();
-      serverProperties.putAll(server.getProperties());
-
-      // Add properties for temporary directories used by the servers
-      final String logsDirectory = tempDir.getRoot().getAbsolutePath();
-      final String taskDirectory = tempDir.newFolder().getAbsolutePath();
-      final String storageDirectory = tempDir.newFolder().getAbsolutePath();
-      log.info(
-          "Using directories: task directory[%s], logs directory[%s], storage directory[%s].",
-          taskDirectory, logsDirectory, storageDirectory
-      );
-      serverProperties.setProperty("druid.indexer.task.baseDir", taskDirectory);
-      serverProperties.setProperty("druid.indexer.logs.directory", logsDirectory);
-      serverProperties.setProperty("druid.storage.storageDirectory", storageDirectory);
-
-      // Add properties for Zookeeper and metadata store
-      serverProperties.setProperty("druid.zk.service.host", zk.getConnectString());
-      if (dbRule != null) {
-        serverProperties.setProperty("druid.metadata.storage.type", TestDerbyModule.TYPE);
-        serverProperties.setProperty(
-            "druid.metadata.storage.tables.base",
-            dbRule.getConnector().getMetadataTablesConfig().getBase()
-        );
-      }
-
       final Injector injector = new StartupInjectorBuilder()
-          .withProperties(serverProperties)
+          .withProperties(server.buildStartupProperties(tempDir, zk, dbRule))
           .add(binder -> {
             binder.bind(RuntimeInfo.class).toInstance(server.getRuntimeInfo());
             binder.requestStaticInjection(JvmUtils.class);
@@ -215,49 +176,6 @@ public class DruidServerJunitResource extends ExternalResource
     }
     finally {
       log.info("Stopped server[%s].", server.getName());
-    }
-  }
-
-  /**
-   * Guice module to bind {@link SQLMetadataConnector} to {@link TestDerbyConnector}.
-   * Used in Coordinator and Overlord simulations to connect to an in-memory Derby
-   * database.
-   */
-  private static class TestDerbyModule extends SQLMetadataStorageDruidModule
-  {
-    public static final String TYPE = "derbyInMemory";
-    private final TestDerbyConnector connector;
-
-    public TestDerbyModule(TestDerbyConnector connector)
-    {
-      super(TYPE);
-      this.connector = connector;
-    }
-
-    @Override
-    public void configure(Binder binder)
-    {
-      super.configure(binder);
-
-      binder.bind(MetadataStorage.class).toProvider(NoopMetadataStorageProvider.class);
-
-      PolyBind.optionBinder(binder, Key.get(MetadataStorageProvider.class))
-              .addBinding(TYPE)
-              .to(DerbyMetadataStorageProvider.class)
-              .in(LazySingleton.class);
-
-      PolyBind.optionBinder(binder, Key.get(MetadataStorageConnector.class))
-              .addBinding(TYPE)
-              .toInstance(connector);
-
-      PolyBind.optionBinder(binder, Key.get(SQLMetadataConnector.class))
-              .addBinding(TYPE)
-              .toInstance(connector);
-
-      PolyBind.optionBinder(binder, Key.get(MetadataStorageActionHandlerFactory.class))
-              .addBinding(TYPE)
-              .to(DerbyMetadataStorageActionHandlerFactory.class)
-              .in(LazySingleton.class);
     }
   }
 }

@@ -20,7 +20,10 @@
 package org.apache.druid.testing.simulate.embedded;
 
 import com.google.common.base.Preconditions;
+import org.apache.druid.client.broker.BrokerClient;
+import org.apache.druid.client.coordinator.CoordinatorClient;
 import org.apache.druid.metadata.TestDerbyConnector;
+import org.apache.druid.rpc.indexing.OverlordClient;
 import org.junit.rules.RuleChain;
 import org.junit.rules.TemporaryFolder;
 
@@ -55,7 +58,7 @@ import java.util.List;
  * @see TestDerbyConnector
  * @see EmbeddedDruidServer
  */
-public class EmbeddedDruidCluster
+public class EmbeddedDruidCluster implements EmbeddedServiceClientProvider
 {
   private final List<EmbeddedDruidServer> servers;
   private final EmbeddedZookeeper zookeeper;
@@ -83,8 +86,6 @@ public class EmbeddedDruidCluster
    */
   public RuleChain ruleChain()
   {
-    Preconditions.checkArgument(!servers.isEmpty(), "Cluster must have atleast one server");
-
     RuleChain ruleChain = RuleChain.emptyRuleChain();
 
     if (dbRule != null) {
@@ -101,6 +102,24 @@ public class EmbeddedDruidCluster
     }
 
     return ruleChain;
+  }
+
+  @Override
+  public CoordinatorClient leaderCoordinator()
+  {
+    return servers.get(0).leaderCoordinator();
+  }
+
+  @Override
+  public OverlordClient leaderOverlord()
+  {
+    return servers.get(0).leaderOverlord();
+  }
+
+  @Override
+  public BrokerClient anyBroker()
+  {
+    return servers.get(0).anyBroker();
   }
 
   /**
@@ -131,6 +150,7 @@ public class EmbeddedDruidCluster
 
     public EmbeddedDruidCluster build()
     {
+      Preconditions.checkArgument(!servers.isEmpty(), "Cluster must have atleast one embedded Druid server");
       return new EmbeddedDruidCluster(
           servers,
           new EmbeddedZookeeper(),

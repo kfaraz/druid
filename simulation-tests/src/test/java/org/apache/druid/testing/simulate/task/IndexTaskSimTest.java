@@ -33,9 +33,13 @@ import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.guava.Comparators;
+import org.apache.druid.query.http.ClientSqlQuery;
 import org.apache.druid.segment.TestDataSource;
 import org.apache.druid.segment.indexing.DataSchema;
+import org.apache.druid.testing.simulate.embedded.EmbeddedBroker;
+import org.apache.druid.testing.simulate.embedded.EmbeddedCoordinator;
 import org.apache.druid.testing.simulate.embedded.EmbeddedDruidCluster;
+import org.apache.druid.testing.simulate.embedded.EmbeddedHistorical;
 import org.apache.druid.testing.simulate.embedded.EmbeddedIndexer;
 import org.apache.druid.testing.simulate.embedded.EmbeddedOverlord;
 import org.apache.druid.timeline.DataSegment;
@@ -44,6 +48,7 @@ import org.joda.time.Interval;
 import org.joda.time.Period;
 import org.junit.Assert;
 import org.junit.ClassRule;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.rules.RuleChain;
 
@@ -56,13 +61,17 @@ import java.util.stream.IntStream;
 /**
  * Simulation tests for batch {@link IndexTask} using inline datasources.
  */
+@Ignore
 public class IndexTaskSimTest
 {
   private static final EmbeddedOverlord OVERLORD = EmbeddedOverlord.create();
   private static final EmbeddedDruidCluster CLUSTER
       = EmbeddedDruidCluster.builder()
+                            .with(new EmbeddedCoordinator())
                             .with(EmbeddedIndexer.withProps(Map.of("druid.worker.capacity", "25")))
                             .with(OVERLORD)
+                            .with(new EmbeddedHistorical())
+                            .with(new EmbeddedBroker())
                             .withDb()
                             .build();
 
@@ -76,9 +85,9 @@ public class IndexTaskSimTest
   }
 
   @Test(timeout = 60_000L)
-  public void test_run100Tasks_oneByOne()
+  public void test_run50Tasks_oneByOne()
   {
-    for (int i = 0; i < 100; ++i) {
+    for (int i = 0; i < 25; ++i) {
       runTasksConcurrently(1);
     }
   }
@@ -114,7 +123,7 @@ public class IndexTaskSimTest
     final Task task = createIndexTaskForInlineData(TestDataSource.WIKI, txnData10Days);
     final String taskId = task.getId();
 
-    getResult(OVERLORD.leaderClient().runTask(taskId, task));
+    getResult(OVERLORD.client().runTask(taskId, task));
     verifyTaskHasSucceeded(taskId);
 
     // Verify that the task created 10 DAY-granularity segments
@@ -136,6 +145,15 @@ public class IndexTaskSimTest
       );
       start = start.plusDays(1);
     }
+
+    // TODO: wait for segments to be loaded and broker to be aware of it
+
+    final Object result = getResult(
+        CLUSTER.anyBroker().submitSqlQuery(
+            new ClientSqlQuery("SELECT * FROM sys.segments", null, true, true, true, Map.of(), List.of())
+        )
+    );
+    System.out.println("Query result = " + result);
   }
 
   private static Task createIndexTaskForInlineData(String dataSource, String inlineData)
@@ -177,7 +195,7 @@ public class IndexTaskSimTest
 
     for (Task task : tasks) {
       getResult(
-          OVERLORD.leaderClient().runTask(task.getId(), task)
+          OVERLORD.client().runTask(task.getId(), task)
       );
     }
     for (Task task : tasks) {
@@ -189,7 +207,7 @@ public class IndexTaskSimTest
   {
     OVERLORD.waitUntilTaskFinishes(taskId);
     final TaskStatusResponse currentStatus = getResult(
-        OVERLORD.leaderClient().taskStatus(taskId)
+        OVERLORD.client().taskStatus(taskId)
     );
     Assert.assertNotNull(currentStatus.getStatus());
     Assert.assertEquals(

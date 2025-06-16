@@ -52,16 +52,20 @@ import org.apache.druid.java.util.common.lifecycle.Lifecycle;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.java.util.emitter.service.ServiceEmitter;
 import org.apache.druid.java.util.http.client.HttpClient;
+import org.apache.druid.metadata.TestDerbyConnector;
 import org.apache.druid.query.DruidProcessingConfigTest;
 import org.apache.druid.rpc.indexing.OverlordClient;
 import org.apache.druid.server.initialization.IndexerZkConfig;
 import org.apache.druid.utils.RuntimeInfo;
+import org.jetbrains.annotations.Nullable;
+import org.junit.rules.TemporaryFolder;
 
+import java.io.IOException;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -82,7 +86,7 @@ public class EmbeddedOverlord extends EmbeddedDruidServer
       "druid.indexer.runner.syncRequestTimeout", "PT1S"
   );
 
-  private final Map<String, String> properties;
+  private final Map<String, String> overrideProperties;
   private final ReferenceHolder referenceHolder;
   private final TaskRunnerListener taskRunnerListener;
   private final ConcurrentHashMap<String, CountDownLatch> taskHasCompleted;
@@ -96,15 +100,12 @@ public class EmbeddedOverlord extends EmbeddedDruidServer
       Map<String, String> properties
   )
   {
-    final Map<String, String> overrideProps = new HashMap<>(DEFAULT_PROPERTIES);
-    overrideProps.putAll(properties);
-
-    return new EmbeddedOverlord(overrideProps);
+    return new EmbeddedOverlord(properties);
   }
 
-  private EmbeddedOverlord(Map<String, String> serverProperties)
+  private EmbeddedOverlord(Map<String, String> overrideProperties)
   {
-    this.properties = serverProperties;
+    this.overrideProperties = overrideProperties;
     this.referenceHolder = new ReferenceHolder();
     this.taskHasCompleted = new ConcurrentHashMap<>();
     this.taskRunnerListener = new TaskRunnerListener()
@@ -156,17 +157,25 @@ public class EmbeddedOverlord extends EmbeddedDruidServer
   }
 
   @Override
-  public Map<String, String> getProperties()
+  Properties buildStartupProperties(
+      TemporaryFolder tempDir,
+      EmbeddedZookeeper zk,
+      @Nullable TestDerbyConnector.DerbyConnectorRule dbRule
+  ) throws IOException
   {
+    final Properties properties = super.buildStartupProperties(tempDir, zk, dbRule);
+    properties.putAll(DEFAULT_PROPERTIES);
+    properties.putAll(overrideProperties);
     return properties;
   }
 
   /**
-   * Client to communicate with the leader Overlord.
+   * Client to communicate with the leader Overlord, which may not be the same
+   * as this one.
    */
-  public OverlordClient leaderClient()
+  public OverlordClient client()
   {
-    return referenceHolder.client;
+    return leaderOverlord();
   }
 
   /**
@@ -288,9 +297,6 @@ public class EmbeddedOverlord extends EmbeddedDruidServer
    */
   private static class ReferenceHolder
   {
-    @Inject
-    OverlordClient client;
-
     @Inject
     IndexerMetadataStorageCoordinator indexerMetadataStorageCoordinator;
   }
