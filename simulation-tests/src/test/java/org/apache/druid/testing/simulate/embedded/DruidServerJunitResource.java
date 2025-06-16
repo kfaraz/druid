@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.druid.testing.simulate.server;
+package org.apache.druid.testing.simulate.embedded;
 
 import com.google.common.base.Throwables;
 import com.google.inject.Binder;

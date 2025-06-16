@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.druid.testing.simulate.server;
+package org.apache.druid.testing.simulate.embedded;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Supplier;

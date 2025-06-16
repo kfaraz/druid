@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.druid.testing.simulate.server;
+package org.apache.druid.testing.simulate.embedded;
 
 import org.apache.druid.curator.CuratorTestBase;
 import org.apache.druid.java.util.common.logger.Logger;
@@ -34,7 +34,7 @@ public class EmbeddedZookeeper extends ExternalResource
   private final CuratorTestBase zk = new CuratorTestBase();
 
   @Override
-  protected void before() throws Throwable
+  protected void before()
   {
     try {
       zk.setupServerAndCurator();
