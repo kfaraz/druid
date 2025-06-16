@@ -48,7 +48,6 @@ import org.joda.time.Interval;
 import org.joda.time.Period;
 import org.junit.Assert;
 import org.junit.ClassRule;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.rules.RuleChain;
 
@@ -61,7 +60,6 @@ import java.util.stream.IntStream;
 /**
  * Simulation tests for batch {@link IndexTask} using inline datasources.
  */
-@Ignore
 public class IndexTaskSimTest
 {
   private static final EmbeddedOverlord OVERLORD = EmbeddedOverlord.create();
