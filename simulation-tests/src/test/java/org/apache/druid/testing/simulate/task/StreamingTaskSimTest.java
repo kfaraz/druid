@@ -22,6 +22,7 @@ package org.apache.druid.testing.simulate.task;
 /**
  * TODO:
  * - add a streaming supervisor
+ * - find an Overlord API that can be read as a ChangeRequest thing
  * - run some tests
  */
 public class StreamingTaskSimTest

@@ -27,7 +27,7 @@ import org.junit.rules.ExternalResource;
  * {@link ExternalResource} for an embedded zookeeper cluster that can be used
  * as a JUnit Rule in simulation tests.
  */
-public class EmbeddedZookeeper extends ExternalResource
+class EmbeddedZookeeper extends ExternalResource
 {
   private static final Logger log = new Logger(EmbeddedZookeeper.class);
 
