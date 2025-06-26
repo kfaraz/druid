@@ -27,12 +27,14 @@ import org.apache.druid.client.indexing.TaskStatusResponse;
 import org.apache.druid.indexer.TaskStatus;
 import org.apache.druid.indexer.TaskStatusPlus;
 import org.apache.druid.indexer.report.TaskReport;
+import org.apache.druid.indexing.overlord.supervisor.SupervisorSpec;
 import org.apache.druid.indexing.overlord.supervisor.SupervisorStatus;
 import org.apache.druid.java.util.common.parsers.CloseableIterator;
 import org.apache.druid.metadata.LockFilterPolicy;
 import org.apache.druid.rpc.ServiceRetryPolicy;
 import org.apache.druid.server.http.SegmentsToUpdateFilter;
 import org.apache.druid.timeline.SegmentId;
+import org.joda.time.DateTime;
 import org.joda.time.Interval;
 
 import javax.annotation.Nullable;
@@ -55,6 +57,19 @@ public class NoopOverlordClient implements OverlordClient
 
   @Override
   public ListenableFuture<Void> runTask(String taskId, Object taskObject)
+  {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public ListenableFuture<String> runKillTask(
+      String idPrefix,
+      String dataSource,
+      Interval interval,
+      @org.jetbrains.annotations.Nullable List<String> versions,
+      @org.jetbrains.annotations.Nullable Integer maxSegmentsToKill,
+      @org.jetbrains.annotations.Nullable DateTime maxUsedStatusLastUpdatedTime
+  )
   {
     throw new UnsupportedOperationException();
   }
@@ -95,6 +110,12 @@ public class NoopOverlordClient implements OverlordClient
 
   @Override
   public ListenableFuture<TaskReport.ReportMap> taskReportAsMap(String taskId)
+  {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public ListenableFuture<Map<String, String>> postSupervisor(SupervisorSpec supervisor)
   {
     throw new UnsupportedOperationException();
   }
@@ -181,5 +202,11 @@ public class NoopOverlordClient implements OverlordClient
   {
     // Ignore retryPolicy for the test client.
     return this;
+  }
+
+  @Override
+  public ListenableFuture<Void> submitIndexTask(String taskJson)
+  {
+    throw new UnsupportedOperationException();
   }
 }

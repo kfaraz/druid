@@ -33,6 +33,7 @@ import org.apache.druid.common.guava.FutureUtils;
 import org.apache.druid.indexer.TaskStatus;
 import org.apache.druid.indexer.TaskStatusPlus;
 import org.apache.druid.indexer.report.TaskReport;
+import org.apache.druid.indexing.overlord.supervisor.SupervisorSpec;
 import org.apache.druid.indexing.overlord.supervisor.SupervisorStatus;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.jackson.JacksonUtils;
@@ -227,6 +228,21 @@ public class OverlordClientImpl implements OverlordClient
             new BytesFullResponseHandler()
         ),
         holder -> JacksonUtils.readValue(jsonMapper, holder.getContent(), TaskReport.ReportMap.class)
+    );
+  }
+
+  @Override
+  public ListenableFuture<Map<String, String>> postSupervisor(SupervisorSpec supervisor)
+  {
+    final String path = "/druid/indexer/v1/supervisor?skipRestartIfUnmodified=true";
+
+    return FutureUtils.transform(
+        client.asyncRequest(
+            new RequestBuilder(HttpMethod.POST, path)
+                .jsonContent(jsonMapper, supervisor),
+            new BytesFullResponseHandler()
+        ),
+        holder -> JacksonUtils.readValue(jsonMapper, holder.getContent(), new TypeReference<>() {})
     );
   }
 
@@ -436,6 +452,29 @@ public class OverlordClientImpl implements OverlordClient
   public OverlordClientImpl withRetryPolicy(ServiceRetryPolicy retryPolicy)
   {
     return new OverlordClientImpl(client.withRetryPolicy(retryPolicy), jsonMapper);
+  }
+
+  @Override
+  public ListenableFuture<Void> submitIndexTask(String taskJson) {
+    return FutureUtils.transform(
+        client.asyncRequest(
+            new RequestBuilder(HttpMethod.POST, "/druid/indexer/v1/task")
+                .content("application/json", StringUtils.toUtf8(taskJson)),
+            new BytesFullResponseHandler()
+        ),
+        holder -> {
+          final Map<String, Object> map =
+              JacksonUtils.readValue(jsonMapper, holder.getContent(), JacksonUtils.TYPE_REFERENCE_MAP_STRING_OBJECT);
+          final String taskId = (String) map.get("task");
+
+          Preconditions.checkState(
+              taskId != null,
+              "Task submission did not return a valid task ID. Response: %s",
+              map
+          );
+          return null;
+        }
+    );
   }
 
   private <T> JsonParserIterator<T> asJsonParserIterator(final InputStream in, final Class<T> clazz)
