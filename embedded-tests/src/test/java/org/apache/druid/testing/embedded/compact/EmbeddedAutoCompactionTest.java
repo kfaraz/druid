@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.druid.tests.coordinator.duty;
+package org.apache.druid.testing.embedded.compact;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -72,6 +72,7 @@ import org.apache.druid.server.coordinator.UserCompactionTaskQueryTuningConfig;
 import org.apache.druid.testing.IntegrationTestingConfig;
 import org.apache.druid.testing.clients.CompactionResourceTestClient;
 import org.apache.druid.testing.clients.TaskResponseObject;
+import org.apache.druid.testing.embedded.junit5.EmbeddedClusterTestBase;
 import org.apache.druid.testing.guice.DruidTestModuleFactory;
 import org.apache.druid.testing.utils.ITRetryUtil;
 import org.apache.druid.tests.TestNGGroup;
@@ -104,11 +105,9 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-@Test(groups = {TestNGGroup.COMPACTION})
-@Guice(moduleFactory = DruidTestModuleFactory.class)
-public class ITAutoCompactionTest extends AbstractIndexerTest
+public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
 {
-  private static final Logger LOG = new Logger(ITAutoCompactionTest.class);
+  private static final Logger LOG = new Logger(EmbeddedAutoCompactionTest.class);
   private static final String INDEX_TASK = "/indexer/wikipedia_index_task.json";
   private static final String INDEX_TASK_WITH_GRANULARITY_SPEC = "/indexer/wikipedia_index_task_with_granularity_spec.json";
   private static final String INDEX_TASK_WITH_DIMENSION_SPEC = "/indexer/wikipedia_index_task_with_dimension_spec.json";
@@ -1768,7 +1767,7 @@ public class ITAutoCompactionTest extends AbstractIndexerTest
 
   private void loadData(String indexTask, Map<String, Object> specs) throws Exception
   {
-    String taskSpec = getResourceAsString(indexTask);
+    String taskSpec = AbstractIndexerTest.getResourceAsString(indexTask);
     taskSpec = StringUtils.replace(taskSpec, "%%DATASOURCE%%", fullDatasourceName);
     taskSpec = StringUtils.replace(
         taskSpec,
