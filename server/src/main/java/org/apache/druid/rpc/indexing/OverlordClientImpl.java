@@ -47,6 +47,7 @@ import org.apache.druid.rpc.RequestBuilder;
 import org.apache.druid.rpc.ServiceClient;
 import org.apache.druid.rpc.ServiceRetryPolicy;
 import org.apache.druid.rpc.UpdateResponse;
+import org.apache.druid.server.coordinator.AutoCompactionSnapshot;
 import org.apache.druid.server.coordinator.ClusterCompactionConfig;
 import org.apache.druid.server.coordinator.DataSourceCompactionConfig;
 import org.apache.druid.server.http.SegmentsToUpdateFilter;
@@ -506,6 +507,38 @@ public class OverlordClientImpl implements OverlordClient
             new BytesFullResponseHandler()
         ),
         holder -> JacksonUtils.readValue(jsonMapper, holder.getContent(), UpdateResponse.class)
+    );
+  }
+
+  @Override
+  public ListenableFuture<UpdateResponse> deleteDataSourceCompactionConfig(String dataSource)
+  {
+    final String path = StringUtils.format(
+        "/druid/indexer/v1/compaction/config/datasources/%s",
+        StringUtils.urlEncode(dataSource)
+    );
+    return FutureUtils.transform(
+        client.asyncRequest(
+            new RequestBuilder(HttpMethod.DELETE, path),
+            new BytesFullResponseHandler()
+        ),
+        holder -> JacksonUtils.readValue(jsonMapper, holder.getContent(), UpdateResponse.class)
+    );
+  }
+
+  @Override
+  public ListenableFuture<AutoCompactionSnapshot> getDataSourceCompactionSnapshot(String dataSource)
+  {
+    final String path = StringUtils.format(
+        "/druid/indexer/v1/compaction/status/datasources/%s",
+        StringUtils.urlEncode(dataSource)
+    );
+    return FutureUtils.transform(
+        client.asyncRequest(
+            new RequestBuilder(HttpMethod.GET, path),
+            new BytesFullResponseHandler()
+        ),
+        holder -> JacksonUtils.readValue(jsonMapper, holder.getContent(), AutoCompactionSnapshot.class)
     );
   }
 
