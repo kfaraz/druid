@@ -32,7 +32,6 @@ import org.apache.druid.data.input.impl.StringDimensionSchema;
 import org.apache.druid.indexer.CompactionEngine;
 import org.apache.druid.indexer.TaskState;
 import org.apache.druid.indexer.TaskStatusPlus;
-import org.apache.druid.indexer.granularity.UniformGranularitySpec;
 import org.apache.druid.indexer.partitions.DimensionRangePartitionsSpec;
 import org.apache.druid.indexer.partitions.DynamicPartitionsSpec;
 import org.apache.druid.indexer.partitions.HashedPartitionsSpec;
@@ -40,7 +39,6 @@ import org.apache.druid.indexer.partitions.PartitionsSpec;
 import org.apache.druid.indexing.common.task.CompactionIntervalSpec;
 import org.apache.druid.indexing.common.task.CompactionTask;
 import org.apache.druid.indexing.overlord.Segments;
-import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.common.ISE;
 import org.apache.druid.java.util.common.Intervals;
 import org.apache.druid.java.util.common.StringUtils;
@@ -81,9 +79,9 @@ import org.apache.druid.testing.embedded.EmbeddedHistorical;
 import org.apache.druid.testing.embedded.EmbeddedIndexer;
 import org.apache.druid.testing.embedded.EmbeddedOverlord;
 import org.apache.druid.testing.embedded.EmbeddedRouter;
+import org.apache.druid.testing.embedded.indexing.Resources;
+import org.apache.druid.testing.embedded.indexing.TaskPayload;
 import org.apache.druid.testing.embedded.junit5.EmbeddedClusterTestBase;
-import org.apache.druid.tests.indexer.AbstractITBatchIndexTest;
-import org.apache.druid.tests.indexer.AbstractIndexerTest;
 import org.apache.druid.timeline.DataSegment;
 import org.hamcrest.Matcher;
 import org.hamcrest.MatcherAssert;
@@ -106,24 +104,20 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
 {
   private static final Logger LOG = new Logger(EmbeddedAutoCompactionTest.class);
-  private static final String INDEX_TASK = "/indexer/wikipedia_index_task.json";
-  private static final String INDEX_TASK_WITH_GRANULARITY_SPEC = "/indexer/wikipedia_index_task_with_granularity_spec.json";
-  private static final String INDEX_TASK_WITH_DIMENSION_SPEC = "/indexer/wikipedia_index_task_with_dimension_spec.json";
+
   private static final String INDEX_ROLLUP_QUERIES_RESOURCE = "/indexer/wikipedia_index_rollup_queries.json";
   private static final String INDEX_ROLLUP_SKETCH_QUERIES_RESOURCE = "/indexer/wikipedia_index_sketch_queries.json";
   private static final String INDEX_QUERIES_RESOURCE = "/indexer/wikipedia_index_queries.json";
-  private static final String INDEX_TASK_WITH_ROLLUP_FOR_PRESERVE_METRICS = "/indexer/wikipedia_index_rollup_preserve_metric.json";
-  private static final String INDEX_TASK_WITHOUT_ROLLUP_FOR_PRESERVE_METRICS = "/indexer/wikipedia_index_no_rollup_preserve_metric.json";
   private static final int MAX_ROWS_PER_SEGMENT_COMPACTED = 10000;
   private static final Period NO_SKIP_OFFSET = Period.seconds(0);
   private static final FixedIntervalOrderPolicy COMPACT_NOTHING_POLICY = new FixedIntervalOrderPolicy(List.of());
@@ -152,7 +146,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   private String fullDatasourceName;
 
   @BeforeEach
-  public void doStuff() throws Exception
+  public void resetCompactionTaskSlots()
   {
     // Set compaction slot to 5
     updateCompactionTaskSlot(0.5, 10);
@@ -163,9 +157,17 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   public void testAutoCompactionRowWithMetricAndRowWithoutMetricShouldPreserveExistingMetricsUsingAggregatorWithDifferentReturnType() throws Exception
   {
     // added = null, count = 2, sum_added = 62, quantilesDoublesSketch = 2, thetaSketch = 2, HLLSketchBuild = 2
-    loadData(INDEX_TASK_WITH_ROLLUP_FOR_PRESERVE_METRICS);
+    loadData(
+        payload -> payload.inlineInputSourceWithData(Resources.JSON_DATA_2_ROWS)
+                          .inputFormat(Map.of("type", "json"))
+                          .granularitySpec("DAY", "HOUR", true)
+    );
     // added = 31, count = null, sum_added = null, quantilesDoublesSketch = null, thetaSketch = null, HLLSketchBuild = null
-    loadData(INDEX_TASK_WITHOUT_ROLLUP_FOR_PRESERVE_METRICS);
+    loadData(
+        payload -> payload.inlineInputSourceWithData(Resources.JSON_DATA_1_ROW)
+                          .inputFormat(Map.of("type", "json"))
+                          .granularitySpec("DAY", "HOUR", false)
+    );
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
@@ -259,9 +261,17 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   public void testAutoCompactionRowWithMetricAndRowWithoutMetricShouldPreserveExistingMetrics() throws Exception
   {
     // added = null, count = 2, sum_added = 62, quantilesDoublesSketch = 2, thetaSketch = 2, HLLSketchBuild = 2
-    loadData(INDEX_TASK_WITH_ROLLUP_FOR_PRESERVE_METRICS);
+    loadData(
+        payload -> payload.inlineInputSourceWithData(Resources.JSON_DATA_2_ROWS)
+                          .inputFormat(Map.of("type", "json"))
+                          .granularitySpec("DAY", "HOUR", true)
+    );
     // added = 31, count = null, sum_added = null, quantilesDoublesSketch = null, thetaSketch = null, HLLSketchBuild = null
-    loadData(INDEX_TASK_WITHOUT_ROLLUP_FOR_PRESERVE_METRICS);
+    loadData(
+        payload -> payload.inlineInputSourceWithData(Resources.JSON_DATA_1_ROW)
+                          .inputFormat(Map.of("type", "json"))
+                          .granularitySpec("DAY", "HOUR", false)
+    );
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
@@ -362,9 +372,17 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   public void testAutoCompactionOnlyRowsWithoutMetricShouldAddNewMetrics() throws Exception
   {
     // added = 31, count = null, sum_added = null
-    loadData(INDEX_TASK_WITHOUT_ROLLUP_FOR_PRESERVE_METRICS);
+    loadData(
+        payload -> payload.inlineInputSourceWithData(Resources.JSON_DATA_1_ROW)
+                          .inputFormat(Map.of("type", "json"))
+                          .granularitySpec("DAY", "HOUR", false)
+    );
     // added = 31, count = null, sum_added = null
-    loadData(INDEX_TASK_WITHOUT_ROLLUP_FOR_PRESERVE_METRICS);
+    loadData(
+        payload -> payload.inlineInputSourceWithData(Resources.JSON_DATA_1_ROW)
+                          .inputFormat(Map.of("type", "json"))
+                          .granularitySpec("DAY", "HOUR", false)
+    );
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
@@ -429,9 +447,17 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       throws Exception
   {
     // added = 31
-    loadData(INDEX_TASK_WITHOUT_ROLLUP_FOR_PRESERVE_METRICS);
+    loadData(
+        payload -> payload.inlineInputSourceWithData(Resources.JSON_DATA_1_ROW)
+                          .inputFormat(Map.of("type", "json"))
+                          .granularitySpec("DAY", "HOUR", false)
+    );
     // added = 31
-    loadData(INDEX_TASK_WITHOUT_ROLLUP_FOR_PRESERVE_METRICS);
+    loadData(
+        payload -> payload.inlineInputSourceWithData(Resources.JSON_DATA_1_ROW)
+                          .inputFormat(Map.of("type", "json"))
+                          .granularitySpec("DAY", "HOUR", false)
+    );
     if (engine == CompactionEngine.MSQ) {
       updateCompactionTaskSlot(0.1, 2);
     }
@@ -483,9 +509,17 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   public void testAutoCompactionOnlyRowsWithMetricShouldPreserveExistingMetrics() throws Exception
   {
     // added = null, count = 2, sum_added = 62
-    loadData(INDEX_TASK_WITH_ROLLUP_FOR_PRESERVE_METRICS);
+    loadData(
+        payload -> payload.inlineInputSourceWithData(Resources.JSON_DATA_2_ROWS)
+                          .inputFormat(Map.of("type", "json"))
+                          .granularitySpec("DAY", "HOUR", true)
+    );
     // added = null, count = 2, sum_added = 62
-    loadData(INDEX_TASK_WITH_ROLLUP_FOR_PRESERVE_METRICS);
+    loadData(
+        payload -> payload.inlineInputSourceWithData(Resources.JSON_DATA_2_ROWS)
+                          .inputFormat(Map.of("type", "json"))
+                          .granularitySpec("DAY", "HOUR", true)
+    );
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
@@ -546,7 +580,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   @MethodSource("getEngine")
   public void testAutoCompactionPreservesCreateBitmapIndexInDimensionSchema(CompactionEngine engine) throws Exception
   {
-    loadData(INDEX_TASK);
+    loadData();
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
@@ -583,7 +617,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   @MethodSource("getEngine")
   public void testAutoCompactionRollsUpMultiValueDimensionsWithoutUnnest(CompactionEngine engine) throws Exception
   {
-    loadData(INDEX_TASK);
+    loadData();
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
@@ -629,7 +663,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   @Test
   public void testAutoCompactionDutySubmitAndVerifyCompaction() throws Exception
   {
-    loadData(INDEX_TASK);
+    loadData();
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
@@ -680,7 +714,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   @ParameterizedTest(name = "compactionEngine={0}")
   public void testAutoCompactionDutyCanUpdateCompactionConfig(CompactionEngine engine) throws Exception
   {
-    loadData(INDEX_TASK);
+    loadData();
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
@@ -746,7 +780,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   @ParameterizedTest(name = "compactionEngine={0}")
   public void testAutoCompactionDutyCanDeleteCompactionConfig(CompactionEngine engine) throws Exception
   {
-    loadData(INDEX_TASK);
+    loadData();
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
@@ -772,7 +806,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   {
     // Set compactionTaskSlotRatio to 0 to prevent any compaction
     updateCompactionTaskSlot(0, 0);
-    loadData(INDEX_TASK);
+    loadData();
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
@@ -807,7 +841,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
           1,
           0);
       MatcherAssert.assertThat(
-          Long.parseLong(compactionResource.getCompactionProgress(fullDatasourceName).get("remainingSegmentSize")),
+          getCompactionStatus(fullDatasourceName).getBytesAwaitingCompaction(),
           Matchers.greaterThan(0L)
       );
       // Run compaction again to compact the remaining day
@@ -855,7 +889,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     //      3d compaction: SEMESTER:  5 rows @ 2013-08-31 (two segments), 5 rows @ 2013-09-01 (two segments),
     //               2 compactions were generated for year 2013; one for each semester to be compacted of the whole year.
     //
-    loadData(INDEX_TASK);
+    loadData();
 
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
@@ -983,7 +1017,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     //      3d compaction: SEMESTER:  5 rows @ 2013-08-31, 5 rows @ 2013-09-01 (two segment),
     //               2 compactions were generated for year 2013; one for each semester to be compacted of the whole year.
     //
-    loadData(INDEX_TASK);
+    loadData();
 
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
@@ -1086,7 +1120,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   @Test
   public void testAutoCompactionDutyWithSegmentGranularityAndWithDropExistingFalse() throws Exception
   {
-    loadData(INDEX_TASK);
+    loadData();
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
@@ -1151,7 +1185,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   @ParameterizedTest(name = "compactionEngine={0}")
   public void testAutoCompactionDutyWithSegmentGranularityAndMixedVersion(CompactionEngine engine) throws Exception
   {
-    loadData(INDEX_TASK);
+    loadData();
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
@@ -1190,7 +1224,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   @MethodSource("getEngine")
   public void testAutoCompactionDutyWithSegmentGranularityAndExistingCompactedSegmentsHaveSameSegmentGranularity(CompactionEngine engine) throws Exception
   {
-    loadData(INDEX_TASK);
+    loadData();
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
@@ -1223,7 +1257,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   @MethodSource("getEngine")
   public void testAutoCompactionDutyWithSegmentGranularityAndExistingCompactedSegmentsHaveDifferentSegmentGranularity(CompactionEngine engine) throws Exception
   {
-    loadData(INDEX_TASK);
+    loadData();
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
@@ -1257,7 +1291,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   @MethodSource("getEngine")
   public void testAutoCompactionDutyWithSegmentGranularityAndSmallerSegmentGranularityCoveringMultipleSegmentsInTimelineAndDropExistingTrue(CompactionEngine engine) throws Exception
   {
-    loadData(INDEX_TASK);
+    loadData();
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
@@ -1282,7 +1316,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       verifySegmentsCompacted(1, MAX_ROWS_PER_SEGMENT_COMPACTED);
       checkCompactionIntervals(expectedIntervalAfterCompaction);
 
-      loadData(INDEX_TASK);
+      loadData();
       verifySegmentsCount(5);
       verifyQuery(INDEX_QUERIES_RESOURCE);
       // 5 segments. 1 compacted YEAR segment and 4 newly ingested DAY segments across 2 days
@@ -1321,7 +1355,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   @Test
   public void testAutoCompactionDutyWithSegmentGranularityAndSmallerSegmentGranularityCoveringMultipleSegmentsInTimelineAndDropExistingFalse() throws Exception
   {
-    loadData(INDEX_TASK);
+    loadData();
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
@@ -1351,7 +1385,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       verifySegmentsCompacted(1, MAX_ROWS_PER_SEGMENT_COMPACTED);
       checkCompactionIntervals(expectedIntervalAfterCompaction);
 
-      loadData(INDEX_TASK);
+      loadData();
       verifySegmentsCount(5);
       verifyQuery(INDEX_QUERIES_RESOURCE);
       // 5 segments. 1 compacted YEAR segment and 4 newly ingested DAY segments across 2 days
@@ -1399,9 +1433,12 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   public void testAutoCompactionDutyWithSegmentGranularityFinerAndNotAlignWithSegment() throws Exception
   {
     updateCompactionTaskSlot(1, 1);
-    final ISOChronology chrono = ISOChronology.getInstance(DateTimes.inferTzFromString("America/Los_Angeles"));
-    Map<String, Object> specs = ImmutableMap.of("%%GRANULARITYSPEC%%", new UniformGranularitySpec(Granularities.MONTH, Granularities.DAY, false, ImmutableList.of(new Interval("2013-08-31/2013-09-02", chrono))));
-    loadData(INDEX_TASK_WITH_GRANULARITY_SPEC, specs);
+    final Map<String, Object> granularitySpec = Map.of(
+        "segmentGranularity", "MONTH",
+        "queryGranularity", "DAY",
+        "intervals", List.of("2013-08-31T-07/2013-09-02T-07")
+    );
+    loadData(payload -> payload.granularitySpec(granularitySpec).dynamicPartitionWithMaxRows(10));
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       Map<String, Object> queryAndResultFields = ImmutableMap.of(
           "%%FIELD_TO_QUERY%%", "added",
@@ -1446,14 +1483,17 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     }
   }
 
-  @ParameterizedTest(name = "compactionEngine={0}")
   @MethodSource("getEngine")
+  @ParameterizedTest(name = "compactionEngine={0}")
   public void testAutoCompactionDutyWithSegmentGranularityCoarserAndNotAlignWithSegment(CompactionEngine engine) throws Exception
   {
     updateCompactionTaskSlot(1, 1);
-    final ISOChronology chrono = ISOChronology.getInstance(DateTimes.inferTzFromString("America/Los_Angeles"));
-    Map<String, Object> specs = ImmutableMap.of("%%GRANULARITYSPEC%%", new UniformGranularitySpec(Granularities.WEEK, Granularities.DAY, false, ImmutableList.of(new Interval("2013-08-31/2013-09-02", chrono))));
-    loadData(INDEX_TASK_WITH_GRANULARITY_SPEC, specs);
+    final Map<String, Object> granularitySpec = Map.of(
+        "segmentGranularity", "WEEK",
+        "queryGranularity", "DAY",
+        "intervals", List.of("2013-08-31T-07/2013-09-02T-07")
+    );
+    loadData(payload -> payload.granularitySpec(granularitySpec).dynamicPartitionWithMaxRows(10));
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       Map<String, Object> queryAndResultFields = ImmutableMap.of(
           "%%FIELD_TO_QUERY%%", "added",
@@ -1498,9 +1538,12 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   @Test()
   public void testAutoCompactionDutyWithRollup() throws Exception
   {
-    final ISOChronology chrono = ISOChronology.getInstance(DateTimes.inferTzFromString("America/Los_Angeles"));
-    Map<String, Object> specs = ImmutableMap.of("%%GRANULARITYSPEC%%", new UniformGranularitySpec(Granularities.DAY, Granularities.DAY, false, ImmutableList.of(new Interval("2013-08-31/2013-09-02", chrono))));
-    loadData(INDEX_TASK_WITH_GRANULARITY_SPEC, specs);
+    final Map<String, Object> granularitySpec = Map.of(
+        "segmentGranularity", "DAY",
+        "queryGranularity", "DAY",
+        "intervals", List.of("2013-08-31T-07/2013-09-02T-07")
+    );
+    loadData(payload -> payload.granularitySpec(granularitySpec).dynamicPartitionWithMaxRows(10));
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       Map<String, Object> queryAndResultFields = ImmutableMap.of(
           "%%FIELD_TO_QUERY%%", "added",
@@ -1536,9 +1579,12 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   @MethodSource("getEngine")
   public void testAutoCompactionDutyWithQueryGranularity(CompactionEngine engine) throws Exception
   {
-    final ISOChronology chrono = ISOChronology.getInstance(DateTimes.inferTzFromString("America/Los_Angeles"));
-    Map<String, Object> specs = ImmutableMap.of("%%GRANULARITYSPEC%%", new UniformGranularitySpec(Granularities.DAY, Granularities.NONE, true, ImmutableList.of(new Interval("2013-08-31/2013-09-02", chrono))));
-    loadData(INDEX_TASK_WITH_GRANULARITY_SPEC, specs);
+    final Map<String, Object> granularitySpec = Map.of(
+        "segmentGranularity", "DAY",
+        "queryGranularity", "NONE",
+        "intervals", List.of("2013-08-31T-07/2013-09-02T-07")
+    );
+    loadData(payload -> payload.granularitySpec(granularitySpec).dynamicPartitionWithMaxRows(10));
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       Map<String, Object> queryAndResultFields = ImmutableMap.of(
           "%%FIELD_TO_QUERY%%", "added",
@@ -1576,7 +1622,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   {
     // Index data with dimensions "page", "language", "user", "unpatrolled", "newPage", "robot", "anonymous",
     // "namespace", "continent", "country", "region", "city"
-    loadData(INDEX_TASK_WITH_DIMENSION_SPEC);
+    loadData();
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
@@ -1627,7 +1673,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   {
     updateClusterConfig(new ClusterCompactionConfig(0.5, 10, null, useSupervisors, null));
 
-    loadData(INDEX_TASK_WITH_DIMENSION_SPEC);
+    loadData();
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(Ordering.natural().reversed());
@@ -1679,7 +1725,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   {
     updateClusterConfig(new ClusterCompactionConfig(0.5, 10, null, useSupervisors, null));
 
-    loadData(INDEX_TASK_WITH_DIMENSION_SPEC);
+    loadData();
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(Ordering.natural().reversed());
@@ -1736,13 +1782,20 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   @Test
   public void testAutoCompactionDutyWithOverlappingInterval() throws Exception
   {
-    final ISOChronology chrono = ISOChronology.getInstance(DateTimes.inferTzFromString("America/Los_Angeles"));
-    Map<String, Object> specs = ImmutableMap.of("%%GRANULARITYSPEC%%", new UniformGranularitySpec(Granularities.WEEK, Granularities.NONE, false, ImmutableList.of(new Interval("2013-08-31/2013-09-02", chrono))));
     // Create WEEK segment with 2013-08-26 to 2013-09-02
-    loadData(INDEX_TASK_WITH_GRANULARITY_SPEC, specs);
-    specs = ImmutableMap.of("%%GRANULARITYSPEC%%", new UniformGranularitySpec(Granularities.MONTH, Granularities.NONE, false, ImmutableList.of(new Interval("2013-09-01/2013-09-02", chrono))));
+    final Map<String, Object> weekGranularity = Map.of(
+        "segmentGranularity", "WEEK",
+        "queryGranularity", "NONE",
+        "intervals", List.of("2013-08-31T-07/2013-09-02T-07")
+    );
+    loadData(payload -> payload.granularitySpec(weekGranularity).dynamicPartitionWithMaxRows(10));
     // Create MONTH segment with 2013-09-01 to 2013-10-01
-    loadData(INDEX_TASK_WITH_GRANULARITY_SPEC, specs);
+    final Map<String, Object> monthGranularity = Map.of(
+        "segmentGranularity", "MONTH",
+        "queryGranularity", "NONE",
+        "intervals", List.of("2013-09-01T-07/2013-09-02T-07")
+    );
+    loadData(payload -> payload.granularitySpec(monthGranularity).dynamicPartitionWithMaxRows(10));
 
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       verifySegmentsCount(2);
@@ -1787,41 +1840,54 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     }
   }
 
-  private void loadData(String indexTask) throws Exception
+  private void loadData()
   {
-    loadData(indexTask, ImmutableMap.of());
+    loadData(payload -> {});
   }
 
-  private void loadData(String indexTask, Map<String, Object> specs) throws Exception
+  private void loadData(Consumer<TaskPayload> updatePayload)
   {
-    String taskSpec = AbstractIndexerTest.getResourceAsString(indexTask);
-    taskSpec = StringUtils.replace(taskSpec, "%%DATASOURCE%%", fullDatasourceName);
-    taskSpec = StringUtils.replace(
-        taskSpec,
-        "%%SEGMENT_AVAIL_TIMEOUT_MILLIS%%",
-        jsonMapper.writeValueAsString("0")
-    );
-    for (Map.Entry<String, Object> entry : specs.entrySet()) {
-      taskSpec = StringUtils.replace(
-          taskSpec,
-          entry.getKey(),
-          jsonMapper.writeValueAsString(entry.getValue())
-      );
-    }
+    final TaskPayload taskPayload = TaskPayload
+        .ofType("index")
+        .dataSource(fullDatasourceName)
+        .inputFormat(Map.of("type", "json"))
+        .localInputSourceWithFiles(
+            Resources.WIKIPEDIA_1_JSON,
+            Resources.WIKIPEDIA_2_JSON,
+            Resources.WIKIPEDIA_3_JSON
+        )
+        .timestampColumn("timestamp")
+        .dimensions(
+            "page",
+            "language", "tags", "user", "unpatrolled", "newPage", "robot",
+            "anonymous", "namespace", "continent", "country", "region", "city"
+        )
+        .metricAggregate("count", "count")
+        .metricAggregate("added", "doubleSum")
+        .metricAggregate("deleted", "doubleSum")
+        .metricAggregate("delta", "doubleSum")
+        .metricAggregate(Map.of("name", "thetaSketch", "type", "thetaSketch", "fieldName", "user"))
+        .metricAggregate(Map.of("name", "HLLSketchBuild", "type", "HLLSketchBuild", "fieldName", "user"))
+        .metricAggregate(Map.of("name", "quantilesDoublesSketch", "type", "quantilesDoublesSketch", "fieldName", "deleta"))
+        .partitionsSpec(Map.of("type", "dynamic", "maxRowsPerSegment", 3))
+        .segmentGranularity("DAY")
+        .appendToExisting(false);
+
+    updatePayload.accept(taskPayload);
 
     final String taskId = EmbeddedClusterApis.newTaskId(fullDatasourceName);
-    cluster.callApi().onLeaderOverlord(o -> o.runTask(taskId, taskSpec));
+    cluster.callApi().onLeaderOverlord(o -> o.runTask(taskId, taskPayload.withId(taskId)));
     LOG.info("Submitted task[%s] to load data", taskId);
     cluster.callApi().waitForTaskToSucceed(taskId, overlord);
     cluster.callApi().waitForAllSegmentsToBeAvailable(fullDatasourceName, coordinator);
   }
 
-  private void verifyQuery(String queryResource) throws Exception
+  private void verifyQuery(String queryResource)
   {
     verifyQuery(queryResource, ImmutableMap.of());
   }
 
-  private void verifyQuery(String queryResource, Map<String, Object> keyValueToReplace) throws Exception
+  private void verifyQuery(String queryResource, Map<String, Object> keyValueToReplace)
   {
     String queryResponseTemplate;
     try {
@@ -1925,7 +1991,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       AggregatorFactory[] metricsSpec,
       boolean dropExisting,
       CompactionEngine engine
-  ) throws Exception
+  )
   {
     DataSourceCompactionConfig dataSourceCompactionConfig =
         InlineSchemaDataSourceCompactionConfig.builder()
@@ -1967,9 +2033,6 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     cluster.callApi().onLeaderOverlord(
         o -> o.updateDataSourceCompactionConfig(dataSourceCompactionConfig)
     );
-
-    // Wait for compaction config to persist
-    Thread.sleep(2000);
 
     // Verify that the compaction config is updated correctly.
     DataSourceCompactionConfig foundDataSourceCompactionConfig
@@ -2023,8 +2086,11 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     }
   }
 
-  private void forceTriggerAutoCompaction(int numExpectedSegmentsAfterCompaction) throws Exception
+  private void forceTriggerAutoCompaction(int numExpectedSegmentsAfterCompaction)
   {
+    // TODO: tell the Coordinator to run the duty.
+    // Can't we just reduce the duty period?
+    // then we might lose the benefit of choosing when to compact and when not to
     compactionResource.forceTriggerAutoCompaction();
     waitForCompactionToFinish(numExpectedSegmentsAfterCompaction);
   }
@@ -2032,10 +2098,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   private void waitForCompactionToFinish(int numExpectedSegmentsAfterCompaction)
   {
     waitForAllTasksToCompleteForDataSource(fullDatasourceName);
-    ITRetryUtil.retryUntilTrue(
-        () -> coordinator.areSegmentsLoaded(fullDatasourceName),
-        "Segments are loaded"
-    );
+    // TODO: Compaction has been triggered, get the task ID and wait for it to finish
+
     cluster.callApi().waitForAllSegmentsToBeAvailable(fullDatasourceName, coordinator);
     verifySegmentsCount(numExpectedSegmentsAfterCompaction);
   }
@@ -2044,17 +2108,17 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   {
     Assertions.assertEquals(
         String.valueOf(numExpectedSegments),
-        cluster.runSql("SELECT COUNT(*) FROM sys.segments WHERE datasource='%s'", fullDatasourceName)
+        cluster.runSql("SELECT COUNT(*) FROM sys.segments WHERE datasource='%s'", dataSource)
     );
   }
 
   private void checkCompactionIntervals(List<String> expectedIntervals)
   {
-    final Set<String> expectedIntervalsSet = new HashSet<>(expectedIntervals);
-    ITRetryUtil.retryUntilEquals(
-        () -> Set.copyOf(getSegmentIntervals(fullDatasourceName)),
-        expectedIntervalsSet,
-        "Segment intervals"
+    // TODO: is waiting really needed here?
+    // If we have waited for all segments to be loaded, we can just move on from here
+    Assertions.assertEquals(
+        Set.copyOf(expectedIntervals),
+        Set.copyOf(getSegmentIntervals(dataSource))
     );
   }
 
@@ -2068,7 +2132,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
 
   private void verifyTombstones(int expectedCompactedTombstoneCount)
   {
-    Set<DataSegment> segments = getFullSegmentsMetadata(fullDatasourceName);
+    Set<DataSegment> segments = getFullSegmentsMetadata(dataSource);
     int actualTombstoneCount = 0;
     for (DataSegment segment : segments) {
       if (segment.isTombstone()) {
@@ -2080,7 +2144,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
 
   private void verifySegmentsCompacted(PartitionsSpec partitionsSpec, int expectedCompactedSegmentCount)
   {
-    Set<DataSegment> segments = getFullSegmentsMetadata(fullDatasourceName);
+    Set<DataSegment> segments = getFullSegmentsMetadata(dataSource);
     List<DataSegment> foundCompactedSegments = new ArrayList<>();
     for (DataSegment segment : segments) {
       if (segment.getLastCompactionState() != null) {
@@ -2098,7 +2162,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
 
   private void verifySegmentsCompactedDimensionSchema(List<DimensionSchema> dimensionSchemas)
   {
-    Set<DataSegment> segments = getFullSegmentsMetadata(fullDatasourceName);
+    Set<DataSegment> segments = getFullSegmentsMetadata(dataSource);
     List<DataSegment> foundCompactedSegments = new ArrayList<>();
     for (DataSegment segment : segments) {
       if (segment.getLastCompactionState() != null) {
@@ -2117,7 +2181,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     }
   }
 
-  private void updateCompactionTaskSlot(double compactionTaskSlotRatio, int maxCompactionTaskSlots) throws Exception
+  private void updateCompactionTaskSlot(double compactionTaskSlotRatio, int maxCompactionTaskSlots)
   {
     final ClusterCompactionConfig oldConfig = cluster.callApi().onLeaderOverlord(
         OverlordClient::getClusterCompactionConfig

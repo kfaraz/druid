@@ -56,6 +56,7 @@ public class TaskPayload
   private Integer maxNumConcurrentSubTasks = null;
   private Boolean forceGuaranteedRollup = null;
   private Long awaitSegmentAvailabilityTimeoutMillis = null;
+  private Boolean appendToExisting = null;
 
   private TaskPayload(String type)
   {
@@ -96,7 +97,8 @@ public class TaskPayload
             mapOf(
                 "type", type,
                 "inputSource", inputSource,
-                "inputFormat", inputFormat
+                "inputFormat", inputFormat,
+                "appendToExisting", appendToExisting
             ),
             "tuningConfig",
             mapOf(
@@ -177,15 +179,37 @@ public class TaskPayload
     );
   }
 
+  public TaskPayload appendToExisting(boolean append)
+  {
+    this.appendToExisting = append;
+    return this;
+  }
+
   public TaskPayload partitionsSpec(Map<String, Object> jsonMap)
   {
     this.partitionsSpec = jsonMap;
     return this;
   }
 
+  public TaskPayload dynamicPartitionWithMaxRows(int maxRowsPerSegment)
+  {
+    this.partitionsSpec = Map.of("type", "dynamic", "maxRowsPerSegment", maxRowsPerSegment);
+    return this;
+  }
+
   public TaskPayload granularitySpec(Map<String, Object> jsonMap)
   {
     this.granularitySpec = jsonMap;
+    return this;
+  }
+
+  public TaskPayload granularitySpec(String segmentGranularity, String queryGranularity, boolean rollup)
+  {
+    this.granularitySpec = Map.of(
+        "segmentGranularity", segmentGranularity,
+        "queryGranularity", queryGranularity,
+        "rollup", rollup
+    );
     return this;
   }
 
@@ -230,6 +254,12 @@ public class TaskPayload
   public TaskPayload metricAggregate(String column, String type)
   {
     this.metricsSpec.add(mapOf("type", type, "name", column, "fieldName", column));
+    return this;
+  }
+
+  public TaskPayload metricAggregate(Map<String, Object> jsonMap)
+  {
+    this.metricsSpec.add(Map.copyOf(jsonMap));
     return this;
   }
 
