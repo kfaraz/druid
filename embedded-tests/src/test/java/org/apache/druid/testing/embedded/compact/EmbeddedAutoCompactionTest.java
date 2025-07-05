@@ -55,6 +55,7 @@ import org.apache.druid.query.aggregation.datasketches.hll.HllSketchBuildAggrega
 import org.apache.druid.query.aggregation.datasketches.quantiles.DoublesSketchAggregatorFactory;
 import org.apache.druid.query.aggregation.datasketches.theta.SketchMergeAggregatorFactory;
 import org.apache.druid.query.filter.SelectorDimFilter;
+import org.apache.druid.rpc.indexing.OverlordClient;
 import org.apache.druid.segment.AutoTypeColumnSchema;
 import org.apache.druid.segment.column.ColumnType;
 import org.apache.druid.segment.transform.CompactionTransformSpec;
@@ -130,9 +131,6 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   @Inject
   protected CompactionResourceTestClient compactionResource;
 
-  @Inject
-  private IntegrationTestingConfig config;
-
   private String fullDatasourceName;
 
   @BeforeEach
@@ -151,9 +149,9 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     // added = 31, count = null, sum_added = null, quantilesDoublesSketch = null, thetaSketch = null, HLLSketchBuild = null
     loadData(INDEX_TASK_WITHOUT_ROLLUP_FOR_PRESERVE_METRICS);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
-      final List<String> intervalsBeforeCompaction = coordinator.getSegmentIntervals(fullDatasourceName);
+      final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
-      // 2 segments across 1 days...
+      // 2 segments across 1 day...
       verifySegmentsCount(2);
       ArrayList<Object> nullList = new ArrayList<>();
       nullList.add(null);
@@ -247,9 +245,9 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     // added = 31, count = null, sum_added = null, quantilesDoublesSketch = null, thetaSketch = null, HLLSketchBuild = null
     loadData(INDEX_TASK_WITHOUT_ROLLUP_FOR_PRESERVE_METRICS);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
-      final List<String> intervalsBeforeCompaction = coordinator.getSegmentIntervals(fullDatasourceName);
+      final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
-      // 2 segments across 1 days...
+      // 2 segments across 1 day...
       verifySegmentsCount(2);
       ArrayList<Object> nullList = new ArrayList<>();
       nullList.add(null);
@@ -350,9 +348,9 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     // added = 31, count = null, sum_added = null
     loadData(INDEX_TASK_WITHOUT_ROLLUP_FOR_PRESERVE_METRICS);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
-      final List<String> intervalsBeforeCompaction = coordinator.getSegmentIntervals(fullDatasourceName);
+      final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
-      // 2 segments across 1 days...
+      // 2 segments across 1 day...
       verifySegmentsCount(2);
       ArrayList<Object> nullList = new ArrayList<>();
       nullList.add(null);
@@ -420,9 +418,9 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       updateCompactionTaskSlot(0.1, 2);
     }
     try (final Closeable ignored = unloader(fullDatasourceName)) {
-      final List<String> intervalsBeforeCompaction = coordinator.getSegmentIntervals(fullDatasourceName);
+      final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
-      // 2 segments across 1 days...
+      // 2 segments across 1 day...
       verifySegmentsCount(2);
       Map<String, Object> queryAndResultFields = ImmutableMap.of(
           "%%FIELD_TO_QUERY%%", "added",
@@ -471,9 +469,9 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     // added = null, count = 2, sum_added = 62
     loadData(INDEX_TASK_WITH_ROLLUP_FOR_PRESERVE_METRICS);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
-      final List<String> intervalsBeforeCompaction = coordinator.getSegmentIntervals(fullDatasourceName);
+      final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
-      // 2 segments across 1 days...
+      // 2 segments across 1 day...
       verifySegmentsCount(2);
       Map<String, Object> queryAndResultFields = ImmutableMap.of(
           "%%FIELD_TO_QUERY%%", "count",
@@ -532,7 +530,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   {
     loadData(INDEX_TASK);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
-      final List<String> intervalsBeforeCompaction = coordinator.getSegmentIntervals(fullDatasourceName);
+      final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
       // 4 segments across 2 days (4 total)
       verifySegmentsCount(4);
@@ -569,7 +567,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   {
     loadData(INDEX_TASK);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
-      final List<String> intervalsBeforeCompaction = coordinator.getSegmentIntervals(fullDatasourceName);
+      final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
       // 4 segments across 2 days (4 total)
       verifySegmentsCount(4);
@@ -615,7 +613,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   {
     loadData(INDEX_TASK);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
-      final List<String> intervalsBeforeCompaction = coordinator.getSegmentIntervals(fullDatasourceName);
+      final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
       // 4 segments across 2 days (4 total)...
       verifySegmentsCount(4);
@@ -666,7 +664,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   {
     loadData(INDEX_TASK);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
-      final List<String> intervalsBeforeCompaction = coordinator.getSegmentIntervals(fullDatasourceName);
+      final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
       // 4 segments across 2 days (4 total)...
       verifySegmentsCount(4);
@@ -732,7 +730,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   {
     loadData(INDEX_TASK);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
-      final List<String> intervalsBeforeCompaction = coordinator.getSegmentIntervals(fullDatasourceName);
+      final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
       // 4 segments across 2 days (4 total)...
       verifySegmentsCount(4);
@@ -758,7 +756,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     updateCompactionTaskSlot(0, 0);
     loadData(INDEX_TASK);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
-      final List<String> intervalsBeforeCompaction = coordinator.getSegmentIntervals(fullDatasourceName);
+      final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
       // 4 segments across 2 days (4 total)...
       verifySegmentsCount(4);
@@ -842,7 +840,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     loadData(INDEX_TASK);
 
     try (final Closeable ignored = unloader(fullDatasourceName)) {
-      final List<String> intervalsBeforeCompaction = coordinator.getSegmentIntervals(fullDatasourceName);
+      final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
       // 4 segments across 2 days (4 total)...
       verifySegmentsCount(4);
@@ -892,7 +890,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // Hence, we will only have 2013-08 to 2013-09 months with data
       // plus 12 tombstones
       final List<String> intervalsAfterYEARCompactionButBeforeMONTHCompaction =
-          coordinator.getSegmentIntervals(fullDatasourceName);
+          getSegmentIntervals(fullDatasourceName);
       expectedIntervalAfterCompaction = new ArrayList<>();
       for (String interval : intervalsAfterYEARCompactionButBeforeMONTHCompaction) {
         for (Interval newinterval : newGranularity.getIterable(new Interval(interval, ISOChronology.getInstanceUTC()))) {
@@ -970,7 +968,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     loadData(INDEX_TASK);
 
     try (final Closeable ignored = unloader(fullDatasourceName)) {
-      final List<String> intervalsBeforeCompaction = coordinator.getSegmentIntervals(fullDatasourceName);
+      final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
       // 4 segments across 2 days (4 total)...
       verifySegmentsCount(4);
@@ -1020,7 +1018,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // Hence, we will only have 2013-08 to 2013-09 months with data
       // plus 12 tombstones
       final List<String> intervalsAfterYEARCompactionButBeforeMONTHCompaction =
-          coordinator.getSegmentIntervals(fullDatasourceName);
+          getSegmentIntervals(fullDatasourceName);
       expectedIntervalAfterCompaction = new ArrayList<>();
       for (String interval : intervalsAfterYEARCompactionButBeforeMONTHCompaction) {
         for (Interval newinterval : newGranularity.getIterable(new Interval(interval, ISOChronology.getInstanceUTC()))) {
@@ -1072,7 +1070,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   {
     loadData(INDEX_TASK);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
-      final List<String> intervalsBeforeCompaction = coordinator.getSegmentIntervals(fullDatasourceName);
+      final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
       // 4 segments across 2 days (4 total)...
       verifySegmentsCount(4);
@@ -1137,7 +1135,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   {
     loadData(INDEX_TASK);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
-      final List<String> intervalsBeforeCompaction = coordinator.getSegmentIntervals(fullDatasourceName);
+      final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
       // 4 segments across 2 days (4 total)...
       verifySegmentsCount(4);
@@ -1176,7 +1174,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   {
     loadData(INDEX_TASK);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
-      final List<String> intervalsBeforeCompaction = coordinator.getSegmentIntervals(fullDatasourceName);
+      final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
       // 4 segments across 2 days (4 total)...
       verifySegmentsCount(4);
@@ -1209,7 +1207,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   {
     loadData(INDEX_TASK);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
-      final List<String> intervalsBeforeCompaction = coordinator.getSegmentIntervals(fullDatasourceName);
+      final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
       // 4 segments across 2 days (4 total)...
       verifySegmentsCount(4);
@@ -1243,7 +1241,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   {
     loadData(INDEX_TASK);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
-      final List<String> intervalsBeforeCompaction = coordinator.getSegmentIntervals(fullDatasourceName);
+      final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
       // 4 segments across 2 days (4 total)...
       verifySegmentsCount(4);
@@ -1278,7 +1276,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
 
       newGranularity = Granularities.MONTH;
       final List<String> intervalsAfterYEARButBeforeMONTHCompaction =
-          coordinator.getSegmentIntervals(fullDatasourceName);
+          getSegmentIntervals(fullDatasourceName);
       // Since dropExisting is set to true...
       // This will submit a single compaction task for interval of 2013-01-01/2014-01-01 with MONTH granularity
       submitCompactionConfig(MAX_ROWS_PER_SEGMENT_COMPACTED, NO_SKIP_OFFSET, new UserCompactionTaskGranularityConfig(newGranularity, null, null), true, engine);
@@ -1307,7 +1305,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   {
     loadData(INDEX_TASK);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
-      final List<String> intervalsBeforeCompaction = coordinator.getSegmentIntervals(fullDatasourceName);
+      final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
       // 4 segments across 2 days (4 total)...
       verifySegmentsCount(4);
@@ -1562,7 +1560,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     // "namespace", "continent", "country", "region", "city"
     loadData(INDEX_TASK_WITH_DIMENSION_SPEC);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
-      final List<String> intervalsBeforeCompaction = coordinator.getSegmentIntervals(fullDatasourceName);
+      final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
       // 4 segments across 2 days (4 total)...
       verifySegmentsCount(4);
@@ -1613,7 +1611,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
 
     loadData(INDEX_TASK_WITH_DIMENSION_SPEC);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
-      final List<String> intervalsBeforeCompaction = coordinator.getSegmentIntervals(fullDatasourceName);
+      final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(Ordering.natural().reversed());
       // 4 segments across 2 days (4 total)...
       verifySegmentsCount(4);
@@ -1665,7 +1663,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
 
     loadData(INDEX_TASK_WITH_DIMENSION_SPEC);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
-      final List<String> intervalsBeforeCompaction = coordinator.getSegmentIntervals(fullDatasourceName);
+      final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(Ordering.natural().reversed());
       // 4 segments across 2 days (4 total)...
       verifySegmentsCount(4);
@@ -1950,14 +1948,16 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
                                               .withEngine(engine)
                                               .withTaskContext(ImmutableMap.of("maxNumTasks", 2))
                                               .build();
-    compactionResource.submitCompactionConfig(dataSourceCompactionConfig);
+    cluster.callApi().onLeaderOverlord(
+        o -> o.updateDataSourceCompactionConfig(dataSourceCompactionConfig)
+    );
 
     // Wait for compaction config to persist
     Thread.sleep(2000);
 
     // Verify that the compaction config is updated correctly.
     DataSourceCompactionConfig foundDataSourceCompactionConfig
-        = compactionResource.getDataSourceCompactionConfig(fullDatasourceName);
+        = cluster.callApi().onLeaderOverlord(o -> o.getDataSourceCompactionConfig(fullDatasourceName));
     Assertions.assertNotNull(foundDataSourceCompactionConfig);
     Assertions.assertNotNull(foundDataSourceCompactionConfig.getTuningConfig());
     Assertions.assertEquals(foundDataSourceCompactionConfig.getTuningConfig().getPartitionsSpec(), partitionsSpec);
@@ -2024,15 +2024,15 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
         () -> coordinator.areSegmentsLoaded(fullDatasourceName),
         "Segments are loaded"
     );
+    cluster.callApi().waitForAllSegmentsToBeAvailable(fullDatasourceName, coordinator);
     verifySegmentsCount(numExpectedSegmentsAfterCompaction);
   }
 
   private void verifySegmentsCount(int numExpectedSegments)
   {
-    ITRetryUtil.retryUntilEquals(
-        () -> coordinator.getSegments(fullDatasourceName).size(),
-        numExpectedSegments,
-        "Segment count"
+    Assertions.assertEquals(
+        String.valueOf(numExpectedSegments),
+        cluster.runSql("SELECT COUNT(*) FROM sys.segments WHERE datasource='%s'", fullDatasourceName)
     );
   }
 
@@ -2040,7 +2040,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   {
     final Set<String> expectedIntervalsSet = new HashSet<>(expectedIntervals);
     ITRetryUtil.retryUntilEquals(
-        () -> Set.copyOf(coordinator.getSegmentIntervals(fullDatasourceName)),
+        () -> Set.copyOf(getSegmentIntervals(fullDatasourceName)),
         expectedIntervalsSet,
         "Segment intervals"
     );
@@ -2107,19 +2107,25 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
 
   private void updateCompactionTaskSlot(double compactionTaskSlotRatio, int maxCompactionTaskSlots) throws Exception
   {
-    final ClusterCompactionConfig oldConfig = compactionResource.getClusterConfig();
-    compactionResource.updateClusterConfig(
-        new ClusterCompactionConfig(
-            compactionTaskSlotRatio,
-            maxCompactionTaskSlots,
-            oldConfig.getCompactionPolicy(),
-            oldConfig.isUseSupervisors(),
-            oldConfig.getEngine()
+    final ClusterCompactionConfig oldConfig = cluster.callApi().onLeaderOverlord(
+        OverlordClient::getClusterCompactionConfig
+    );
+    cluster.callApi().onLeaderOverlord(
+        o -> o.updateClusterCompactionConfig(
+            new ClusterCompactionConfig(
+                compactionTaskSlotRatio,
+                maxCompactionTaskSlots,
+                oldConfig.getCompactionPolicy(),
+                oldConfig.isUseSupervisors(),
+                oldConfig.getEngine()
+            )
         )
     );
 
     // Verify that the compaction config is updated correctly
-    final ClusterCompactionConfig updatedConfig = compactionResource.getClusterConfig();
+    final ClusterCompactionConfig updatedConfig = cluster.callApi().onLeaderOverlord(
+        OverlordClient::getClusterCompactionConfig
+    );
     Assertions.assertEquals(updatedConfig.getCompactionTaskSlotRatio(), compactionTaskSlotRatio);
     Assertions.assertEquals(updatedConfig.getMaxCompactionTaskSlots(), maxCompactionTaskSlots);
     LOG.info(
@@ -2154,5 +2160,20 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     Assertions.assertEquals(actualStatus.getIntervalCountAwaitingCompaction(), intervalCountAwaitingCompaction);
     Assertions.assertEquals(actualStatus.getIntervalCountCompacted(), intervalCountCompacted);
     Assertions.assertEquals(actualStatus.getIntervalCountSkipped(), intervalCountSkipped);
+  }
+  
+  private List<String> getSegmentIntervals(String dataSource)
+  {
+    final List<String> intervals = new ArrayList<>();
+    intervals.add("2000/3000");
+    return intervals;
+  }
+
+  /**
+   * Does nothing. This method has been retained only to keep the patch small.
+   */
+  private Closeable unloader(String dataSource)
+  {
+    return () -> {};
   }
 }

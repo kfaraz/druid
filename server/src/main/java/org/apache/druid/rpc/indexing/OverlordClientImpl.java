@@ -48,6 +48,7 @@ import org.apache.druid.rpc.ServiceClient;
 import org.apache.druid.rpc.ServiceRetryPolicy;
 import org.apache.druid.rpc.UpdateResponse;
 import org.apache.druid.server.coordinator.ClusterCompactionConfig;
+import org.apache.druid.server.coordinator.DataSourceCompactionConfig;
 import org.apache.druid.server.http.SegmentsToUpdateFilter;
 import org.apache.druid.timeline.SegmentId;
 import org.jboss.netty.handler.codec.http.HttpMethod;
@@ -468,6 +469,39 @@ public class OverlordClientImpl implements OverlordClient
     return FutureUtils.transform(
         client.asyncRequest(
             new RequestBuilder(HttpMethod.POST, "/druid/indexer/v1/compaction/config/cluster")
+                .jsonContent(jsonMapper, config),
+            new BytesFullResponseHandler()
+        ),
+        holder -> JacksonUtils.readValue(jsonMapper, holder.getContent(), UpdateResponse.class)
+    );
+  }
+
+  @Override
+  public ListenableFuture<DataSourceCompactionConfig> getDataSourceCompactionConfig(String dataSource)
+  {
+    final String path = StringUtils.format(
+        "/druid/indexer/v1/compaction/config/datasources/%s",
+        StringUtils.urlEncode(dataSource)
+    );
+    return FutureUtils.transform(
+        client.asyncRequest(
+            new RequestBuilder(HttpMethod.GET, path),
+            new BytesFullResponseHandler()
+        ),
+        holder -> JacksonUtils.readValue(jsonMapper, holder.getContent(), DataSourceCompactionConfig.class)
+    );
+  }
+
+  @Override
+  public ListenableFuture<UpdateResponse> updateDataSourceCompactionConfig(DataSourceCompactionConfig config)
+  {
+    final String path = StringUtils.format(
+        "/druid/indexer/v1/compaction/config/datasources/%s",
+        StringUtils.urlEncode(config.getDataSource())
+    );
+    return FutureUtils.transform(
+        client.asyncRequest(
+            new RequestBuilder(HttpMethod.POST, path)
                 .jsonContent(jsonMapper, config),
             new BytesFullResponseHandler()
         ),

@@ -38,6 +38,7 @@ import org.apache.druid.metadata.LockFilterPolicy;
 import org.apache.druid.rpc.ServiceRetryPolicy;
 import org.apache.druid.rpc.UpdateResponse;
 import org.apache.druid.server.coordinator.ClusterCompactionConfig;
+import org.apache.druid.server.coordinator.DataSourceCompactionConfig;
 import org.apache.druid.server.http.SegmentsToUpdateFilter;
 import org.apache.druid.timeline.SegmentId;
 import org.joda.time.DateTime;
@@ -249,6 +250,22 @@ public interface OverlordClient
    * @return {@link UpdateResponse} containing the success status of this operation.
    */
   ListenableFuture<UpdateResponse> updateClusterCompactionConfig(ClusterCompactionConfig config);
+
+  /**
+   * Gets the compaction config for a datasource, if one exists. Otherwise, throws
+   * an exception.
+   * <p>
+   * API: {@code GET /druid/indexer/v1/compaction/config/datasources/{dataSource}}
+   */
+  ListenableFuture<DataSourceCompactionConfig> getDataSourceCompactionConfig(String dataSource);
+
+  /**
+   * Updates the compaction config for a datasource.
+   * <p>
+   * API: {@code POST /druid/indexer/v1/compaction/config/datasources/{dataSource}}
+   * @return {@link UpdateResponse} containing the success status of this operation.
+   */
+  ListenableFuture<UpdateResponse> updateDataSourceCompactionConfig(DataSourceCompactionConfig config);
 
   /**
    * Marks all non-overshadowed segments of the datasource as used.
