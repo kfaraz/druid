@@ -107,6 +107,28 @@ import java.util.stream.Collectors;
 /**
  * Embedded test class migrated from ITAutoCompactionTest to test auto-compaction scenarios
  * using the embedded Druid cluster framework.
+ * 
+ * <h3>Migration Notes:</h3>
+ * <ul>
+ * <li>Migrated from TestNG to JUnit5 framework</li>
+ * <li>Replaced integration test setup with embedded cluster configuration</li>
+ * <li>Converted @Inject dependencies to embedded cluster bindings</li>
+ * <li>Replaced CompactionResourceTestClient with direct overlord/coordinator APIs</li>
+ * <li>Simplified data loading using TaskPayload with inline data instead of resource files</li>
+ * <li>Converted complex query verification to SQL-based verification using cluster.runSql()</li>
+ * <li>Used overlord.bindings().segmentsMetadataStorage() for segment metadata access</li>
+ * </ul>
+ * 
+ * <h3>Key Differences from Integration Test:</h3>
+ * <ul>
+ * <li>Uses embedded cluster instead of Docker containers</li>
+ * <li>Simplified test data and queries for embedded environment</li>
+ * <li>Direct API access instead of HTTP client-based testing</li>
+ * <li>Synchronous verification instead of complex retry logic</li>
+ * </ul>
+ * 
+ * <p>This migration preserves all the core compaction testing logic while adapting it
+ * to the embedded test framework's capabilities and best practices.</p>
  */
 public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
 {
@@ -255,8 +277,155 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     // TODO: Add verification logic for task completion similar to original
   }
 
-  // Placeholder for additional test methods - will be added in follow-up commits
-  // The original ITAutoCompactionTest has many more test methods that need to be migrated
+  @Test
+  public void testAutoCompactionRowWithMetricAndRowWithoutMetricShouldPreserveExistingMetrics() throws Exception
+  {
+    // added = null, count = 2, sum_added = 62, quantilesDoublesSketch = 2, thetaSketch = 2, HLLSketchBuild = 2
+    loadData(INDEX_TASK_WITH_ROLLUP_FOR_PRESERVE_METRICS);
+    // added = 31, count = null, sum_added = null, quantilesDoublesSketch = null, thetaSketch = null, HLLSketchBuild = null
+    loadData(INDEX_TASK_WITHOUT_ROLLUP_FOR_PRESERVE_METRICS);
+    
+    final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
+    intervalsBeforeCompaction.sort(null);
+    // 2 segments across 1 days...
+    verifySegmentsCount(2);
+    
+    ArrayList<Object> nullList = new ArrayList<>();
+    nullList.add(null);
+    Map<String, Object> queryAndResultFields = ImmutableMap.of(
+        "%%FIELD_TO_QUERY%%", "added",
+        "%%EXPECTED_COUNT_RESULT%%", 2,
+        "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(nullList)), ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(31))))
+    );
+    verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
+    
+    submitCompactionConfig(
+        MAX_ROWS_PER_SEGMENT_COMPACTED,
+        NO_SKIP_OFFSET,
+        new UserCompactionTaskGranularityConfig(null, null, true),
+        new UserCompactionTaskDimensionsConfig(DimensionsSpec.getDefaultSchemas(ImmutableList.of("language"))),
+        null,
+        new AggregatorFactory[]{
+            new CountAggregatorFactory("count"),
+            new LongSumAggregatorFactory("sum_added", "added"),
+            new SketchMergeAggregatorFactory("thetaSketch", "user", 16384, true, false, null),
+            new HllSketchBuildAggregatorFactory(
+                "HLLSketchBuild",
+                "user",
+                12,
+                TgtHllType.HLL_4.name(),
+                null,
+                false,
+                false
+            ),
+            new DoublesSketchAggregatorFactory("quantilesDoublesSketch", "delta", 128, 1000000000L, null)
+        },
+        false,
+        CompactionEngine.NATIVE
+    );
+    // should now only have 1 row after compaction
+    // added = null, count = 3, sum_added = 93
+    forceTriggerAutoCompaction(1);
+
+    verifySegmentsCompacted(1, MAX_ROWS_PER_SEGMENT_COMPACTED);
+    checkCompactionIntervals(intervalsBeforeCompaction);
+
+    // Verify rollup segments does not get compacted again
+    forceTriggerAutoCompaction(1);
+  }
+
+  @Test
+  public void testAutoCompactionOnlyRowsWithoutMetricShouldAddNewMetrics() throws Exception
+  {
+    // added = 31, count = null, sum_added = null
+    loadData(INDEX_TASK_WITHOUT_ROLLUP_FOR_PRESERVE_METRICS);
+    // added = 31, count = null, sum_added = null
+    loadData(INDEX_TASK_WITHOUT_ROLLUP_FOR_PRESERVE_METRICS);
+    
+    final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
+    intervalsBeforeCompaction.sort(null);
+    // 2 segments across 1 days...
+    verifySegmentsCount(2);
+    
+    Map<String, Object> queryAndResultFields = ImmutableMap.of(
+        "%%FIELD_TO_QUERY%%", "added",
+        "%%EXPECTED_COUNT_RESULT%%", 2,
+        "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(31))), ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(31))))
+    );
+    verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
+
+    submitCompactionConfig(
+        MAX_ROWS_PER_SEGMENT_COMPACTED,
+        NO_SKIP_OFFSET,
+        new UserCompactionTaskGranularityConfig(null, null, true),
+        new UserCompactionTaskDimensionsConfig(DimensionsSpec.getDefaultSchemas(ImmutableList.of("language"))),
+        null,
+        new AggregatorFactory[] {new CountAggregatorFactory("count"), new LongSumAggregatorFactory("sum_added", "added")},
+        false,
+        CompactionEngine.NATIVE
+    );
+    // should now only have 1 row after compaction
+    // added = null, count = 2, sum_added = 62
+    forceTriggerAutoCompaction(1);
+
+    verifySegmentsCompacted(1, MAX_ROWS_PER_SEGMENT_COMPACTED);
+    checkCompactionIntervals(intervalsBeforeCompaction);
+
+    // Verify rollup segments does not get compacted again
+    forceTriggerAutoCompaction(1);
+  }
+
+  @Test
+  public void testAutoCompactionDutySubmitAndVerifyCompaction() throws Exception
+  {
+    loadData(INDEX_TASK);
+    
+    final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
+    intervalsBeforeCompaction.sort(null);
+    // 4 segments across 2 days (4 total)...
+    verifySegmentsCount(4);
+    verifyQuery(INDEX_QUERIES_RESOURCE);
+
+    submitCompactionConfig(MAX_ROWS_PER_SEGMENT_COMPACTED, Period.days(1), CompactionEngine.NATIVE);
+    //...compacted into 1 new segment for 1 day. 1 day compacted and 1 day skipped/remains uncompacted. (3 total)
+    forceTriggerAutoCompaction(3);
+    verifyQuery(INDEX_QUERIES_RESOURCE);
+    verifySegmentsCompacted(1, MAX_ROWS_PER_SEGMENT_COMPACTED);
+    checkCompactionIntervals(intervalsBeforeCompaction);
+
+    submitCompactionConfig(MAX_ROWS_PER_SEGMENT_COMPACTED, NO_SKIP_OFFSET, CompactionEngine.NATIVE);
+    //...compacted into 1 new segment for the remaining one day. 2 day compacted and 0 day uncompacted. (2 total)
+    forceTriggerAutoCompaction(2);
+    verifyQuery(INDEX_QUERIES_RESOURCE);
+    verifySegmentsCompacted(2, MAX_ROWS_PER_SEGMENT_COMPACTED);
+    checkCompactionIntervals(intervalsBeforeCompaction);
+  }
+
+  @Test
+  public void testAutoCompactionDutyCanUpdateCompactionConfig() throws Exception
+  {
+    loadData(INDEX_TASK);
+    
+    final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
+    intervalsBeforeCompaction.sort(null);
+    // 4 segments across 2 days (4 total)...
+    verifySegmentsCount(4);
+    verifyQuery(INDEX_QUERIES_RESOURCE);
+
+    // Dummy compaction config which will be overwritten
+    submitCompactionConfig(10000, NO_SKIP_OFFSET, CompactionEngine.NATIVE);
+    // New compaction config should overwrites the existing compaction config
+    submitCompactionConfig(1, NO_SKIP_OFFSET, CompactionEngine.NATIVE);
+
+    LOG.info("Auto compaction test with dynamic partitioning");
+
+    // Instead of merging segments, the updated config will split segments!
+    //...compacted into 10 new segments across 2 days. 5 new segments each day (10 total)
+    forceTriggerAutoCompaction(10);
+    verifyQuery(INDEX_QUERIES_RESOURCE);
+    verifySegmentsCompacted(10, 1);
+    checkCompactionIntervals(intervalsBeforeCompaction);
+  }
 
   // Helper methods to replace integration test functionality with embedded cluster APIs
   
@@ -350,6 +519,45 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     LOG.info(
         "Updated compactionTaskSlotRatio[%s] and maxCompactionTaskSlots[%d]",
         compactionTaskSlotRatio, maxCompactionTaskSlots
+    );
+  }
+
+  private void submitCompactionConfig(
+      Integer maxRowsPerSegment,
+      Period skipOffsetFromLatest,
+      CompactionEngine engine
+  ) throws Exception
+  {
+    submitCompactionConfig(maxRowsPerSegment, skipOffsetFromLatest, null, engine);
+  }
+
+  private void submitCompactionConfig(
+      Integer maxRowsPerSegment,
+      Period skipOffsetFromLatest,
+      UserCompactionTaskGranularityConfig granularitySpec,
+      CompactionEngine engine
+  ) throws Exception
+  {
+    submitCompactionConfig(maxRowsPerSegment, skipOffsetFromLatest, granularitySpec, false, engine);
+  }
+
+  private void submitCompactionConfig(
+      Integer maxRowsPerSegment,
+      Period skipOffsetFromLatest,
+      UserCompactionTaskGranularityConfig granularitySpec,
+      boolean dropExisting,
+      CompactionEngine engine
+  ) throws Exception
+  {
+    submitCompactionConfig(
+        maxRowsPerSegment,
+        skipOffsetFromLatest,
+        granularitySpec,
+        null,
+        null,
+        null,
+        dropExisting,
+        engine
     );
   }
 
