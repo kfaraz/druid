@@ -22,7 +22,6 @@ package org.apache.druid.testing.embedded.compact;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Ordering;
-import com.google.inject.Inject;
 import org.apache.commons.io.IOUtils;
 import org.apache.datasketches.hll.TgtHllType;
 import org.apache.druid.data.input.MaxSizeSplitHintSpec;
@@ -69,13 +68,10 @@ import org.apache.druid.server.coordinator.UserCompactionTaskDimensionsConfig;
 import org.apache.druid.server.coordinator.UserCompactionTaskGranularityConfig;
 import org.apache.druid.server.coordinator.UserCompactionTaskIOConfig;
 import org.apache.druid.server.coordinator.UserCompactionTaskQueryTuningConfig;
-import org.apache.druid.testing.IntegrationTestingConfig;
-import org.apache.druid.testing.clients.CompactionResourceTestClient;
 import org.apache.druid.testing.clients.TaskResponseObject;
+import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
 import org.apache.druid.testing.embedded.junit5.EmbeddedClusterTestBase;
-import org.apache.druid.testing.guice.DruidTestModuleFactory;
 import org.apache.druid.testing.utils.ITRetryUtil;
-import org.apache.druid.tests.TestNGGroup;
 import org.apache.druid.tests.indexer.AbstractITBatchIndexTest;
 import org.apache.druid.tests.indexer.AbstractIndexerTest;
 import org.apache.druid.timeline.DataSegment;
@@ -86,11 +82,12 @@ import org.joda.time.DateTimeZone;
 import org.joda.time.Interval;
 import org.joda.time.Period;
 import org.joda.time.chrono.ISOChronology;
-import org.testng.Assert;
-import org.testng.annotations.BeforeMethod;
-import org.testng.annotations.DataProvider;
-import org.testng.annotations.Guice;
-import org.testng.annotations.Test;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -102,7 +99,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
@@ -120,16 +116,15 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   private static final Period NO_SKIP_OFFSET = Period.seconds(0);
   private static final FixedIntervalOrderPolicy COMPACT_NOTHING_POLICY = new FixedIntervalOrderPolicy(List.of());
 
-  @DataProvider(name = "engine")
-  public static Object[][] engine()
+  public static List<CompactionEngine> getEngine()
   {
-    return new Object[][]{{CompactionEngine.NATIVE}};
+    return List.of(CompactionEngine.NATIVE);
   }
-
-  @DataProvider(name = "useSupervisors")
-  public static Object[][] useSupervisors()
+  
+  @Override
+  protected EmbeddedDruidCluster createCluster()
   {
-    return new Object[][]{{true}, {false}};
+    return null;
   }
 
   @Inject
@@ -140,12 +135,12 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
 
   private String fullDatasourceName;
 
-  @BeforeMethod
-  public void setup() throws Exception
+  @BeforeEach
+  public void doStuff() throws Exception
   {
     // Set compaction slot to 5
     updateCompactionTaskSlot(0.5, 10);
-    fullDatasourceName = "wikipedia_index_test_" + UUID.randomUUID() + config.getExtraDatasourceNameSuffix();
+    fullDatasourceName = dataSource;
   }
 
   @Test
@@ -240,7 +235,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // Verify rollup segments does not get compacted again
       forceTriggerAutoCompaction(1);
       List<TaskResponseObject> compactTasksAfter = indexer.getCompleteTasksForDataSource(fullDatasourceName);
-      Assert.assertEquals(compactTasksAfter.size(), compactTasksBefore.size());
+      Assertions.assertEquals(compactTasksAfter.size(), compactTasksBefore.size());
     }
   }
 
@@ -343,7 +338,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // Verify rollup segments does not get compacted again
       forceTriggerAutoCompaction(1);
       List<TaskResponseObject> compactTasksAfter = indexer.getCompleteTasksForDataSource(fullDatasourceName);
-      Assert.assertEquals(compactTasksAfter.size(), compactTasksBefore.size());
+      Assertions.assertEquals(compactTasksAfter.size(), compactTasksBefore.size());
     }
   }
 
@@ -408,11 +403,12 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // Verify rollup segments does not get compacted again
       forceTriggerAutoCompaction(1);
       List<TaskResponseObject> compactTasksAfter = indexer.getCompleteTasksForDataSource(fullDatasourceName);
-      Assert.assertEquals(compactTasksAfter.size(), compactTasksBefore.size());
+      Assertions.assertEquals(compactTasksAfter.size(), compactTasksBefore.size());
     }
   }
 
-  @Test(dataProvider = "engine")
+  @ParameterizedTest(name = "compactionEngine={0}")
+  @MethodSource("getEngine")
   public void testAutoCompactionWithMetricColumnSameAsInputColShouldOverwriteInputWithMetrics(CompactionEngine engine)
       throws Exception
   {
@@ -463,7 +459,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // Verify rollup segments does not get compacted again
       forceTriggerAutoCompaction(1);
       List<TaskResponseObject> compactTasksAfter = indexer.getCompleteTasksForDataSource(fullDatasourceName);
-      Assert.assertEquals(compactTasksAfter.size(), compactTasksBefore.size());
+      Assertions.assertEquals(compactTasksAfter.size(), compactTasksBefore.size());
     }
   }
 
@@ -526,11 +522,12 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // Verify rollup segments does not get compacted again
       forceTriggerAutoCompaction(1);
       List<TaskResponseObject> compactTasksAfter = indexer.getCompleteTasksForDataSource(fullDatasourceName);
-      Assert.assertEquals(compactTasksAfter.size(), compactTasksBefore.size());
+      Assertions.assertEquals(compactTasksAfter.size(), compactTasksBefore.size());
     }
   }
 
-  @Test(dataProvider = "engine")
+  @ParameterizedTest(name = "compactionEngine={0}")
+  @MethodSource("getEngine")
   public void testAutoCompactionPreservesCreateBitmapIndexInDimensionSchema(CompactionEngine engine) throws Exception
   {
     loadData(INDEX_TASK);
@@ -566,7 +563,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     }
   }
 
-  @Test(dataProvider = "engine")
+  @ParameterizedTest(name = "compactionEngine={0}")
+  @MethodSource("getEngine")
   public void testAutoCompactionRollsUpMultiValueDimensionsWithoutUnnest(CompactionEngine engine) throws Exception
   {
     loadData(INDEX_TASK);
@@ -662,7 +660,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     }
   }
 
-  @Test(dataProvider = "engine")
+  @MethodSource("getEngine")
+  @ParameterizedTest(name = "compactionEngine={0}")
   public void testAutoCompactionDutyCanUpdateCompactionConfig(CompactionEngine engine) throws Exception
   {
     loadData(INDEX_TASK);
@@ -727,7 +726,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     }
   }
 
-  @Test(dataProvider = "engine")
+  @MethodSource("getEngine")
+  @ParameterizedTest(name = "compactionEngine={0}")
   public void testAutoCompactionDutyCanDeleteCompactionConfig(CompactionEngine engine) throws Exception
   {
     loadData(INDEX_TASK);
@@ -746,7 +746,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       verifyQuery(INDEX_QUERIES_RESOURCE);
       verifySegmentsCompacted(0, null);
       // Auto compaction stats should be deleted as compacation config was deleted
-      Assert.assertNull(compactionResource.getCompactionStatus(fullDatasourceName));
+      Assertions.assertNull(compactionResource.getCompactionStatus(fullDatasourceName));
       checkCompactionIntervals(intervalsBeforeCompaction);
     }
   }
@@ -770,7 +770,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       verifyQuery(INDEX_QUERIES_RESOURCE);
       verifySegmentsCompacted(0, null);
       checkCompactionIntervals(intervalsBeforeCompaction);
-      Assert.assertNull(compactionResource.getCompactionStatus(fullDatasourceName));
+      Assertions.assertNull(compactionResource.getCompactionStatus(fullDatasourceName));
       // Update compaction slots to be 1
       updateCompactionTaskSlot(1, 1);
       // One day compacted (1 new segment) and one day remains uncompacted. (3 total)
@@ -815,7 +815,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     }
   }
 
-  @Test(dataProvider = "engine")
+  @MethodSource("getEngine")
+  @ParameterizedTest(name = "compactionEngine={0}")
   public void testAutoCompactionDutyWithSegmentGranularityAndWithDropExistingTrue(CompactionEngine engine) throws Exception
   {
     // Interval is "2013-08-31/2013-09-02", segment gran is DAY,
@@ -937,12 +938,13 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       List<TaskResponseObject> compactTasksBefore = indexer.getCompleteTasksForDataSource(fullDatasourceName);
       forceTriggerAutoCompaction(2);
       List<TaskResponseObject> compactTasksAfter = indexer.getCompleteTasksForDataSource(fullDatasourceName);
-      Assert.assertEquals(compactTasksAfter.size(), compactTasksBefore.size());
+      Assertions.assertEquals(compactTasksAfter.size(), compactTasksBefore.size());
 
     }
   }
 
-  @Test(dataProvider = "engine")
+  @MethodSource("getEngine")
+  @ParameterizedTest(name = "compactionEngine={0}")
   public void testAutoCompactionDutyWithSegmentGranularityAndWithDropExistingTrueThenFalse(CompactionEngine engine) throws Exception
   {
     // Interval is "2013-08-31/2013-09-02", segment gran is DAY,
@@ -1061,7 +1063,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       List<TaskResponseObject> compactTasksBefore = indexer.getCompleteTasksForDataSource(fullDatasourceName);
       forceTriggerAutoCompaction(2);
       List<TaskResponseObject> compactTasksAfter = indexer.getCompleteTasksForDataSource(fullDatasourceName);
-      Assert.assertEquals(compactTasksAfter.size(), compactTasksBefore.size());
+      Assertions.assertEquals(compactTasksAfter.size(), compactTasksBefore.size());
     }
   }
 
@@ -1129,7 +1131,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     }
   }
 
-  @Test(dataProvider = "engine")
+  @MethodSource("getEngine")
+  @ParameterizedTest(name = "compactionEngine={0}")
   public void testAutoCompactionDutyWithSegmentGranularityAndMixedVersion(CompactionEngine engine) throws Exception
   {
     loadData(INDEX_TASK);
@@ -1167,7 +1170,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     }
   }
 
-  @Test(dataProvider = "engine")
+  @ParameterizedTest(name = "compactionEngine={0}")
+  @MethodSource("getEngine")
   public void testAutoCompactionDutyWithSegmentGranularityAndExistingCompactedSegmentsHaveSameSegmentGranularity(CompactionEngine engine) throws Exception
   {
     loadData(INDEX_TASK);
@@ -1195,11 +1199,12 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       verifySegmentsCompacted(2, MAX_ROWS_PER_SEGMENT_COMPACTED);
       // should be no new compaction task as segmentGranularity is already DAY
       List<TaskResponseObject> compactTasksAfter = indexer.getCompleteTasksForDataSource(fullDatasourceName);
-      Assert.assertEquals(compactTasksAfter.size(), compactTasksBefore.size());
+      Assertions.assertEquals(compactTasksAfter.size(), compactTasksBefore.size());
     }
   }
 
-  @Test(dataProvider = "engine")
+  @ParameterizedTest(name = "compactionEngine={0}")
+  @MethodSource("getEngine")
   public void testAutoCompactionDutyWithSegmentGranularityAndExistingCompactedSegmentsHaveDifferentSegmentGranularity(CompactionEngine engine) throws Exception
   {
     loadData(INDEX_TASK);
@@ -1232,7 +1237,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     }
   }
 
-  @Test(dataProvider = "engine")
+  @ParameterizedTest(name = "compactionEngine={0}")
+  @MethodSource("getEngine")
   public void testAutoCompactionDutyWithSegmentGranularityAndSmallerSegmentGranularityCoveringMultipleSegmentsInTimelineAndDropExistingTrue(CompactionEngine engine) throws Exception
   {
     loadData(INDEX_TASK);
@@ -1417,14 +1423,15 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
           compactTask = task;
         }
       }
-      Assert.assertNotNull(compactTask);
+      Assertions.assertNotNull(compactTask);
       TaskPayloadResponse task = indexer.getTaskPayload(compactTask.getId());
       // Verify that compaction task interval is adjusted to align with segmentGranularity
-      Assert.assertEquals(Intervals.of("2013-08-26T00:00:00.000Z/2013-10-07T00:00:00.000Z"), ((CompactionIntervalSpec) ((CompactionTask) task.getPayload()).getIoConfig().getInputSpec()).getInterval());
+      Assertions.assertEquals(Intervals.of("2013-08-26T00:00:00.000Z/2013-10-07T00:00:00.000Z"), ((CompactionIntervalSpec) ((CompactionTask) task.getPayload()).getIoConfig().getInputSpec()).getInterval());
     }
   }
 
-  @Test(dataProvider = "engine")
+  @ParameterizedTest(name = "compactionEngine={0}")
+  @MethodSource("getEngine")
   public void testAutoCompactionDutyWithSegmentGranularityCoarserAndNotAlignWithSegment(CompactionEngine engine) throws Exception
   {
     updateCompactionTaskSlot(1, 1);
@@ -1465,10 +1472,10 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
           compactTask = task;
         }
       }
-      Assert.assertNotNull(compactTask);
+      Assertions.assertNotNull(compactTask);
       TaskPayloadResponse task = indexer.getTaskPayload(compactTask.getId());
       // Verify that compaction task interval is adjusted to align with segmentGranularity
-      Assert.assertEquals(Intervals.of("2013-08-01T00:00:00.000Z/2013-10-01T00:00:00.000Z"), ((CompactionIntervalSpec) ((CompactionTask) task.getPayload()).getIoConfig().getInputSpec()).getInterval());
+      Assertions.assertEquals(Intervals.of("2013-08-01T00:00:00.000Z/2013-10-01T00:00:00.000Z"), ((CompactionIntervalSpec) ((CompactionTask) task.getPayload()).getIoConfig().getInputSpec()).getInterval());
     }
   }
 
@@ -1505,11 +1512,12 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // Verify rollup segments does not get compacted again
       forceTriggerAutoCompaction(2);
       List<TaskResponseObject> compactTasksAfter = indexer.getCompleteTasksForDataSource(fullDatasourceName);
-      Assert.assertEquals(compactTasksAfter.size(), compactTasksBefore.size());
+      Assertions.assertEquals(compactTasksAfter.size(), compactTasksBefore.size());
     }
   }
 
-  @Test(dataProvider = "engine")
+  @ParameterizedTest(name = "compactionEngine={0}")
+  @MethodSource("getEngine")
   public void testAutoCompactionDutyWithQueryGranularity(CompactionEngine engine) throws Exception
   {
     final ISOChronology chrono = ISOChronology.getInstance(DateTimes.inferTzFromString("America/Los_Angeles"));
@@ -1542,11 +1550,12 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // Verify rollup segments does not get compacted again
       forceTriggerAutoCompaction(2);
       List<TaskResponseObject> compactTasksAfter = indexer.getCompleteTasksForDataSource(fullDatasourceName);
-      Assert.assertEquals(compactTasksAfter.size(), compactTasksBefore.size());
+      Assertions.assertEquals(compactTasksAfter.size(), compactTasksBefore.size());
     }
   }
 
-  @Test(dataProvider = "engine")
+  @MethodSource("getEngine")
+  @ParameterizedTest(name = "compactionEngine={0}")
   public void testAutoCompactionDutyWithDimensionsSpec(CompactionEngine engine) throws Exception
   {
     // Index data with dimensions "page", "language", "user", "unpatrolled", "newPage", "robot", "anonymous",
@@ -1592,11 +1601,12 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // Verify compacted segments does not get compacted again
       forceTriggerAutoCompaction(2);
       List<TaskResponseObject> compactTasksAfter = indexer.getCompleteTasksForDataSource(fullDatasourceName);
-      Assert.assertEquals(compactTasksAfter.size(), compactTasksBefore.size());
+      Assertions.assertEquals(compactTasksAfter.size(), compactTasksBefore.size());
     }
   }
 
-  @Test(dataProvider = "useSupervisors")
+  @ValueSource(booleans = {true, false})
+  @ParameterizedTest(name = "useSupervisors={0}")
   public void testAutoCompactionDutyWithFilter(boolean useSupervisors) throws Exception
   {
     updateClusterConfig(new ClusterCompactionConfig(0.5, 10, null, useSupervisors, null));
@@ -1643,11 +1653,12 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // Verify compacted segments does not get compacted again
       forceTriggerAutoCompaction(intervalsBeforeCompaction, useSupervisors, 2);
       List<TaskResponseObject> compactTasksAfter = indexer.getCompleteTasksForDataSource(fullDatasourceName);
-      Assert.assertEquals(compactTasksAfter.size(), compactTasksBefore.size());
+      Assertions.assertEquals(compactTasksAfter.size(), compactTasksBefore.size());
     }
   }
 
-  @Test(dataProvider = "useSupervisors")
+  @ValueSource(booleans = {true, false})
+  @ParameterizedTest(name = "useSupervisors={0}")
   public void testAutoCompationDutyWithMetricsSpec(boolean useSupervisors) throws Exception
   {
     updateClusterConfig(new ClusterCompactionConfig(0.5, 10, null, useSupervisors, null));
@@ -1702,7 +1713,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // Verify compacted segments does not get compacted again
       forceTriggerAutoCompaction(intervalsBeforeCompaction, useSupervisors, 2);
       List<TaskResponseObject> compactTasksAfter = indexer.getCompleteTasksForDataSource(fullDatasourceName);
-      Assert.assertEquals(compactTasksAfter.size(), compactTasksBefore.size());
+      Assertions.assertEquals(compactTasksAfter.size(), compactTasksBefore.size());
     }
   }
 
@@ -1750,13 +1761,13 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // Verify all task succeed
       List<TaskResponseObject> compactTasksBefore = indexer.getCompleteTasksForDataSource(fullDatasourceName);
       for (TaskResponseObject taskResponseObject : compactTasksBefore) {
-        Assert.assertEquals(TaskState.SUCCESS, taskResponseObject.getStatus());
+        Assertions.assertEquals(TaskState.SUCCESS, taskResponseObject.getStatus());
       }
 
       // Verify compacted segments does not get compacted again
       forceTriggerAutoCompaction(2);
       List<TaskResponseObject> compactTasksAfter = indexer.getCompleteTasksForDataSource(fullDatasourceName);
-      Assert.assertEquals(compactTasksAfter.size(), compactTasksBefore.size());
+      Assertions.assertEquals(compactTasksAfter.size(), compactTasksBefore.size());
     }
   }
 
@@ -1947,10 +1958,10 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     // Verify that the compaction config is updated correctly.
     DataSourceCompactionConfig foundDataSourceCompactionConfig
         = compactionResource.getDataSourceCompactionConfig(fullDatasourceName);
-    Assert.assertNotNull(foundDataSourceCompactionConfig);
-    Assert.assertNotNull(foundDataSourceCompactionConfig.getTuningConfig());
-    Assert.assertEquals(foundDataSourceCompactionConfig.getTuningConfig().getPartitionsSpec(), partitionsSpec);
-    Assert.assertEquals(foundDataSourceCompactionConfig.getSkipOffsetFromLatest(), skipOffsetFromLatest);
+    Assertions.assertNotNull(foundDataSourceCompactionConfig);
+    Assertions.assertNotNull(foundDataSourceCompactionConfig.getTuningConfig());
+    Assertions.assertEquals(foundDataSourceCompactionConfig.getTuningConfig().getPartitionsSpec(), partitionsSpec);
+    Assertions.assertEquals(foundDataSourceCompactionConfig.getSkipOffsetFromLatest(), skipOffsetFromLatest);
   }
 
   private void deleteCompactionConfig() throws Exception
@@ -1962,7 +1973,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
         .empty().withDatasourceConfigs(compactionResource.getAllCompactionConfigs());
     DataSourceCompactionConfig foundDataSourceCompactionConfig
         = compactionConfig.findConfigForDatasource(fullDatasourceName).orNull();
-    Assert.assertNull(foundDataSourceCompactionConfig);
+    Assertions.assertNull(foundDataSourceCompactionConfig);
   }
 
   /**
@@ -2052,7 +2063,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
         actualTombstoneCount++;
       }
     }
-    Assert.assertEquals(actualTombstoneCount, expectedCompactedTombstoneCount);
+    Assertions.assertEquals(actualTombstoneCount, expectedCompactedTombstoneCount);
   }
 
   private void verifySegmentsCompacted(PartitionsSpec partitionsSpec, int expectedCompactedSegmentCount)
@@ -2064,11 +2075,11 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
         foundCompactedSegments.add(segment);
       }
     }
-    Assert.assertEquals(foundCompactedSegments.size(), expectedCompactedSegmentCount);
+    Assertions.assertEquals(foundCompactedSegments.size(), expectedCompactedSegmentCount);
     for (DataSegment compactedSegment : foundCompactedSegments) {
-      Assert.assertNotNull(compactedSegment.getLastCompactionState());
-      Assert.assertNotNull(compactedSegment.getLastCompactionState().getPartitionsSpec());
-      Assert.assertEquals(compactedSegment.getLastCompactionState().getPartitionsSpec(), partitionsSpec);
+      Assertions.assertNotNull(compactedSegment.getLastCompactionState());
+      Assertions.assertNotNull(compactedSegment.getLastCompactionState().getPartitionsSpec());
+      Assertions.assertEquals(compactedSegment.getLastCompactionState().getPartitionsSpec(), partitionsSpec);
     }
 
   }
@@ -2109,8 +2120,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
 
     // Verify that the compaction config is updated correctly
     final ClusterCompactionConfig updatedConfig = compactionResource.getClusterConfig();
-    Assert.assertEquals(updatedConfig.getCompactionTaskSlotRatio(), compactionTaskSlotRatio);
-    Assert.assertEquals(updatedConfig.getMaxCompactionTaskSlots(), maxCompactionTaskSlots);
+    Assertions.assertEquals(updatedConfig.getCompactionTaskSlotRatio(), compactionTaskSlotRatio);
+    Assertions.assertEquals(updatedConfig.getMaxCompactionTaskSlots(), maxCompactionTaskSlots);
     LOG.info(
         "Updated compactionTaskSlotRatio[%s] and maxCompactionTaskSlots[%d]",
         compactionTaskSlotRatio, maxCompactionTaskSlots
@@ -2132,16 +2143,16 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   ) throws Exception
   {
     AutoCompactionSnapshot actualStatus = compactionResource.getCompactionStatus(fullDatasourceName);
-    Assert.assertNotNull(actualStatus);
-    Assert.assertEquals(actualStatus.getScheduleStatus(), scheduleStatus);
+    Assertions.assertNotNull(actualStatus);
+    Assertions.assertEquals(actualStatus.getScheduleStatus(), scheduleStatus);
     MatcherAssert.assertThat(actualStatus.getBytesAwaitingCompaction(), bytesAwaitingCompactionMatcher);
     MatcherAssert.assertThat(actualStatus.getBytesCompacted(), bytesCompactedMatcher);
     MatcherAssert.assertThat(actualStatus.getBytesSkipped(), bytesSkippedMatcher);
-    Assert.assertEquals(actualStatus.getSegmentCountAwaitingCompaction(), segmentCountAwaitingCompaction);
-    Assert.assertEquals(actualStatus.getSegmentCountCompacted(), segmentCountCompacted);
-    Assert.assertEquals(actualStatus.getSegmentCountSkipped(), segmentCountSkipped);
-    Assert.assertEquals(actualStatus.getIntervalCountAwaitingCompaction(), intervalCountAwaitingCompaction);
-    Assert.assertEquals(actualStatus.getIntervalCountCompacted(), intervalCountCompacted);
-    Assert.assertEquals(actualStatus.getIntervalCountSkipped(), intervalCountSkipped);
+    Assertions.assertEquals(actualStatus.getSegmentCountAwaitingCompaction(), segmentCountAwaitingCompaction);
+    Assertions.assertEquals(actualStatus.getSegmentCountCompacted(), segmentCountCompacted);
+    Assertions.assertEquals(actualStatus.getSegmentCountSkipped(), segmentCountSkipped);
+    Assertions.assertEquals(actualStatus.getIntervalCountAwaitingCompaction(), intervalCountAwaitingCompaction);
+    Assertions.assertEquals(actualStatus.getIntervalCountCompacted(), intervalCountCompacted);
+    Assertions.assertEquals(actualStatus.getIntervalCountSkipped(), intervalCountSkipped);
   }
 }
