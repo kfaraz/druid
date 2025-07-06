@@ -29,6 +29,9 @@ import org.apache.druid.java.util.http.client.HttpClient;
 import org.apache.druid.java.util.http.client.Request;
 import org.apache.druid.java.util.http.client.response.StatusResponseHandler;
 import org.apache.druid.java.util.http.client.response.StatusResponseHolder;
+import org.apache.druid.query.aggregation.datasketches.hll.HllSketchModule;
+import org.apache.druid.query.aggregation.datasketches.quantiles.DoublesSketchModule;
+import org.apache.druid.query.aggregation.datasketches.theta.SketchModule;
 import org.apache.druid.segment.TestHelper;
 import org.apache.druid.server.compaction.CompactionSimulateResult;
 import org.apache.druid.server.compaction.CompactionStatusResponse;
@@ -52,7 +55,6 @@ public class CompactionResourceTestClient
   private final ObjectMapper jsonMapper;
   private final EmbeddedOverlord overlord;
   private final EmbeddedCoordinator coordinator;
-  private final HttpClient httpClient;
   private final StatusResponseHandler responseHandler;
 
   CompactionResourceTestClient(
@@ -60,24 +62,36 @@ public class CompactionResourceTestClient
       EmbeddedOverlord overlord
   )
   {
-    this.jsonMapper = TestHelper.JSON_MAPPER;
-    this.httpClient = overlord.bindings().escalatedHttpClient();
+    this.jsonMapper = TestHelper.JSON_MAPPER
+        .registerModules(new SketchModule().getJacksonModules())
+        .registerModules(new HllSketchModule().getJacksonModules())
+        .registerModules(new DoublesSketchModule().getJacksonModules());
     this.overlord = overlord;
     this.coordinator = coordinator;
     this.responseHandler = StatusResponseHandler.getInstance();
   }
 
+  private HttpClient httpClient()
+  {
+    return overlord.bindings().escalatedHttpClient();
+  }
+
   private String getCoordinatorURL()
   {
     return StringUtils.format(
-        "%s/druid/coordinator/v1/",
-        coordinator
+        "http://%s:%s/druid/coordinator/v1/",
+        coordinator.bindings().selfNode().getHost(),
+        coordinator.bindings().selfNode().getPlaintextPort()
     );
   }
 
   private String getOverlordURL()
   {
-    return StringUtils.format("%s/druid/indexer/v1", overlord);
+    return StringUtils.format(
+        "http://%s:%s/druid/indexer/v1",
+        overlord.bindings().selfNode().getHost(),
+        overlord.bindings().selfNode().getPlaintextPort()
+    );
   }
 
   public void submitCompactionConfig(final DataSourceCompactionConfig dataSourceCompactionConfig) throws Exception
@@ -87,7 +101,7 @@ public class CompactionResourceTestClient
         "%s/compaction/config/datasources/%s",
         getOverlordURL(), StringUtils.urlEncode(dataSource)
     );
-    StatusResponseHolder response = httpClient.go(
+    StatusResponseHolder response = httpClient().go(
         new Request(HttpMethod.POST, new URL(url)).setContent(
             "application/json",
             jsonMapper.writeValueAsBytes(dataSourceCompactionConfig)
@@ -114,7 +128,7 @@ public class CompactionResourceTestClient
         "%s/compaction/config/datasources/%s",
         getOverlordURL(), StringUtils.urlEncode(dataSource)
     );
-    StatusResponseHolder response = httpClient.go(new Request(HttpMethod.DELETE, new URL(url)), responseHandler).get();
+    StatusResponseHolder response = httpClient().go(new Request(HttpMethod.DELETE, new URL(url)), responseHandler).get();
 
     if (!response.getStatus().equals(HttpResponseStatus.OK)) {
       throw new ISE(
@@ -133,7 +147,7 @@ public class CompactionResourceTestClient
   public DruidCompactionConfig getCoordinatorCompactionConfig() throws Exception
   {
     String url = StringUtils.format("%sconfig/compaction", getCoordinatorURL());
-    StatusResponseHolder response = httpClient.go(
+    StatusResponseHolder response = httpClient().go(
         new Request(HttpMethod.GET, new URL(url)), responseHandler
     ).get();
     if (!response.getStatus().equals(HttpResponseStatus.OK)) {
@@ -149,7 +163,7 @@ public class CompactionResourceTestClient
   public List<DataSourceCompactionConfig> getAllCompactionConfigs() throws Exception
   {
     String url = StringUtils.format("%s/compaction/config/datasources", getOverlordURL());
-    StatusResponseHolder response = httpClient.go(
+    StatusResponseHolder response = httpClient().go(
         new Request(HttpMethod.GET, new URL(url)), responseHandler
     ).get();
     if (!response.getStatus().equals(HttpResponseStatus.OK)) {
@@ -172,7 +186,7 @@ public class CompactionResourceTestClient
         "%s/compaction/config/datasources/%s",
         getOverlordURL(), StringUtils.urlEncode(dataSource)
     );
-    StatusResponseHolder response = httpClient.go(
+    StatusResponseHolder response = httpClient().go(
         new Request(HttpMethod.GET, new URL(url)), responseHandler
     ).get();
     if (!response.getStatus().equals(HttpResponseStatus.OK)) {
@@ -204,7 +218,7 @@ public class CompactionResourceTestClient
     );
 
     String url = StringUtils.format("%scompaction/compact", getCoordinatorURL());
-    StatusResponseHolder response = httpClient.go(new Request(HttpMethod.POST, new URL(url)), responseHandler).get();
+    StatusResponseHolder response = httpClient().go(new Request(HttpMethod.POST, new URL(url)), responseHandler).get();
     if (!response.getStatus().equals(HttpResponseStatus.OK)) {
       throw new ISE(
           "Error while force trigger auto compaction status[%s] content[%s]",
@@ -220,7 +234,7 @@ public class CompactionResourceTestClient
         "%s/compaction/config/cluster",
         getOverlordURL()
     );
-    StatusResponseHolder response = httpClient.go(
+    StatusResponseHolder response = httpClient().go(
         new Request(HttpMethod.POST, new URL(url)).setContent(
             "application/json",
             jsonMapper.writeValueAsBytes(config)
@@ -239,7 +253,7 @@ public class CompactionResourceTestClient
   public ClusterCompactionConfig getClusterConfig() throws Exception
   {
     String url = StringUtils.format("%s/compaction/config/cluster", getOverlordURL());
-    StatusResponseHolder response = httpClient.go(
+    StatusResponseHolder response = httpClient().go(
         new Request(HttpMethod.GET, new URL(url)), responseHandler
     ).get();
     if (!response.getStatus().equals(HttpResponseStatus.OK)) {
@@ -265,7 +279,7 @@ public class CompactionResourceTestClient
         StringUtils.urlEncode(compactionTaskSlotRatio.toString()),
         StringUtils.urlEncode(maxCompactionTaskSlots.toString())
     );
-    StatusResponseHolder response = httpClient.go(new Request(HttpMethod.POST, new URL(url)), responseHandler).get();
+    StatusResponseHolder response = httpClient().go(new Request(HttpMethod.POST, new URL(url)), responseHandler).get();
     if (!response.getStatus().equals(HttpResponseStatus.OK)) {
       throw new ISE(
           "Error while updating compaction task slot status[%s] content[%s]",
@@ -278,7 +292,7 @@ public class CompactionResourceTestClient
   public Map<String, String> getCompactionProgress(String dataSource) throws Exception
   {
     String url = StringUtils.format("%scompaction/progress?dataSource=%s", getCoordinatorURL(), StringUtils.urlEncode(dataSource));
-    StatusResponseHolder response = httpClient.go(
+    StatusResponseHolder response = httpClient().go(
         new Request(HttpMethod.GET, new URL(url)), responseHandler
     ).get();
     if (!response.getStatus().equals(HttpResponseStatus.OK)) {
@@ -294,7 +308,7 @@ public class CompactionResourceTestClient
   public AutoCompactionSnapshot getCompactionStatus(String dataSource) throws Exception
   {
     String url = StringUtils.format("%scompaction/status?dataSource=%s", getCoordinatorURL(), StringUtils.urlEncode(dataSource));
-    StatusResponseHolder response = httpClient.go(
+    StatusResponseHolder response = httpClient().go(
         new Request(HttpMethod.GET, new URL(url)), responseHandler
     ).get();
     if (response.getStatus().equals(HttpResponseStatus.NOT_FOUND)) {
@@ -315,7 +329,7 @@ public class CompactionResourceTestClient
     final ClusterCompactionConfig clusterConfig = getClusterConfig();
 
     final String url = StringUtils.format("%scompaction/simulate", getCoordinatorURL());
-    StatusResponseHolder response = httpClient.go(
+    StatusResponseHolder response = httpClient().go(
         new Request(HttpMethod.POST, new URL(url)).setContent(
             "application/json",
             jsonMapper.writeValueAsBytes(clusterConfig)
