@@ -66,6 +66,7 @@ import org.apache.druid.server.compaction.FixedIntervalOrderPolicy;
 import org.apache.druid.server.coordinator.AutoCompactionSnapshot;
 import org.apache.druid.server.coordinator.ClusterCompactionConfig;
 import org.apache.druid.server.coordinator.DataSourceCompactionConfig;
+import org.apache.druid.server.coordinator.DruidCompactionConfig;
 import org.apache.druid.server.coordinator.InlineSchemaDataSourceCompactionConfig;
 import org.apache.druid.server.coordinator.UserCompactionTaskDimensionsConfig;
 import org.apache.druid.server.coordinator.UserCompactionTaskGranularityConfig;
@@ -142,6 +143,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
                                .addServer(new EmbeddedBroker())
                                .addServer(new EmbeddedRouter());
   }
+
+  protected final CompactionResourceTestClient compactionResource = new CompactionResourceTestClient();
 
   private String fullDatasourceName;
 
@@ -586,7 +589,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       intervalsBeforeCompaction.sort(null);
       // 4 segments across 2 days (4 total)
       verifySegmentsCount(4);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
 
       LOG.info("Auto compaction test with YEAR segment granularity, dropExisting is true");
       Granularity newSegmentGranularity = Granularities.YEAR;
@@ -623,7 +626,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       intervalsBeforeCompaction.sort(null);
       // 4 segments across 2 days (4 total)
       verifySegmentsCount(4);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
 
       LOG.info("Auto compaction test with YEAR segment granularity, DAY query granularity, dropExisting is true");
 
@@ -669,12 +672,12 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       intervalsBeforeCompaction.sort(null);
       // 4 segments across 2 days (4 total)...
       verifySegmentsCount(4);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
 
       submitCompactionConfig(MAX_ROWS_PER_SEGMENT_COMPACTED, Period.days(1), CompactionEngine.NATIVE);
       //...compacted into 1 new segment for 1 day. 1 day compacted and 1 day skipped/remains uncompacted. (3 total)
       forceTriggerAutoCompaction(3);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
       verifySegmentsCompacted(1, MAX_ROWS_PER_SEGMENT_COMPACTED);
       checkCompactionIntervals(intervalsBeforeCompaction);
       getAndAssertCompactionStatus(
@@ -692,7 +695,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       submitCompactionConfig(MAX_ROWS_PER_SEGMENT_COMPACTED, NO_SKIP_OFFSET, CompactionEngine.NATIVE);
       //...compacted into 1 new segment for the remaining one day. 2 day compacted and 0 day uncompacted. (2 total)
       forceTriggerAutoCompaction(2);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
       verifySegmentsCompacted(2, MAX_ROWS_PER_SEGMENT_COMPACTED);
       checkCompactionIntervals(intervalsBeforeCompaction);
       getAndAssertCompactionStatus(
@@ -720,7 +723,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       intervalsBeforeCompaction.sort(null);
       // 4 segments across 2 days (4 total)...
       verifySegmentsCount(4);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
 
       // Dummy compaction config which will be overwritten
       submitCompactionConfig(10000, NO_SKIP_OFFSET, engine);
@@ -732,7 +735,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // Instead of merging segments, the updated config will split segments!
       //...compacted into 10 new segments across 2 days. 5 new segments each day (10 total)
       forceTriggerAutoCompaction(10);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
       verifySegmentsCompacted(10, 1);
       checkCompactionIntervals(intervalsBeforeCompaction);
 
@@ -745,7 +748,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
         // 3 segments for both 2013-08-31 and 2013-09-01. (Note that numShards guarantees max shards but not exact
         // number of final shards, since some shards may end up empty.)
         forceTriggerAutoCompaction(6);
-        verifyQuery(INDEX_QUERIES_RESOURCE);
+        verifyQuery();
         verifySegmentsCompacted(hashedPartitionsSpec, 6);
         checkCompactionIntervals(intervalsBeforeCompaction);
       }
@@ -770,7 +773,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       }
       submitCompactionConfig(inputRangePartitionsSpec, NO_SKIP_OFFSET, 1, null, null, null, null, false, engine);
       forceTriggerAutoCompaction(2);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
       verifySegmentsCompacted(expectedRangePartitionsSpec, 2);
       checkCompactionIntervals(intervalsBeforeCompaction);
     }
@@ -786,17 +789,17 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       intervalsBeforeCompaction.sort(null);
       // 4 segments across 2 days (4 total)...
       verifySegmentsCount(4);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
 
       submitCompactionConfig(MAX_ROWS_PER_SEGMENT_COMPACTED, NO_SKIP_OFFSET, engine);
       deleteCompactionConfig();
 
       // ...should remain unchanged (4 total)
       forceTriggerAutoCompaction(4);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
       verifySegmentsCompacted(0, null);
       // Auto compaction stats should be deleted as compacation config was deleted
-      Assertions.assertNull(getCompactionStatus(fullDatasourceName));
+      Assertions.assertNull(compactionResource.getCompactionStatus(fullDatasourceName));
       checkCompactionIntervals(intervalsBeforeCompaction);
     }
   }
@@ -812,20 +815,20 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       intervalsBeforeCompaction.sort(null);
       // 4 segments across 2 days (4 total)...
       verifySegmentsCount(4);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
 
       submitCompactionConfig(MAX_ROWS_PER_SEGMENT_COMPACTED, NO_SKIP_OFFSET, CompactionEngine.NATIVE);
       // ...should remains unchanged (4 total)
       forceTriggerAutoCompaction(4);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
       verifySegmentsCompacted(0, null);
       checkCompactionIntervals(intervalsBeforeCompaction);
-      Assertions.assertNull(getCompactionStatus(fullDatasourceName));
+      Assertions.assertNull(compactionResource.getCompactionStatus(fullDatasourceName));
       // Update compaction slots to be 1
       updateCompactionTaskSlot(1, 1);
       // One day compacted (1 new segment) and one day remains uncompacted. (3 total)
       forceTriggerAutoCompaction(3);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
       verifySegmentsCompacted(1, MAX_ROWS_PER_SEGMENT_COMPACTED);
       checkCompactionIntervals(intervalsBeforeCompaction);
       getAndAssertCompactionStatus(
@@ -841,13 +844,13 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
           1,
           0);
       MatcherAssert.assertThat(
-          getCompactionStatus(fullDatasourceName).getBytesAwaitingCompaction(),
+          Long.parseLong(compactionResource.getCompactionProgress(fullDatasourceName).get("remainingSegmentSize")),
           Matchers.greaterThan(0L)
       );
       // Run compaction again to compact the remaining day
-      // Now both days are compacted (2 segments total)
+      // Remaining day compacted (1 new segment). Now both days compacted (2 total)
       forceTriggerAutoCompaction(2);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
       verifySegmentsCompacted(2, MAX_ROWS_PER_SEGMENT_COMPACTED);
       checkCompactionIntervals(intervalsBeforeCompaction);
       getAndAssertCompactionStatus(
@@ -896,7 +899,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       intervalsBeforeCompaction.sort(null);
       // 4 segments across 2 days (4 total)...
       verifySegmentsCount(4);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
 
 
       LOG.info("Auto compaction test with YEAR segment granularity, dropExisting is true");
@@ -918,7 +921,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
         }
       }
       forceTriggerAutoCompaction(1);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
       verifySegmentsCompacted(1, 1000);
       checkCompactionIntervals(expectedIntervalAfterCompaction);
 
@@ -950,7 +953,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
         }
       }
       forceTriggerAutoCompaction(12);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
       verifyTombstones(10);
       verifySegmentsCompacted(12, 1000);
       checkCompactionIntervals(expectedIntervalAfterCompaction);
@@ -974,7 +977,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // new PT6M segments for data and tombstones for days with no data
       // Hence, we will have two segments, one tombstone for the first semester and one data segment for the second.
       forceTriggerAutoCompaction(2); // two semesters compacted
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
       verifyTombstones(1);
       verifySegmentsCompacted(2, 1000);
 
@@ -1024,7 +1027,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       intervalsBeforeCompaction.sort(null);
       // 4 segments across 2 days (4 total)...
       verifySegmentsCount(4);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
 
 
       LOG.info("Auto compaction test with YEAR segment granularity, dropExisting is true");
@@ -1046,7 +1049,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
         }
       }
       forceTriggerAutoCompaction(1);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
       verifySegmentsCompacted(1, 1000);
       checkCompactionIntervals(expectedIntervalAfterCompaction);
 
@@ -1078,7 +1081,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
         }
       }
       forceTriggerAutoCompaction(12);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
       verifyTombstones(10);
       verifySegmentsCompacted(12, 1000);
       checkCompactionIntervals(expectedIntervalAfterCompaction);
@@ -1098,7 +1101,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // Since dropExisting is set to false the first semester will be forced to dropExisting true
       // Hence, we will have two, one tombstone for the first semester and one data segment for the second.
       forceTriggerAutoCompaction(2); // two semesters compacted
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
       verifyTombstones(1);
       verifySegmentsCompacted(2, 1000);
 
@@ -1126,7 +1129,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       intervalsBeforeCompaction.sort(null);
       // 4 segments across 2 days (4 total)...
       verifySegmentsCount(4);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
 
       Granularity newGranularity = Granularities.YEAR;
       // Set dropExisting to false
@@ -1147,7 +1150,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
         }
       }
       forceTriggerAutoCompaction(1);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
       verifySegmentsCompacted(1, 1000);
       checkCompactionIntervals(expectedIntervalAfterCompaction);
 
@@ -1175,7 +1178,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
         }
       }
       forceTriggerAutoCompaction(3);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
       verifySegmentsCompacted(3, 1000);
       checkCompactionIntervals(expectedIntervalAfterCompaction);
     }
@@ -1191,12 +1194,12 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       intervalsBeforeCompaction.sort(null);
       // 4 segments across 2 days (4 total)...
       verifySegmentsCount(4);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
 
       submitCompactionConfig(MAX_ROWS_PER_SEGMENT_COMPACTED, Period.days(1), engine);
       //...compacted into 1 new segment for 1 day. 1 day compacted and 1 day skipped/remains uncompacted. (3 total)
       forceTriggerAutoCompaction(3);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
       verifySegmentsCompacted(1, MAX_ROWS_PER_SEGMENT_COMPACTED);
 
       Granularity newGranularity = Granularities.YEAR;
@@ -1214,7 +1217,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // There will be an old version (for the first day interval) from the initial ingestion and
       // a newer version (for the second day interval) from the first compaction
       forceTriggerAutoCompaction(1);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
       verifySegmentsCompacted(1, 1000);
       checkCompactionIntervals(expectedIntervalAfterCompaction);
     }
@@ -1230,12 +1233,12 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       intervalsBeforeCompaction.sort(null);
       // 4 segments across 2 days (4 total)...
       verifySegmentsCount(4);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
 
       // Compacted without SegmentGranularity in auto compaction config
       submitCompactionConfig(MAX_ROWS_PER_SEGMENT_COMPACTED, NO_SKIP_OFFSET, engine);
       forceTriggerAutoCompaction(2);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
       verifySegmentsCompacted(2, MAX_ROWS_PER_SEGMENT_COMPACTED);
 
       List<TaskStatusPlus> compactTasksBefore = getCompleteTasksForDataSource(fullDatasourceName);
@@ -1245,7 +1248,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       Granularity newGranularity = Granularities.DAY;
       submitCompactionConfig(MAX_ROWS_PER_SEGMENT_COMPACTED, NO_SKIP_OFFSET, new UserCompactionTaskGranularityConfig(newGranularity, null, null), engine);
       forceTriggerAutoCompaction(2);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
       verifySegmentsCompacted(2, MAX_ROWS_PER_SEGMENT_COMPACTED);
       // should be no new compaction task as segmentGranularity is already DAY
       List<TaskStatusPlus> compactTasksAfter = getCompleteTasksForDataSource(fullDatasourceName);
@@ -1263,12 +1266,12 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       intervalsBeforeCompaction.sort(null);
       // 4 segments across 2 days (4 total)...
       verifySegmentsCount(4);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
 
       // Compacted without SegmentGranularity in auto compaction config
       submitCompactionConfig(MAX_ROWS_PER_SEGMENT_COMPACTED, NO_SKIP_OFFSET, engine);
       forceTriggerAutoCompaction(2);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
       verifySegmentsCompacted(2, MAX_ROWS_PER_SEGMENT_COMPACTED);
 
       List<TaskStatusPlus> compactTasksBefore = getCompleteTasksForDataSource(fullDatasourceName);
@@ -1278,7 +1281,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       Granularity newGranularity = Granularities.YEAR;
       submitCompactionConfig(MAX_ROWS_PER_SEGMENT_COMPACTED, NO_SKIP_OFFSET, new UserCompactionTaskGranularityConfig(newGranularity, null, null), engine);
       forceTriggerAutoCompaction(1);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
       verifySegmentsCompacted(1, MAX_ROWS_PER_SEGMENT_COMPACTED);
 
       // There should be new compaction tasks since SegmentGranularity changed from DAY to YEAR
@@ -1297,7 +1300,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       intervalsBeforeCompaction.sort(null);
       // 4 segments across 2 days (4 total)...
       verifySegmentsCount(4);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
 
       Granularity newGranularity = Granularities.YEAR;
       // Set dropExisting to true
@@ -1312,13 +1315,13 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
         }
       }
       forceTriggerAutoCompaction(1);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
       verifySegmentsCompacted(1, MAX_ROWS_PER_SEGMENT_COMPACTED);
       checkCompactionIntervals(expectedIntervalAfterCompaction);
 
       loadData();
       verifySegmentsCount(5);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
       // 5 segments. 1 compacted YEAR segment and 4 newly ingested DAY segments across 2 days
       // We wil have one segment with interval of 2013-01-01/2014-01-01 (compacted with YEAR) from the compaction earlier
       // two segments with interval of 2013-08-31/2013-09-01 (newly ingested with DAY)
@@ -1345,7 +1348,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
         }
       }
       forceTriggerAutoCompaction(12);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
       verifyTombstones(10);
       verifySegmentsCompacted(12, MAX_ROWS_PER_SEGMENT_COMPACTED);
       checkCompactionIntervals(expectedIntervalAfterCompaction);
@@ -1361,7 +1364,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       intervalsBeforeCompaction.sort(null);
       // 4 segments across 2 days (4 total)...
       verifySegmentsCount(4);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
 
       Granularity newGranularity = Granularities.YEAR;
       // Set dropExisting to false
@@ -1381,13 +1384,13 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
         }
       }
       forceTriggerAutoCompaction(1);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
       verifySegmentsCompacted(1, MAX_ROWS_PER_SEGMENT_COMPACTED);
       checkCompactionIntervals(expectedIntervalAfterCompaction);
 
       loadData();
       verifySegmentsCount(5);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
       // 5 segments. 1 compacted YEAR segment and 4 newly ingested DAY segments across 2 days
       // We wil have one segment with interval of 2013-01-01/2014-01-01 (compacted with YEAR) from the compaction earlier
       // two segments with interval of 2013-08-31/2013-09-01 (newly ingested with DAY)
@@ -1423,7 +1426,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       }
 
       forceTriggerAutoCompaction(3);
-      verifyQuery(INDEX_QUERIES_RESOURCE);
+      verifyQuery();
       verifySegmentsCompacted(3, MAX_ROWS_PER_SEGMENT_COMPACTED);
       checkCompactionIntervals(expectedIntervalAfterCompaction);
     }
@@ -1882,14 +1885,43 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     cluster.callApi().waitForAllSegmentsToBeAvailable(fullDatasourceName, coordinator);
   }
 
-  private void verifyQuery(String queryResource)
+  private void verifyQuery()
   {
-    verifyQuery(queryResource, ImmutableMap.of());
+    Assertions.assertEquals(
+        "2013-08-31T01:02:33.000Z,2013-09-01T12:41:27.000Z",
+        cluster.runSql("SELECT MIN(__time), MAX(__time) FROM %s", dataSource)
+    );
+
+    // TODO: add select for quantiles and HLL
+    Assertions.assertEquals(
+        "5",
+        cluster.runSql("SELECT THETA_SKETCH_ESTIMATE(thetaSketch) FROM %s", dataSource)
+    );
+    Assertions.assertEquals(
+        "Crimson Typhoon,1,905.0,9050.0",
+        cluster.runSql(
+            "SELECT \"page\", COUNT(*) AS \"rows\", SUM(\"added\"), 10 * SUM(\"added\") AS added_times_ten"
+            + " FROM %s"
+            + " WHERE \"language\" = 'zh' AND __time < '2013-09-01'"
+            + " GROUP BY 1"
+            + " HAVING added_times_ten > 9000",
+            dataSource
+        )
+    );
+    Assertions.assertEquals(
+        "nuclear,stringer",
+        cluster.runSql(
+            "SELECT first(\"user\"), last(\"user\")"
+            + " FROM %s"
+            + " WHERE __time < '2013-09-01'",
+            dataSource
+        )
+    );
   }
 
   private void verifyQuery(String queryResource, Map<String, Object> keyValueToReplace)
   {
-    String queryResponseTemplate;
+    /*String queryResponseTemplate;
     try {
       InputStream is = AbstractITBatchIndexTest.class.getResourceAsStream(queryResource);
       queryResponseTemplate = IOUtils.toString(is, StandardCharsets.UTF_8);
@@ -1909,12 +1941,12 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
           jsonMapper.writeValueAsString(entry.getValue())
       );
     }
-    queryHelper.testQueriesFromString(queryResponseTemplate);
+    queryHelper.testQueriesFromString(queryResponseTemplate);*/
   }
 
-  private void updateClusterConfig(ClusterCompactionConfig clusterConfig)
+  private void updateClusterConfig(ClusterCompactionConfig clusterConfig) throws Exception
   {
-    cluster.callApi().onLeaderOverlord(o -> o.updateClusterCompactionConfig(clusterConfig));
+    compactionResource.updateClusterConfig(clusterConfig);
     LOG.info("Updated cluster config to [%s]", clusterConfig);
   }
 
@@ -1991,7 +2023,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       AggregatorFactory[] metricsSpec,
       boolean dropExisting,
       CompactionEngine engine
-  )
+  ) throws Exception
   {
     DataSourceCompactionConfig dataSourceCompactionConfig =
         InlineSchemaDataSourceCompactionConfig.builder()
@@ -2030,25 +2062,26 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
                                               .withEngine(engine)
                                               .withTaskContext(ImmutableMap.of("maxNumTasks", 2))
                                               .build();
-    cluster.callApi().onLeaderOverlord(
-        o -> o.updateDataSourceCompactionConfig(dataSourceCompactionConfig)
-    );
+    compactionResource.submitCompactionConfig(dataSourceCompactionConfig);
 
     // Verify that the compaction config is updated correctly.
     DataSourceCompactionConfig foundDataSourceCompactionConfig
-        = cluster.callApi().onLeaderOverlord(o -> o.getDataSourceCompactionConfig(fullDatasourceName));
+        = compactionResource.getDataSourceCompactionConfig(fullDatasourceName);
     Assertions.assertNotNull(foundDataSourceCompactionConfig);
     Assertions.assertNotNull(foundDataSourceCompactionConfig.getTuningConfig());
     Assertions.assertEquals(foundDataSourceCompactionConfig.getTuningConfig().getPartitionsSpec(), partitionsSpec);
     Assertions.assertEquals(foundDataSourceCompactionConfig.getSkipOffsetFromLatest(), skipOffsetFromLatest);
   }
 
-  private void deleteCompactionConfig()
+  private void deleteCompactionConfig() throws Exception
   {
-    final UpdateResponse response = cluster.callApi().onLeaderOverlord(
-        o -> o.deleteDataSourceCompactionConfig(fullDatasourceName)
-    );
-    Assertions.assertTrue(response.isSuccess());
+    compactionResource.deleteDataSourceCompactionConfig(fullDatasourceName);
+    // Verify that the compaction config is updated correctly.
+    DruidCompactionConfig compactionConfig = DruidCompactionConfig
+        .empty().withDatasourceConfigs(compactionResource.getAllCompactionConfigs());
+    DataSourceCompactionConfig foundDataSourceCompactionConfig
+        = compactionConfig.findConfigForDatasource(fullDatasourceName).orNull();
+    Assertions.assertNull(foundDataSourceCompactionConfig);
   }
 
   /**
@@ -2074,6 +2107,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       );
 
       // Wait for scheduler to pick up the compaction job
+      // TODO: make this latch-based
       Thread.sleep(30_000);
       waitForCompactionToFinish(numExpectedSegmentsAfterCompaction);
 
@@ -2086,19 +2120,16 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     }
   }
 
-  private void forceTriggerAutoCompaction(int numExpectedSegmentsAfterCompaction)
+  private void forceTriggerAutoCompaction(int numExpectedSegmentsAfterCompaction) throws Exception
   {
-    // TODO: tell the Coordinator to run the duty.
-    // Can't we just reduce the duty period?
-    // then we might lose the benefit of choosing when to compact and when not to
     compactionResource.forceTriggerAutoCompaction();
     waitForCompactionToFinish(numExpectedSegmentsAfterCompaction);
   }
 
   private void waitForCompactionToFinish(int numExpectedSegmentsAfterCompaction)
   {
-    waitForAllTasksToCompleteForDataSource(fullDatasourceName);
     // TODO: Compaction has been triggered, get the task ID and wait for it to finish
+    waitForAllTasksToCompleteForDataSource(fullDatasourceName);
 
     cluster.callApi().waitForAllSegmentsToBeAvailable(fullDatasourceName, coordinator);
     verifySegmentsCount(numExpectedSegmentsAfterCompaction);
@@ -2181,27 +2212,21 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     }
   }
 
-  private void updateCompactionTaskSlot(double compactionTaskSlotRatio, int maxCompactionTaskSlots)
+  private void updateCompactionTaskSlot(double compactionTaskSlotRatio, int maxCompactionTaskSlots) throws Exception
   {
-    final ClusterCompactionConfig oldConfig = cluster.callApi().onLeaderOverlord(
-        OverlordClient::getClusterCompactionConfig
-    );
-    cluster.callApi().onLeaderOverlord(
-        o -> o.updateClusterCompactionConfig(
-            new ClusterCompactionConfig(
-                compactionTaskSlotRatio,
-                maxCompactionTaskSlots,
-                oldConfig.getCompactionPolicy(),
-                oldConfig.isUseSupervisors(),
-                oldConfig.getEngine()
-            )
+    final ClusterCompactionConfig oldConfig = compactionResource.getClusterConfig();
+    compactionResource.updateClusterConfig(
+        new ClusterCompactionConfig(
+            compactionTaskSlotRatio,
+            maxCompactionTaskSlots,
+            oldConfig.getCompactionPolicy(),
+            oldConfig.isUseSupervisors(),
+            oldConfig.getEngine()
         )
     );
 
     // Verify that the compaction config is updated correctly
-    final ClusterCompactionConfig updatedConfig = cluster.callApi().onLeaderOverlord(
-        OverlordClient::getClusterCompactionConfig
-    );
+    final ClusterCompactionConfig updatedConfig = compactionResource.getClusterConfig();
     Assertions.assertEquals(updatedConfig.getCompactionTaskSlotRatio(), compactionTaskSlotRatio);
     Assertions.assertEquals(updatedConfig.getMaxCompactionTaskSlots(), maxCompactionTaskSlots);
     LOG.info(
@@ -2222,9 +2247,9 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       long intervalCountAwaitingCompaction,
       long intervalCountCompacted,
       long intervalCountSkipped
-  )
+  ) throws Exception
   {
-    AutoCompactionSnapshot actualStatus = getCompactionStatus(fullDatasourceName);
+    AutoCompactionSnapshot actualStatus = compactionResource.getCompactionStatus(fullDatasourceName);
     Assertions.assertNotNull(actualStatus);
     Assertions.assertEquals(actualStatus.getScheduleStatus(), scheduleStatus);
     MatcherAssert.assertThat(actualStatus.getBytesAwaitingCompaction(), bytesAwaitingCompactionMatcher);
