@@ -34,7 +34,6 @@ import org.apache.druid.metadata.LockFilterPolicy;
 import org.apache.druid.rpc.ServiceRetryPolicy;
 import org.apache.druid.rpc.UpdateResponse;
 import org.apache.druid.server.coordinator.ClusterCompactionConfig;
-import org.apache.druid.server.coordinator.DataSourceCompactionConfig;
 import org.apache.druid.server.http.SegmentsToUpdateFilter;
 import org.apache.druid.timeline.SegmentId;
 import org.joda.time.Interval;
@@ -194,18 +193,6 @@ public class NoopOverlordClient implements OverlordClient
 
   @Override
   public ListenableFuture<UpdateResponse> updateClusterCompactionConfig(ClusterCompactionConfig config)
-  {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public ListenableFuture<DataSourceCompactionConfig> getDataSourceCompactionConfig(String dataSource)
-  {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public ListenableFuture<UpdateResponse> updateDataSourceCompactionConfig(DataSourceCompactionConfig config)
   {
     throw new UnsupportedOperationException();
   }
