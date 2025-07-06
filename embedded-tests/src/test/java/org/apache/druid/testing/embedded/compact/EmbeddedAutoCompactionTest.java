@@ -98,7 +98,6 @@ import java.io.Closeable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -968,6 +967,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // The earlier 12 segments with MONTH granularity will be completely covered, overshadowed, by the
       // new PT6M segments for data and tombstones for days with no data
       // Hence, we will have two segments, one tombstone for the first semester and one data segment for the second.
+      System.out.println("Kashif Agle semester");
       forceTriggerAutoCompaction(2); // two semesters compacted
       verifyQuery(INDEX_QUERIES_RESOURCE);
       verifyTombstones(1);
@@ -2091,13 +2091,10 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
 
   private void waitForCompactionToFinish(int numExpectedSegmentsAfterCompaction)
   {
-    final Set<String> incompleteTaskIds = new HashSet<>();
-    incompleteTaskIds.addAll(getTaskIdsForState("pending", dataSource));
-    incompleteTaskIds.addAll(getTaskIdsForState("waiting", dataSource));
-    incompleteTaskIds.addAll(getTaskIdsForState("running", dataSource));
-    incompleteTaskIds.forEach(
-        taskId -> cluster.callApi().waitForTaskToSucceed(taskId, overlord)
-    );
+    final Set<String> taskIds = getTaskIdsForState(null, dataSource);
+    for (String taskId : taskIds) {
+      cluster.callApi().waitForTaskToSucceed(taskId, overlord);
+    }
 
     cluster.callApi().waitForAllSegmentsToBeAvailable(fullDatasourceName, coordinator);
     verifySegmentsCount(numExpectedSegmentsAfterCompaction);
@@ -2275,10 +2272,11 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   }
 
   /**
-   * Does nothing. This method has been retained only to keep the patch small.
+   * Deletes all the data for the given datasource so that compaction tasks for
+   * this datasource do not take up task slots unnecessarily.
    */
   private Closeable unloader(String dataSource)
   {
-    return () -> {};
+    return () -> overlord.bindings().segmentsMetadataStorage().markAllSegmentsAsUnused(dataSource);
   }
 }
