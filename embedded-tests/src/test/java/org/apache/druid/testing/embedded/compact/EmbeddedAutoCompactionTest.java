@@ -110,6 +110,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
 {
   private static final Logger LOG = new Logger(EmbeddedAutoCompactionTest.class);
   private static final Consumer<TaskPayload> INDEX_TASK = payload -> {};
+  private static final Consumer<TaskPayload> INDEX_TASK_WITH_GRANULARITY_SPEC
+      = payload -> payload.dynamicPartitionWithMaxRows(10);
 
   private static final String INDEX_ROLLUP_QUERIES_RESOURCE = "/indexer/wikipedia_index_rollup_queries.json";
   private static final String INDEX_ROLLUP_SKETCH_QUERIES_RESOURCE = "/indexer/wikipedia_index_sketch_queries.json";
@@ -778,7 +780,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       submitCompactionConfig(MAX_ROWS_PER_SEGMENT_COMPACTED, NO_SKIP_OFFSET, engine);
       deleteCompactionConfig();
 
-      // ...should remain unchanged (4 total)
+      // ...should remains unchanged (4 total)
       forceTriggerAutoCompaction(4);
       verifyQuery(INDEX_QUERIES_RESOURCE);
       verifySegmentsCompacted(0, null);
@@ -1207,8 +1209,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     }
   }
 
-  @ParameterizedTest(name = "compactionEngine={0}")
   @MethodSource("getEngine")
+  @ParameterizedTest(name = "compactionEngine={0}")
   public void testAutoCompactionDutyWithSegmentGranularityAndExistingCompactedSegmentsHaveSameSegmentGranularity(CompactionEngine engine) throws Exception
   {
     loadData(INDEX_TASK);
@@ -1240,8 +1242,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     }
   }
 
-  @ParameterizedTest(name = "compactionEngine={0}")
   @MethodSource("getEngine")
+  @ParameterizedTest(name = "compactionEngine={0}")
   public void testAutoCompactionDutyWithSegmentGranularityAndExistingCompactedSegmentsHaveDifferentSegmentGranularity(CompactionEngine engine) throws Exception
   {
     loadData(INDEX_TASK);
@@ -1274,8 +1276,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     }
   }
 
-  @ParameterizedTest(name = "compactionEngine={0}")
   @MethodSource("getEngine")
+  @ParameterizedTest(name = "compactionEngine={0}")
   public void testAutoCompactionDutyWithSegmentGranularityAndSmallerSegmentGranularityCoveringMultipleSegmentsInTimelineAndDropExistingTrue(CompactionEngine engine) throws Exception
   {
     loadData(INDEX_TASK);
@@ -1420,12 +1422,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   public void testAutoCompactionDutyWithSegmentGranularityFinerAndNotAlignWithSegment() throws Exception
   {
     updateCompactionTaskSlot(1, 1);
-    final Map<String, Object> granularitySpec = Map.of(
-        "segmentGranularity", "MONTH",
-        "queryGranularity", "DAY",
-        "intervals", List.of("2013-08-31T-07/2013-09-02T-07")
-    );
-    loadData(payload -> payload.granularitySpec(granularitySpec).dynamicPartitionWithMaxRows(10));
+    Map<String, Object> specs = Map.of("segmentGranularity", "MONTH", "queryGranularity", "DAY", "intervals", List.of("2013-08-31T-07/2013-09-02T-07"));
+    loadData(INDEX_TASK_WITH_GRANULARITY_SPEC, specs);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       Map<String, Object> queryAndResultFields = ImmutableMap.of(
           "%%FIELD_TO_QUERY%%", "added",
@@ -1475,12 +1473,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   public void testAutoCompactionDutyWithSegmentGranularityCoarserAndNotAlignWithSegment(CompactionEngine engine) throws Exception
   {
     updateCompactionTaskSlot(1, 1);
-    final Map<String, Object> granularitySpec = Map.of(
-        "segmentGranularity", "WEEK",
-        "queryGranularity", "DAY",
-        "intervals", List.of("2013-08-31T-07/2013-09-02T-07")
-    );
-    loadData(payload -> payload.granularitySpec(granularitySpec).dynamicPartitionWithMaxRows(10));
+    Map<String, Object> specs = Map.of("segmentGranularity", "WEEK", "queryGranularity", "DAY", "intervals", List.of("2013-08-31T-07/2013-09-02T-07"));
+    loadData(INDEX_TASK_WITH_GRANULARITY_SPEC, specs);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       Map<String, Object> queryAndResultFields = ImmutableMap.of(
           "%%FIELD_TO_QUERY%%", "added",
@@ -1525,12 +1519,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   @Test()
   public void testAutoCompactionDutyWithRollup() throws Exception
   {
-    final Map<String, Object> granularitySpec = Map.of(
-        "segmentGranularity", "DAY",
-        "queryGranularity", "DAY",
-        "intervals", List.of("2013-08-31T-07/2013-09-02T-07")
-    );
-    loadData(payload -> payload.granularitySpec(granularitySpec).dynamicPartitionWithMaxRows(10));
+    Map<String, Object> specs = Map.of("segmentGranularity", "DAY", "queryGranularity", "DAY", "intervals", List.of("2013-08-31T-07/2013-09-02T-07"));
+    loadData(INDEX_TASK_WITH_GRANULARITY_SPEC, specs);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       Map<String, Object> queryAndResultFields = ImmutableMap.of(
           "%%FIELD_TO_QUERY%%", "added",
@@ -1566,12 +1556,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   @MethodSource("getEngine")
   public void testAutoCompactionDutyWithQueryGranularity(CompactionEngine engine) throws Exception
   {
-    final Map<String, Object> granularitySpec = Map.of(
-        "segmentGranularity", "DAY",
-        "queryGranularity", "NONE",
-        "intervals", List.of("2013-08-31T-07/2013-09-02T-07")
-    );
-    loadData(payload -> payload.granularitySpec(granularitySpec).dynamicPartitionWithMaxRows(10));
+    Map<String, Object> specs = Map.of("segmentGranularity", "DAY", "queryGranularity", "NONE", "intervals", List.of("2013-08-31T-07/2013-09-02T-07"));
+    loadData(INDEX_TASK_WITH_GRANULARITY_SPEC, specs);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       Map<String, Object> queryAndResultFields = ImmutableMap.of(
           "%%FIELD_TO_QUERY%%", "added",
@@ -1827,12 +1813,12 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     }
   }
 
-  private void loadData(INDEX_TASK)
+  private void loadData(Consumer<TaskPayload> updatePayload)
   {
-    loadData(payload -> {});
+    loadData(updatePayload, Map.of());
   }
 
-  private void loadData(Consumer<TaskPayload> updatePayload)
+  private void loadData(Consumer<TaskPayload> updatePayload, Map<String, Object> granularitySpec)
   {
     final TaskPayload taskPayload = TaskPayload
         .ofType("index")
@@ -1861,6 +1847,9 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
         .appendToExisting(false);
 
     updatePayload.accept(taskPayload);
+    if (!granularitySpec.isEmpty()) {
+      taskPayload.granularitySpec(granularitySpec);
+    }
 
     final String taskId = EmbeddedClusterApis.newTaskId(fullDatasourceName);
     cluster.callApi().onLeaderOverlord(o -> o.runTask(taskId, taskPayload.withId(taskId)));
