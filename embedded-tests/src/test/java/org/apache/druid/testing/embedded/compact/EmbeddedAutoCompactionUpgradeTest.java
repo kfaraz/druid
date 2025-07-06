@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.druid.tests.coordinator.duty;
+package org.apache.druid.testing.embedded.compact;
 
 import com.google.inject.Inject;
 import org.apache.druid.data.input.MaxSizeSplitHintSpec;
@@ -30,19 +30,13 @@ import org.apache.druid.server.coordinator.InlineSchemaDataSourceCompactionConfi
 import org.apache.druid.server.coordinator.UserCompactionTaskGranularityConfig;
 import org.apache.druid.server.coordinator.UserCompactionTaskIOConfig;
 import org.apache.druid.server.coordinator.UserCompactionTaskQueryTuningConfig;
-import org.apache.druid.testing.IntegrationTestingConfig;
-import org.apache.druid.testing.clients.CompactionResourceTestClient;
-import org.apache.druid.testing.guice.DruidTestModuleFactory;
-import org.apache.druid.tests.TestNGGroup;
-import org.apache.druid.tests.indexer.AbstractIndexerTest;
+import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
+import org.apache.druid.testing.embedded.junit5.EmbeddedClusterTestBase;
 import org.joda.time.Period;
-import org.testng.Assert;
-import org.testng.annotations.Guice;
-import org.testng.annotations.Test;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
 
-@Test(groups = {TestNGGroup.UPGRADE})
-@Guice(moduleFactory = DruidTestModuleFactory.class)
-public class ITAutoCompactionUpgradeTest extends AbstractIndexerTest
+public class EmbeddedAutoCompactionUpgradeTest extends EmbeddedClusterTestBase
 {
   private static final String UPGRADE_DATASOURCE_NAME = "upgradeTest";
 
@@ -51,6 +45,12 @@ public class ITAutoCompactionUpgradeTest extends AbstractIndexerTest
 
   @Inject
   private IntegrationTestingConfig config;
+
+  @Override
+  protected EmbeddedDruidCluster createCluster()
+  {
+    return null;
+  }
 
   @Test
   public void testUpgradeAutoCompactionConfigurationWhenConfigurationFromOlderVersionAlreadyExist() throws Exception
@@ -61,7 +61,7 @@ public class ITAutoCompactionUpgradeTest extends AbstractIndexerTest
         .withDatasourceConfigs(compactionResource.getAllCompactionConfigs());
     DataSourceCompactionConfig foundDataSourceCompactionConfig
         = coordinatorCompactionConfig.findConfigForDatasource(UPGRADE_DATASOURCE_NAME).orNull();
-    Assert.assertNotNull(foundDataSourceCompactionConfig);
+    Assertions.assertNotNull(foundDataSourceCompactionConfig);
 
     // Now submit a new auto compaction configuration
     PartitionsSpec newPartitionsSpec = new DynamicPartitionsSpec(4000, null);
@@ -104,9 +104,9 @@ public class ITAutoCompactionUpgradeTest extends AbstractIndexerTest
     // Verify that compaction was successfully updated
     foundDataSourceCompactionConfig
         = compactionResource.getDataSourceCompactionConfig(UPGRADE_DATASOURCE_NAME);
-    Assert.assertNotNull(foundDataSourceCompactionConfig);
-    Assert.assertNotNull(foundDataSourceCompactionConfig.getTuningConfig());
-    Assert.assertEquals(foundDataSourceCompactionConfig.getTuningConfig().getPartitionsSpec(), newPartitionsSpec);
-    Assert.assertEquals(foundDataSourceCompactionConfig.getSkipOffsetFromLatest(), newSkipOffset);
+    Assertions.assertNotNull(foundDataSourceCompactionConfig);
+    Assertions.assertNotNull(foundDataSourceCompactionConfig.getTuningConfig());
+    Assertions.assertEquals(foundDataSourceCompactionConfig.getTuningConfig().getPartitionsSpec(), newPartitionsSpec);
+    Assertions.assertEquals(foundDataSourceCompactionConfig.getSkipOffsetFromLatest(), newSkipOffset);
   }
 }
