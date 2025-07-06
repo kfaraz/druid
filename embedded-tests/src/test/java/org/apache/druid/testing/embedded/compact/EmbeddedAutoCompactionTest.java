@@ -115,11 +115,11 @@ import java.util.stream.Collectors;
 public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
 {
   private static final Logger LOG = new Logger(EmbeddedAutoCompactionTest.class);
+  private static final Consumer<TaskPayload> INDEX_TASK = payload -> {};
 
   private static final String INDEX_ROLLUP_QUERIES_RESOURCE = "/indexer/wikipedia_index_rollup_queries.json";
   private static final String INDEX_ROLLUP_SKETCH_QUERIES_RESOURCE = "/indexer/wikipedia_index_sketch_queries.json";
   private static final String INDEX_QUERIES_RESOURCE = "/indexer/wikipedia_index_queries.json";
-  private static final Consumer<TaskPayload> INDEX_TASK = payload -> {};
   private static final Consumer<TaskPayload> INDEX_TASK_WITH_ROLLUP_FOR_PRESERVE_METRICS =
       payload -> payload.inlineInputSourceWithData(Resources.JSON_DATA_2_ROWS)
                         .inputFormat(Map.of("type", "json"))
@@ -158,7 +158,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   private String fullDatasourceName;
 
   @BeforeEach
-  public void resetCompactionTaskSlots()
+  public void resetCompactionTaskSlots() throws Exception
   {
     // Set compaction slot to 5
     updateCompactionTaskSlot(0.5, 10);
@@ -175,7 +175,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
-      // 2 segments across 1 day...
+      // 2 segments across 1 days...
       verifySegmentsCount(2);
       ArrayList<Object> nullList = new ArrayList<>();
       nullList.add(null);
@@ -271,7 +271,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
-      // 2 segments across 1 day...
+      // 2 segments across 1 days...
       verifySegmentsCount(2);
       ArrayList<Object> nullList = new ArrayList<>();
       nullList.add(null);
@@ -374,7 +374,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
-      // 2 segments across 1 day...
+      // 2 segments across 1 days...
       verifySegmentsCount(2);
       ArrayList<Object> nullList = new ArrayList<>();
       nullList.add(null);
@@ -444,7 +444,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
-      // 2 segments across 1 day...
+      // 2 segments across 1 days...
       verifySegmentsCount(2);
       Map<String, Object> queryAndResultFields = ImmutableMap.of(
           "%%FIELD_TO_QUERY%%", "added",
@@ -495,7 +495,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
-      // 2 segments across 1 day...
+      // 2 segments across 1 days...
       verifySegmentsCount(2);
       Map<String, Object> queryAndResultFields = ImmutableMap.of(
           "%%FIELD_TO_QUERY%%", "count",
