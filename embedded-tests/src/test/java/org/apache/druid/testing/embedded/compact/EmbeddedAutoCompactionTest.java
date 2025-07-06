@@ -110,8 +110,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
 {
   private static final Logger LOG = new Logger(EmbeddedAutoCompactionTest.class);
   private static final Consumer<TaskPayload> INDEX_TASK = payload -> {};
-  private static final Consumer<TaskPayload> INDEX_TASK_WITH_GRANULARITY_SPEC
-      = payload -> payload.dynamicPartitionWithMaxRows(10);
+  private static final Consumer<TaskPayload> INDEX_TASK_WITH_GRANULARITY_SPEC =
+      payload -> payload.dynamicPartitionWithMaxRows(10);
 
   private static final String INDEX_ROLLUP_QUERIES_RESOURCE = "/indexer/wikipedia_index_rollup_queries.json";
   private static final String INDEX_ROLLUP_SKETCH_QUERIES_RESOURCE = "/indexer/wikipedia_index_sketch_queries.json";
@@ -164,13 +164,14 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
                                .useLatchableEmitter()
                                .addServer(coordinator)
                                .addServer(overlord)
-                               .addServer(new EmbeddedIndexer())
+                               .addServer(new EmbeddedIndexer().addProperty("druid.worker.capacity", "5"))
                                .addServer(new EmbeddedHistorical())
                                .addServer(new EmbeddedBroker())
                                .addServer(new EmbeddedRouter());
   }
 
-  protected final CompactionResourceTestClient compactionResource = new CompactionResourceTestClient();
+  protected final CompactionResourceTestClient compactionResource =
+      new CompactionResourceTestClient(coordinator, overlord);
 
   private String fullDatasourceName;
 
@@ -602,8 +603,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     }
   }
 
-  @ParameterizedTest(name = "compactionEngine={0}")
   @MethodSource("getEngine")
+  @ParameterizedTest(name = "compactionEngine={0}")
   public void testAutoCompactionRollsUpMultiValueDimensionsWithoutUnnest(CompactionEngine engine) throws Exception
   {
     loadData(INDEX_TASK);
@@ -2026,6 +2027,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   private void deleteCompactionConfig() throws Exception
   {
     compactionResource.deleteDataSourceCompactionConfig(fullDatasourceName);
+
     // Verify that the compaction config is updated correctly.
     DruidCompactionConfig compactionConfig = DruidCompactionConfig
         .empty().withDatasourceConfigs(compactionResource.getAllCompactionConfigs());

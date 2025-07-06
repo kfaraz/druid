@@ -21,7 +21,6 @@ package org.apache.druid.testing.embedded.compact;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.inject.Inject;
 import org.apache.druid.indexing.overlord.http.CompactionConfigsResponse;
 import org.apache.druid.java.util.common.ISE;
 import org.apache.druid.java.util.common.StringUtils;
@@ -30,14 +29,15 @@ import org.apache.druid.java.util.http.client.HttpClient;
 import org.apache.druid.java.util.http.client.Request;
 import org.apache.druid.java.util.http.client.response.StatusResponseHandler;
 import org.apache.druid.java.util.http.client.response.StatusResponseHolder;
+import org.apache.druid.segment.TestHelper;
 import org.apache.druid.server.compaction.CompactionSimulateResult;
 import org.apache.druid.server.compaction.CompactionStatusResponse;
 import org.apache.druid.server.coordinator.AutoCompactionSnapshot;
 import org.apache.druid.server.coordinator.ClusterCompactionConfig;
 import org.apache.druid.server.coordinator.DataSourceCompactionConfig;
 import org.apache.druid.server.coordinator.DruidCompactionConfig;
-import org.apache.druid.testing.IntegrationTestingConfig;
-import org.apache.druid.testing.guice.TestClient;
+import org.apache.druid.testing.embedded.EmbeddedCoordinator;
+import org.apache.druid.testing.embedded.EmbeddedOverlord;
 import org.jboss.netty.handler.codec.http.HttpMethod;
 import org.jboss.netty.handler.codec.http.HttpResponseStatus;
 
@@ -50,22 +50,20 @@ public class CompactionResourceTestClient
   private static final Logger log = new Logger(CompactionResourceTestClient.class);
 
   private final ObjectMapper jsonMapper;
+  private final EmbeddedOverlord overlord;
+  private final EmbeddedCoordinator coordinator;
   private final HttpClient httpClient;
-  private final String coordinator;
-  private final String overlord;
   private final StatusResponseHandler responseHandler;
 
-  @Inject
   CompactionResourceTestClient(
-      ObjectMapper jsonMapper,
-      @TestClient HttpClient httpClient,
-      IntegrationTestingConfig config
+      EmbeddedCoordinator coordinator,
+      EmbeddedOverlord overlord
   )
   {
-    this.jsonMapper = jsonMapper;
-    this.httpClient = httpClient;
-    this.coordinator = config.getCoordinatorUrl();
-    this.overlord = config.getOverlordUrl();
+    this.jsonMapper = TestHelper.JSON_MAPPER;
+    this.httpClient = overlord.bindings().escalatedHttpClient();
+    this.overlord = overlord;
+    this.coordinator = coordinator;
     this.responseHandler = StatusResponseHandler.getInstance();
   }
 
