@@ -19,7 +19,6 @@
 
 package org.apache.druid.testing.embedded.compact;
 
-import com.google.inject.Inject;
 import org.apache.druid.data.input.MaxSizeSplitHintSpec;
 import org.apache.druid.indexer.partitions.DynamicPartitionsSpec;
 import org.apache.druid.indexer.partitions.PartitionsSpec;
@@ -40,11 +39,7 @@ public class EmbeddedAutoCompactionUpgradeTest extends EmbeddedClusterTestBase
 {
   private static final String UPGRADE_DATASOURCE_NAME = "upgradeTest";
 
-  @Inject
-  protected CompactionResourceTestClient compactionResource;
-
-  @Inject
-  private IntegrationTestingConfig config;
+  protected CompactionResourceTestClient compactionResource = new CompactionResourceTestClient();
 
   @Override
   protected EmbeddedDruidCluster createCluster()

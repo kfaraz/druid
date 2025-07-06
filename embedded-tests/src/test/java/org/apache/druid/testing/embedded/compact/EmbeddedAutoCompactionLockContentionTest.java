@@ -42,7 +42,11 @@ import org.apache.druid.timeline.DataSegment;
 import org.joda.time.Interval;
 import org.joda.time.Period;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
@@ -65,40 +69,28 @@ public class EmbeddedAutoCompactionLockContentionTest extends EmbeddedClusterTes
 {
   private static final Logger LOG = new Logger(EmbeddedAutoCompactionLockContentionTest.class);
 
-  @Inject
-  private CompactionResourceTestClient compactionResource;
+  private CompactionResourceTestClient compactionResource = new CompactionResourceTestClient();
 
   private GeneratedTestConfig generatedTestConfig;
   private StreamGenerator streamGenerator;
 
   private String fullDatasourceName;
 
-  @DataProvider
-  public static Object[] getParameters()
-  {
-    return new Object[]{false, true};
-  }
-
-  @BeforeClass
-  public void setupClass() throws Exception
-  {
-    doBeforeClass();
-  }
-
   @Override
   protected EmbeddedDruidCluster createCluster()
   {
+    // TODO: setup admin client, can probably now be done in create cluster itself
     return null;
   }
 
   @BeforeEach
-  public void setup() throws Exception
+  public void setUp() throws Exception
   {
     generatedTestConfig = new GeneratedTestConfig(
         Specs.PARSER_TYPE,
         AbstractIndexerTest.getResourceAsString(Specs.INPUT_FORMAT_PATH)
     );
-    fullDatasourceName = generatedTestConfig.getFullDatasourceName();
+    fullDatasourceName = dataSource;
     final EventSerializer serializer = jsonMapper.readValue(
         AbstractIndexerTest.getResourceAsStream(Specs.SERIALIZER_PATH),
         EventSerializer.class
@@ -112,7 +104,8 @@ public class EmbeddedAutoCompactionLockContentionTest extends EmbeddedClusterTes
     return "autocompact_lock_contention";
   }
 
-  @Test(dataProvider = "getParameters")
+  @ValueSource(booleans = {true, false})
+  @ParameterizedTest(name = "transactionEnabled={0}")
   public void testAutoCompactionSkipsLockedIntervals(boolean transactionEnabled) throws Exception
   {
     if (shouldSkipTest(transactionEnabled)) {
