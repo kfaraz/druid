@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.druid.tests.coordinator.duty;
+package org.apache.druid.testing.embedded.compact;
 
 import com.google.inject.Inject;
 import org.apache.druid.indexer.partitions.DynamicPartitionsSpec;
@@ -29,24 +29,23 @@ import org.apache.druid.server.coordinator.ClusterCompactionConfig;
 import org.apache.druid.server.coordinator.DataSourceCompactionConfig;
 import org.apache.druid.server.coordinator.InlineSchemaDataSourceCompactionConfig;
 import org.apache.druid.testing.clients.TaskResponseObject;
-import org.apache.druid.testing.guice.DruidTestModuleFactory;
+import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
+import org.apache.druid.testing.embedded.junit5.EmbeddedClusterTestBase;
 import org.apache.druid.testing.utils.EventSerializer;
 import org.apache.druid.testing.utils.ITRetryUtil;
 import org.apache.druid.testing.utils.KafkaUtil;
 import org.apache.druid.testing.utils.StreamEventWriter;
 import org.apache.druid.testing.utils.StreamGenerator;
 import org.apache.druid.testing.utils.WikipediaStreamEventStreamGenerator;
-import org.apache.druid.tests.TestNGGroup;
-import org.apache.druid.tests.indexer.AbstractKafkaIndexingServiceTest;
 import org.apache.druid.tests.indexer.AbstractStreamIndexingTest;
 import org.apache.druid.timeline.DataSegment;
 import org.joda.time.Interval;
 import org.joda.time.Period;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
-import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
-import org.testng.annotations.Guice;
 import org.testng.annotations.Test;
 
 import java.io.Closeable;
@@ -62,11 +61,9 @@ import java.util.stream.Collectors;
  * Integration Test to verify behaviour when there is a lock contention between
  * compaction tasks and on-going stream ingestion tasks.
  */
-@Test(groups = {TestNGGroup.COMPACTION})
-@Guice(moduleFactory = DruidTestModuleFactory.class)
-public class ITAutoCompactionLockContentionTest extends AbstractKafkaIndexingServiceTest
+public class EmbeddedAutoCompactionLockContentionTest extends EmbeddedClusterTestBase
 {
-  private static final Logger LOG = new Logger(ITAutoCompactionLockContentionTest.class);
+  private static final Logger LOG = new Logger(EmbeddedAutoCompactionLockContentionTest.class);
 
   @Inject
   private CompactionResourceTestClient compactionResource;
@@ -88,16 +85,22 @@ public class ITAutoCompactionLockContentionTest extends AbstractKafkaIndexingSer
     doBeforeClass();
   }
 
-  @BeforeMethod
+  @Override
+  protected EmbeddedDruidCluster createCluster()
+  {
+    return null;
+  }
+
+  @BeforeEach
   public void setup() throws Exception
   {
     generatedTestConfig = new GeneratedTestConfig(
         Specs.PARSER_TYPE,
-        getResourceAsString(Specs.INPUT_FORMAT_PATH)
+        AbstractIndexerTest.getResourceAsString(Specs.INPUT_FORMAT_PATH)
     );
     fullDatasourceName = generatedTestConfig.getFullDatasourceName();
     final EventSerializer serializer = jsonMapper.readValue(
-        getResourceAsStream(Specs.SERIALIZER_PATH),
+        AbstractIndexerTest.getResourceAsStream(Specs.SERIALIZER_PATH),
         EventSerializer.class
     );
     streamGenerator = new WikipediaStreamEventStreamGenerator(serializer, 6, 100);
@@ -122,7 +125,8 @@ public class ITAutoCompactionLockContentionTest extends AbstractKafkaIndexingSer
     ) {
       // Start supervisor
       final String taskSpec = generatedTestConfig.getStreamIngestionPropsTransform()
-                                                 .apply(getResourceAsString(SUPERVISOR_SPEC_TEMPLATE_PATH));
+                                                 .apply(AbstractIndexerTest.getResourceAsString(
+                                                     AbstractStreamIndexingTest.SUPERVISOR_SPEC_TEMPLATE_PATH));
       generatedTestConfig.setSupervisorId(indexer.submitSupervisor(taskSpec));
       LOG.info("supervisorSpec: [%s]", taskSpec);
 
@@ -202,15 +206,15 @@ public class ITAutoCompactionLockContentionTest extends AbstractKafkaIndexingSer
     }
 
     Set<Interval> expectedCompactedIntervals = new HashSet<>(Arrays.asList(compactedIntervals));
-    Assert.assertEquals(observedCompactedIntervals, expectedCompactedIntervals);
+    Assertions.assertEquals(observedCompactedIntervals, expectedCompactedIntervals);
 
     DynamicPartitionsSpec expectedPartitionSpec = new DynamicPartitionsSpec(
         Specs.MAX_ROWS_PER_SEGMENT,
         Long.MAX_VALUE
     );
     for (DataSegment compactedSegment : observedCompactedSegments) {
-      Assert.assertNotNull(compactedSegment.getLastCompactionState());
-      Assert.assertEquals(
+      Assertions .assertNotNull(compactedSegment.getLastCompactionState());
+      Assertions.assertEquals(
           compactedSegment.getLastCompactionState().getPartitionsSpec(),
           expectedPartitionSpec
       );
@@ -295,7 +299,7 @@ public class ITAutoCompactionLockContentionTest extends AbstractKafkaIndexingSer
     // Verify that the compaction config is updated correctly.
     DataSourceCompactionConfig observedCompactionConfig
         = compactionResource.getDataSourceCompactionConfig(fullDatasourceName);
-    Assert.assertEquals(observedCompactionConfig, dataSourceCompactionConfig);
+    Assertions.assertEquals(observedCompactionConfig, dataSourceCompactionConfig);
   }
 
   /**
@@ -350,8 +354,8 @@ public class ITAutoCompactionLockContentionTest extends AbstractKafkaIndexingSer
    */
   private static class Specs
   {
-    static final String SERIALIZER_PATH = DATA_RESOURCE_ROOT + "/csv/serializer/serializer.json";
-    static final String INPUT_FORMAT_PATH = DATA_RESOURCE_ROOT + "/csv/input_format/input_format.json";
+    static final String SERIALIZER_PATH = AbstractStreamIndexingTest.DATA_RESOURCE_ROOT + "/csv/serializer/serializer.json";
+    static final String INPUT_FORMAT_PATH = AbstractStreamIndexingTest.DATA_RESOURCE_ROOT + "/csv/input_format/input_format.json";
     static final String PARSER_TYPE = AbstractStreamIndexingTest.INPUT_FORMAT;
 
     static final int MAX_ROWS_PER_SEGMENT = 10000;
