@@ -2255,13 +2255,6 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     );
   }
 
-  private AutoCompactionSnapshot getCompactionStatus(String dataSource)
-  {
-    return cluster.callApi().onLeaderOverlord(
-        o -> o.getDataSourceCompactionSnapshot(dataSource)
-    );
-  }
-
   /**
    * Does nothing. This method has been retained only to keep the patch small.
    */
