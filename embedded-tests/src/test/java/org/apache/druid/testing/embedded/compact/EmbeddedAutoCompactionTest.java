@@ -251,7 +251,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
                                .addServer(coordinator)
                                .addServer(overlord)
                                .addServer(broker)
-                               .addServer(new EmbeddedIndexer().addProperty("druid.worker.capacity", "5"))
+                               .addServer(new EmbeddedIndexer().addProperty("druid.worker.capacity", "10"))
                                .addServer(new EmbeddedHistorical())
                                .addServer(new EmbeddedRouter());
   }
@@ -1935,7 +1935,6 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
 
   private void verifySegmentsCount(int numExpectedSegments)
   {
-    // TODO: there is some serious flakiness here
     int segmentCount = getFullSegmentsMetadata(dataSource).size();
     Assertions.assertEquals(numExpectedSegments, segmentCount, "Segment count mismatch");
     Assertions.assertEquals(
