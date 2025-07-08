@@ -915,7 +915,6 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // The earlier 12 segments with MONTH granularity will be completely covered, overshadowed, by the
       // new PT6M segments for data and tombstones for days with no data
       // Hence, we will have two segments, one tombstone for the first semester and one data segment for the second.
-      System.out.println("Kashif Agle semester");
       forceTriggerAutoCompaction(2); // two semesters compacted
       verifyQuery(INDEX_QUERIES_RESOURCE);
       verifyTombstones(1);
