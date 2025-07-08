@@ -114,7 +114,7 @@ public class TaskPayload
                 "dataSource", dataSource,
                 "timestampSpec", timestampSpec,
                 "dimensionsSpec", dimensionsSpec,
-                "metricsSpec", metricsSpec,
+                "metricsSpec", metricsSpec.isEmpty() ? null : metricsSpec,
                 "granularitySpec", granularitySpec
             )
         )
@@ -169,6 +169,12 @@ public class TaskPayload
   public TaskPayload inputFormat(Map<String, Object> jsonMap)
   {
     this.inputFormat = jsonMap;
+    return this;
+  }
+
+  public TaskPayload jsonInputFormat()
+  {
+    this.inputFormat = Map.of("type", "json");
     return this;
   }
 
@@ -251,9 +257,14 @@ public class TaskPayload
     return dimensionsSpec(Map.of("dimensions", List.of(dimensions)));
   }
 
-  public TaskPayload metricAggregate(String column, String type)
+  public TaskPayload metricAggregate(String name, String type)
   {
-    this.metricsSpec.add(mapOf("type", type, "name", column, "fieldName", column));
+    return metricAggregate(name, type, name);
+  }
+
+  public TaskPayload metricAggregate(String name, String type, String fieldName)
+  {
+    this.metricsSpec.add(mapOf("type", type, "name", name, "fieldName", fieldName));
     return this;
   }
 

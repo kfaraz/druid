@@ -102,18 +102,58 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
 {
   private static final Logger LOG = new Logger(EmbeddedAutoCompactionTest.class);
-  private static final Consumer<TaskPayload> INDEX_TASK = payload -> {};
-  private static final Consumer<TaskPayload> INDEX_TASK_WITH_GRANULARITY_SPEC =
-      payload -> payload.dynamicPartitionWithMaxRows(10);
+  private static final Supplier<TaskPayload> INDEX_TASK =
+      () -> TaskPayload
+          .ofType("index")
+          .jsonInputFormat()
+          .localInputSourceWithFiles(
+              Resources.WIKIPEDIA_1_JSON,
+              Resources.WIKIPEDIA_2_JSON,
+              Resources.WIKIPEDIA_3_JSON
+          )
+          .timestampColumn("timestamp")
+          .dimensions(
+              "page",
+              "language", "tags", "user", "unpatrolled", "newPage", "robot",
+              "anonymous", "namespace", "continent", "country", "region", "city"
+          )
+          .metricAggregate("count", "count")
+          .metricAggregate("added", "doubleSum")
+          .metricAggregate("deleted", "doubleSum")
+          .metricAggregate("delta", "doubleSum")
+          .metricAggregate("thetaSketch", "thetaSketch", "user")
+          .metricAggregate("HLLSketchBuild", "HLLSketchBuild", "user")
+          .metricAggregate("quantilesDoublesSketch", "quantilesDoublesSketch", "delta")
+          .dynamicPartitionWithMaxRows(3)
+          .granularitySpec("DAY", "SECOND", true)
+          .appendToExisting(false);
 
-  private static final String INDEX_ROLLUP_QUERIES_RESOURCE = "/indexer/wikipedia_index_rollup_queries.json";
-  private static final String INDEX_ROLLUP_SKETCH_QUERIES_RESOURCE = "/indexer/wikipedia_index_sketch_queries.json";
+  private static final Supplier<TaskPayload> INDEX_TASK_WITH_GRANULARITY_SPEC =
+      () -> INDEX_TASK.get().dimensions("language").dynamicPartitionWithMaxRows(10);
+
+  private static final String SELECT_TOTAL_COUNT =
+      "SELECT COUNT(*) FROM %s WHERE \"language\"='en' AND __time < '2013-09-01'";
+  private static final String SELECT_COLUMN_ADDED =
+      "SELECT \"added\" FROM %s WHERE \"language\"='en' AND __time < '2013-09-01'";
+  private static final String SELECT_COLUMN_COUNT =
+      "SELECT \"count\" FROM %s WHERE \"language\"='en' AND __time < '2013-09-01'";
+  private static final String SELECT_COLUMN_SUM_ADDED =
+      "SELECT sum_added FROM %s WHERE \"language\"='en' AND __time < '2013-09-01'";
+  private static final String SELECT_COLUMN_LONG_SUM_ADDED =
+      "SELECT long_sum_added FROM %s WHERE \"language\"='en' AND __time < '2013-09-01'";
+  private static final String SELECT_COLUMN_DOUBLE_SUM_ADDED =
+      "SELECT double_sum_added FROM %s WHERE \"language\"='en' AND __time < '2013-09-01'";
+  private static final String WHERE_LANGUAGE_EN = "WHERE \"language\"='en' AND __time < '2013-09-01'";
+  private static final String SELECT_APPROX_COUNT_DISTINCT =
+      "SELECT APPROX_COUNT_DISTINCT_DS_THETA(\"thetaSketch\"),"
+      + " APPROX_COUNT_DISTINCT_DS_HLL(\"HLLSketchBuild\")"
+      + " FROM %s";
   private static final List<Pair<String, String>> INDEX_QUERIES_RESOURCE = List.of(
       Pair.of(
           "SELECT MIN(__time), MAX(__time) FROM %s",
@@ -138,16 +178,56 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
           "Crimson Typhoon,1,905.0,9050.0"
       )
   );
-  private static final Consumer<TaskPayload> INDEX_TASK_WITH_ROLLUP_FOR_PRESERVE_METRICS =
-      payload -> payload.inlineInputSourceWithData(Resources.JSON_DATA_2_ROWS)
-                        .inputFormat(Map.of("type", "json"))
-                        .granularitySpec("DAY", "HOUR", true)
-                        .appendToExisting(true);
-  private static final Consumer<TaskPayload> INDEX_TASK_WITHOUT_ROLLUP_FOR_PRESERVE_METRICS =
-      payload -> payload.inlineInputSourceWithData(Resources.JSON_DATA_1_ROW)
-                        .inputFormat(Map.of("type", "json"))
-                        .granularitySpec("DAY", "HOUR", false)
-                        .appendToExisting(true);
+  private static final Supplier<TaskPayload> INDEX_TASK_WITH_ROLLUP_FOR_PRESERVE_METRICS =
+      () -> TaskPayload
+          .ofType("index_parallel")
+          .jsonInputFormat()
+          .inlineInputSourceWithData(Resources.JSON_DATA_2_ROWS)
+          .isoTimestampColumn("timestamp")
+          .appendToExisting(true)
+          .granularitySpec("DAY", "HOUR", true)
+          .metricAggregate("count", "count")
+          .metricAggregate("thetaSketch", "thetaSketch", "user")
+          .metricAggregate("HLLSketchBuild", "HLLSketchBuild", "user")
+          .metricAggregate("quantilesDoublesSketch", "quantilesDoublesSketch", "delta")
+          .metricAggregate("sum_added", "longSum", "added")
+          .metricAggregate("sum_deleted", "longSum", "deleted")
+          .metricAggregate("sum_delta", "longSum", "delta")
+          .metricAggregate("sum_deltaBucket", "longSum", "deltaBucket")
+          .metricAggregate("sum_commentLength", "longSum", "commentLength")
+          .dimensions(
+              "isRobot",
+              "language", "flags", "isUnpatrolled", "page", "diffUrl", "comment",
+              "isNew", "isMinor", "isAnonymous", "namespace"
+          );
+
+  private static final Supplier<TaskPayload> INDEX_TASK_WITHOUT_ROLLUP_FOR_PRESERVE_METRICS =
+      () -> TaskPayload
+          .ofType("index_parallel")
+          .jsonInputFormat()
+          .inlineInputSourceWithData(Resources.JSON_DATA_1_ROW)
+          .isoTimestampColumn("timestamp")
+          .granularitySpec("DAY", "HOUR", false)
+          .appendToExisting(true)
+          .dimensionsSpec(
+              Map.of(
+                  "dimensions",
+                  List.of(
+                      "isRobot",
+                      "language", "flags", "isUnpatrolled", "page", "diffUrl",
+                      Map.of("type", "long", "name", "added"),
+                      "comment",
+                      Map.of("type", "long", "name", "commentLength"),
+                      "isNew", "isMinor",
+                      Map.of("type", "long", "name", "delta"),
+                      "isAnonymous", "user",
+                      Map.of("type", "long", "name", "deltaBucket"),
+                      Map.of("type", "long", "name", "deleted"),
+                      "namespace", "cityName", "countryName", "regionIsoCode",
+                      "metroCode", "countryIsoCode", "regionName"
+                  )
+              )
+          );
   private static final int MAX_ROWS_PER_SEGMENT_COMPACTED = 10000;
   private static final Period NO_SKIP_OFFSET = Period.seconds(0);
   private static final FixedIntervalOrderPolicy COMPACT_NOTHING_POLICY = new FixedIntervalOrderPolicy(List.of());
@@ -155,6 +235,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   private final EmbeddedOverlord overlord = new EmbeddedOverlord();
   private final EmbeddedCoordinator coordinator = new EmbeddedCoordinator()
       .addProperty("druid.manager.segments.useIncrementalCache", "always");
+  private final EmbeddedBroker broker = new EmbeddedBroker()
+      .addProperty("druid.sql.planner.metadataRefreshPeriod", "PT0.1s");
 
   public static List<CompactionEngine> getEngine()
   {
@@ -168,9 +250,9 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
                                .useLatchableEmitter()
                                .addServer(coordinator)
                                .addServer(overlord)
+                               .addServer(broker)
                                .addServer(new EmbeddedIndexer().addProperty("druid.worker.capacity", "5"))
                                .addServer(new EmbeddedHistorical())
-                               .addServer(new EmbeddedBroker())
                                .addServer(new EmbeddedRouter());
   }
 
@@ -199,32 +281,11 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       intervalsBeforeCompaction.sort(null);
       // 2 segments across 1 days...
       verifySegmentsCount(2);
-      ArrayList<Object> nullList = new ArrayList<>();
-      nullList.add(null);
-      Map<String, Object> queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "added",
-          "%%EXPECTED_COUNT_RESULT%%", 2,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(nullList)), ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(31))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
-      queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "count",
-          "%%EXPECTED_COUNT_RESULT%%", 2,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(2))), ImmutableMap.of("events", ImmutableList.of(nullList)))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
-      queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "sum_added",
-          "%%EXPECTED_COUNT_RESULT%%", 2,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(62))), ImmutableMap.of("events", ImmutableList.of(nullList)))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
-      queryAndResultFields = ImmutableMap.of(
-          "%%QUANTILESRESULT%%", 2,
-          "%%THETARESULT%%", 2.0,
-          "%%HLLRESULT%%", 2
-      );
-      verifyQuery(INDEX_ROLLUP_SKETCH_QUERIES_RESOURCE, queryAndResultFields);
+      verifyQuery(SELECT_COLUMN_ADDED, "\"\"\n31");
+      verifyQuery(SELECT_COLUMN_COUNT, "2\n\"\"");
+      verifyQuery(SELECT_COLUMN_SUM_ADDED, "62\n\"\"");
+      verifyQuery(SELECT_TOTAL_COUNT, "2");
+      verifyQuery(SELECT_APPROX_COUNT_DISTINCT, "2,2");
 
       submitCompactionConfig(
           MAX_ROWS_PER_SEGMENT_COMPACTED,
@@ -247,30 +308,11 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // added = null, count = 3, sum_added = 93.0
       forceTriggerAutoCompaction(1);
 
-      queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "added",
-          "%%EXPECTED_COUNT_RESULT%%", 1,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(nullList)))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
-      queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "count",
-          "%%EXPECTED_COUNT_RESULT%%", 1,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(3))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
-      queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "sum_added",
-          "%%EXPECTED_COUNT_RESULT%%", 1,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(93.0f))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
-      queryAndResultFields = ImmutableMap.of(
-          "%%QUANTILESRESULT%%", 3,
-          "%%THETARESULT%%", 3.0,
-          "%%HLLRESULT%%", 3
-      );
-      verifyQuery(INDEX_ROLLUP_SKETCH_QUERIES_RESOURCE, queryAndResultFields);
+      verifyQuery(SELECT_COLUMN_ADDED, "\"\"");
+      verifyQuery(SELECT_COLUMN_COUNT, "3");
+      verifyQuery(SELECT_COLUMN_SUM_ADDED, "93.0");
+      verifyQuery(SELECT_TOTAL_COUNT, "1");
+      verifyQuery(SELECT_APPROX_COUNT_DISTINCT, "3,3");
 
       verifySegmentsCompacted(1, MAX_ROWS_PER_SEGMENT_COMPACTED);
       checkCompactionIntervals(intervalsBeforeCompaction);
@@ -295,32 +337,12 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       intervalsBeforeCompaction.sort(null);
       // 2 segments across 1 days...
       verifySegmentsCount(2);
-      ArrayList<Object> nullList = new ArrayList<>();
-      nullList.add(null);
-      Map<String, Object> queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "added",
-          "%%EXPECTED_COUNT_RESULT%%", 2,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(nullList)), ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(31))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
-      queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "count",
-          "%%EXPECTED_COUNT_RESULT%%", 2,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(2))), ImmutableMap.of("events", ImmutableList.of(nullList)))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
-      queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "sum_added",
-          "%%EXPECTED_COUNT_RESULT%%", 2,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(62))), ImmutableMap.of("events", ImmutableList.of(nullList)))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
-      queryAndResultFields = ImmutableMap.of(
-          "%%QUANTILESRESULT%%", 2,
-          "%%THETARESULT%%", 2.0,
-          "%%HLLRESULT%%", 2
-      );
-      verifyQuery(INDEX_ROLLUP_SKETCH_QUERIES_RESOURCE, queryAndResultFields);
+
+      verifyQuery(SELECT_TOTAL_COUNT, "2");
+      verifyQuery(SELECT_COLUMN_ADDED, "\"\"\n31");
+      verifyQuery(SELECT_COLUMN_COUNT, "2\n\"\"");
+      verifyQuery(SELECT_COLUMN_SUM_ADDED, "62\n\"\"");
+      verifyQuery(SELECT_APPROX_COUNT_DISTINCT, "2,2");
 
       submitCompactionConfig(
           MAX_ROWS_PER_SEGMENT_COMPACTED,
@@ -350,30 +372,11 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // added = null, count = 3, sum_added = 93
       forceTriggerAutoCompaction(1);
 
-      queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "added",
-          "%%EXPECTED_COUNT_RESULT%%", 1,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(nullList)))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
-      queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "count",
-          "%%EXPECTED_COUNT_RESULT%%", 1,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(3))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
-      queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "sum_added",
-          "%%EXPECTED_COUNT_RESULT%%", 1,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(93))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
-      queryAndResultFields = ImmutableMap.of(
-          "%%QUANTILESRESULT%%", 3,
-          "%%THETARESULT%%", 3.0,
-          "%%HLLRESULT%%", 3
-      );
-      verifyQuery(INDEX_ROLLUP_SKETCH_QUERIES_RESOURCE, queryAndResultFields);
+      verifyQuery(SELECT_COLUMN_ADDED, "\"\"");
+      verifyQuery(SELECT_COLUMN_COUNT, "3");
+      verifyQuery(SELECT_COLUMN_SUM_ADDED, "93");
+      verifyQuery(SELECT_TOTAL_COUNT, "1");
+      verifyQuery(SELECT_APPROX_COUNT_DISTINCT, "3,3");
 
       verifySegmentsCompacted(1, MAX_ROWS_PER_SEGMENT_COMPACTED);
       checkCompactionIntervals(intervalsBeforeCompaction);
@@ -398,14 +401,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       intervalsBeforeCompaction.sort(null);
       // 2 segments across 1 days...
       verifySegmentsCount(2);
-      ArrayList<Object> nullList = new ArrayList<>();
-      nullList.add(null);
-      Map<String, Object> queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "added",
-          "%%EXPECTED_COUNT_RESULT%%", 2,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(31))), ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(31))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
+      verifyQuery(SELECT_COLUMN_ADDED, "31\n31");
+      verifyQuery(SELECT_TOTAL_COUNT, "2");
 
       submitCompactionConfig(
           MAX_ROWS_PER_SEGMENT_COMPACTED,
@@ -421,24 +418,10 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // added = null, count = 2, sum_added = 62
       forceTriggerAutoCompaction(1);
 
-      queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "added",
-          "%%EXPECTED_COUNT_RESULT%%", 1,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(nullList)))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
-      queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "count",
-          "%%EXPECTED_COUNT_RESULT%%", 1,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(2))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
-      queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "sum_added",
-          "%%EXPECTED_COUNT_RESULT%%", 1,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(62))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
+      verifyQuery(SELECT_COLUMN_ADDED, "\"\"");
+      verifyQuery(SELECT_COLUMN_COUNT, "2");
+      verifyQuery(SELECT_COLUMN_SUM_ADDED, "62");
+      verifyQuery(SELECT_TOTAL_COUNT, "1");
 
       verifySegmentsCompacted(1, MAX_ROWS_PER_SEGMENT_COMPACTED);
       checkCompactionIntervals(intervalsBeforeCompaction);
@@ -468,12 +451,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       intervalsBeforeCompaction.sort(null);
       // 2 segments across 1 days...
       verifySegmentsCount(2);
-      Map<String, Object> queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "added",
-          "%%EXPECTED_COUNT_RESULT%%", 2,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(31))), ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(31))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
+      verifyQuery(SELECT_COLUMN_ADDED, "31\n31");
+      verifyQuery(SELECT_TOTAL_COUNT, "2");
 
       submitCompactionConfig(
           MAX_ROWS_PER_SEGMENT_COMPACTED,
@@ -489,12 +468,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // added = 62
       forceTriggerAutoCompaction(1);
 
-      queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "added",
-          "%%EXPECTED_COUNT_RESULT%%", 1,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(62))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
+      verifyQuery(SELECT_COLUMN_ADDED, "62");
+      verifyQuery(SELECT_TOTAL_COUNT, "1");
 
       verifySegmentsCompacted(1, MAX_ROWS_PER_SEGMENT_COMPACTED);
       checkCompactionIntervals(intervalsBeforeCompaction);
@@ -519,18 +494,9 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       intervalsBeforeCompaction.sort(null);
       // 2 segments across 1 days...
       verifySegmentsCount(2);
-      Map<String, Object> queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "count",
-          "%%EXPECTED_COUNT_RESULT%%", 2,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(2))), ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(2))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
-      queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "sum_added",
-          "%%EXPECTED_COUNT_RESULT%%", 2,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(62))), ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(62))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
+      verifyQuery(SELECT_COLUMN_COUNT, "2\n2");
+      verifyQuery(SELECT_COLUMN_SUM_ADDED, "62\n62");
+      verifyQuery(SELECT_TOTAL_COUNT, "2");
 
       submitCompactionConfig(
           MAX_ROWS_PER_SEGMENT_COMPACTED,
@@ -546,18 +512,9 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // added = null, count = 4, sum_added = 124
       forceTriggerAutoCompaction(1);
 
-      queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "count",
-          "%%EXPECTED_COUNT_RESULT%%", 1,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(4))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
-      queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "sum_added",
-          "%%EXPECTED_COUNT_RESULT%%", 1,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(124))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
+      verifyQuery(SELECT_COLUMN_COUNT, "4");
+      verifyQuery(SELECT_COLUMN_SUM_ADDED, "124");
+      verifyQuery(SELECT_TOTAL_COUNT, "1");
 
       verifySegmentsCompacted(1, MAX_ROWS_PER_SEGMENT_COMPACTED);
       checkCompactionIntervals(intervalsBeforeCompaction);
@@ -638,17 +595,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       );
       // Compacted into 1 segment for the entire year.
       forceTriggerAutoCompaction(1);
-      Map<String, Object> queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%",
-          "added",
-          "%%EXPECTED_COUNT_RESULT%%",
-          1,
-          "%%EXPECTED_SCAN_RESULT%%",
-          ImmutableList.of(
-              ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(516)))
-          )
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
+      verifyQuery(SELECT_TOTAL_COUNT, "1");
+      verifyQuery(SELECT_COLUMN_ADDED, "516.0");
       verifySegmentsCompacted(1, MAX_ROWS_PER_SEGMENT_COMPACTED);
       verifySegmentsCompactedDimensionSchema(dimensionSchemas);
     }
@@ -1428,15 +1376,11 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   public void testAutoCompactionDutyWithSegmentGranularityFinerAndNotAlignWithSegment() throws Exception
   {
     updateCompactionTaskSlot(1, 1);
-    Map<String, Object> specs = Map.of("segmentGranularity", "MONTH", "queryGranularity", "DAY", "intervals", List.of("2013-08-31T-07/2013-09-02T-07"));
+    Map<String, Object> specs = Map.of("segmentGranularity", "MONTH", "queryGranularity", "DAY", "rollup", false, "intervals", List.of("2013-08-31T-07/2013-09-02T-07"));
     loadData(INDEX_TASK_WITH_GRANULARITY_SPEC, specs);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
-      Map<String, Object> queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "added",
-          "%%EXPECTED_COUNT_RESULT%%", 2,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(57.0), ImmutableList.of(459.0))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
+      verifyQuery(SELECT_COLUMN_ADDED, "57.0\n459.0");
+      verifyQuery(SELECT_TOTAL_COUNT, "2");
       submitCompactionConfig(
           MAX_ROWS_PER_SEGMENT_COMPACTED,
           NO_SKIP_OFFSET,
@@ -1453,12 +1397,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // does not have data on every week on the month
       forceTriggerAutoCompaction(3);
       // Make sure that no data is lost after compaction
-      queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "added",
-          "%%EXPECTED_COUNT_RESULT%%", 2,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(57.0), ImmutableList.of(459.0))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
+      verifyQuery(SELECT_COLUMN_ADDED, "57.0\n459.0");
+      verifyQuery(SELECT_TOTAL_COUNT, "2");
       verifySegmentsCompacted(1, MAX_ROWS_PER_SEGMENT_COMPACTED);
       List<TaskStatusPlus> tasks = getCompleteTasksForDataSource(fullDatasourceName);
       TaskStatusPlus compactTask = null;
@@ -1482,15 +1422,11 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   public void testAutoCompactionDutyWithSegmentGranularityCoarserAndNotAlignWithSegment(CompactionEngine engine) throws Exception
   {
     updateCompactionTaskSlot(1, 1);
-    Map<String, Object> specs = Map.of("segmentGranularity", "WEEK", "queryGranularity", "DAY", "intervals", List.of("2013-08-31T-07/2013-09-02T-07"));
+    Map<String, Object> specs = Map.of("segmentGranularity", "WEEK", "queryGranularity", "DAY", "rollup", false, "intervals", List.of("2013-08-31T-07/2013-09-02T-07"));
     loadData(INDEX_TASK_WITH_GRANULARITY_SPEC, specs);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
-      Map<String, Object> queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "added",
-          "%%EXPECTED_COUNT_RESULT%%", 2,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(57.0), ImmutableList.of(459.0))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
+      verifyQuery(SELECT_COLUMN_ADDED, "57.0\n459.0");
+      verifyQuery(SELECT_TOTAL_COUNT, "2");
       submitCompactionConfig(
           MAX_ROWS_PER_SEGMENT_COMPACTED,
           NO_SKIP_OFFSET,
@@ -1504,12 +1440,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // we expect the compaction task's interval to align with the MONTH segmentGranularity (2013-08-01 to 2013-10-01)
       forceTriggerAutoCompaction(2);
       // Make sure that no data is lost after compaction
-      queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "added",
-          "%%EXPECTED_COUNT_RESULT%%", 2,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(57.0), ImmutableList.of(459.0))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
+      verifyQuery(SELECT_COLUMN_ADDED, "57.0\n459.0");
+      verifyQuery(SELECT_TOTAL_COUNT, "2");
       verifySegmentsCompacted(2, MAX_ROWS_PER_SEGMENT_COMPACTED);
       List<TaskStatusPlus> tasks = getCompleteTasksForDataSource(fullDatasourceName);
       TaskStatusPlus compactTask = null;
@@ -1531,15 +1463,11 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   @Test()
   public void testAutoCompactionDutyWithRollup() throws Exception
   {
-    Map<String, Object> specs = Map.of("segmentGranularity", "DAY", "queryGranularity", "DAY", "intervals", List.of("2013-08-31T-07/2013-09-02T-07"));
+    Map<String, Object> specs = Map.of("segmentGranularity", "DAY", "queryGranularity", "DAY", "rollup", false, "intervals", List.of("2013-08-31T-07/2013-09-02T-07"));
     loadData(INDEX_TASK_WITH_GRANULARITY_SPEC, specs);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
-      Map<String, Object> queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "added",
-          "%%EXPECTED_COUNT_RESULT%%", 2,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(57.0), ImmutableList.of(459.0))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
+      verifyQuery(SELECT_COLUMN_ADDED, "57.0\n459.0");
+      verifyQuery(SELECT_TOTAL_COUNT, "2");
       submitCompactionConfig(
           MAX_ROWS_PER_SEGMENT_COMPACTED,
           NO_SKIP_OFFSET,
@@ -1548,12 +1476,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
           CompactionEngine.NATIVE
       );
       forceTriggerAutoCompaction(2);
-      queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "added",
-          "%%EXPECTED_COUNT_RESULT%%", 1,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(516.0))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
+      verifyQuery(SELECT_COLUMN_ADDED, "516.0");
+      verifyQuery(SELECT_TOTAL_COUNT, "1");
       verifySegmentsCompacted(2, MAX_ROWS_PER_SEGMENT_COMPACTED);
 
       List<TaskStatusPlus> compactTasksBefore = getCompleteTasksForDataSource(fullDatasourceName);
@@ -1571,12 +1495,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     Map<String, Object> specs = Map.of("segmentGranularity", "DAY", "queryGranularity", "NONE", "intervals", List.of("2013-08-31T-07/2013-09-02T-07"));
     loadData(INDEX_TASK_WITH_GRANULARITY_SPEC, specs);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
-      Map<String, Object> queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "added",
-          "%%EXPECTED_COUNT_RESULT%%", 2,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(57.0), ImmutableList.of(459.0))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
+      verifyQuery(SELECT_COLUMN_ADDED, "57.0\n459.0");
+      verifyQuery(SELECT_TOTAL_COUNT, "2");
       submitCompactionConfig(
           MAX_ROWS_PER_SEGMENT_COMPACTED,
           NO_SKIP_OFFSET,
@@ -1585,12 +1505,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
           engine
       );
       forceTriggerAutoCompaction(2);
-      queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "added",
-          "%%EXPECTED_COUNT_RESULT%%", 1,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(516.0))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
+      verifyQuery(SELECT_COLUMN_ADDED, "516.0");
+      verifyQuery(SELECT_TOTAL_COUNT, "1");
       verifySegmentsCompacted(2, MAX_ROWS_PER_SEGMENT_COMPACTED);
 
       List<TaskStatusPlus> compactTasksBefore = getCompleteTasksForDataSource(fullDatasourceName);
@@ -1615,12 +1531,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       verifySegmentsCount(4);
 
       // Result is not rollup
-      Map<String, Object> queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "added",
-          "%%EXPECTED_COUNT_RESULT%%", 2,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(57.0), ImmutableList.of(459.0))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
+      verifyQuery(SELECT_COLUMN_ADDED, "57.0\n459.0");
+      verifyQuery(SELECT_TOTAL_COUNT, "2");
 
       // Compact and change dimension to only "language"
       submitCompactionConfig(
@@ -1636,12 +1548,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       forceTriggerAutoCompaction(2);
 
       // Result should rollup on language dimension
-      queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "added",
-          "%%EXPECTED_COUNT_RESULT%%", 1,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(516.0))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
+      verifyQuery(SELECT_COLUMN_ADDED, "516");
+      verifyQuery(SELECT_TOTAL_COUNT, "1");
       verifySegmentsCompacted(2, MAX_ROWS_PER_SEGMENT_COMPACTED);
 
       List<TaskStatusPlus> compactTasksBefore = getCompleteTasksForDataSource(fullDatasourceName);
@@ -1667,12 +1575,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
 
       // Result is not rollup
       // For dim "page", result has values "Gypsy Danger" and "Striker Eureka"
-      Map<String, Object> queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "added",
-          "%%EXPECTED_COUNT_RESULT%%", 2,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(57.0), ImmutableList.of(459.0))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
+      verifyQuery(SELECT_COLUMN_ADDED, "57.0\n459.0");
+      verifyQuery(SELECT_TOTAL_COUNT, "2");
 
       // Compact and filter with selector on dim "page" and value "Striker Eureka"
       submitCompactionConfig(
@@ -1688,12 +1592,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       forceTriggerAutoCompaction(intervalsBeforeCompaction, useSupervisors, 2);
 
       // For dim "page", result should only contain value "Striker Eureka"
-      queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "added",
-          "%%EXPECTED_COUNT_RESULT%%", 1,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(459.0))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
+      verifyQuery(SELECT_COLUMN_ADDED, "459.0");
+      verifyQuery(SELECT_TOTAL_COUNT, "1");
       verifySegmentsCompacted(2, MAX_ROWS_PER_SEGMENT_COMPACTED);
 
       List<TaskStatusPlus> compactTasksBefore = getCompleteTasksForDataSource(fullDatasourceName);
@@ -1718,12 +1618,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       verifySegmentsCount(4);
 
       // For dim "page", result has values "Gypsy Danger" and "Striker Eureka"
-      Map<String, Object> queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "added",
-          "%%EXPECTED_COUNT_RESULT%%", 2,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(57.0), ImmutableList.of(459.0))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
+      verifyQuery(SELECT_COLUMN_ADDED, "57.0\n459.0");
+      verifyQuery(SELECT_TOTAL_COUNT, "2");
 
       // Compact and add longSum and doubleSum metrics
       submitCompactionConfig(
@@ -1740,19 +1636,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
 
       // Result should be the same with the addition of new metrics, "double_sum_added" and "long_sum_added".
       // These new metrics should have the same value as the input field "added"
-      queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "double_sum_added",
-          "%%EXPECTED_COUNT_RESULT%%", 2,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(57.0), ImmutableList.of(459.0))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
-
-      queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "long_sum_added",
-          "%%EXPECTED_COUNT_RESULT%%", 2,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(57), ImmutableList.of(459))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
+      verifyQuery(SELECT_COLUMN_DOUBLE_SUM_ADDED, "57.0\n459.0");
+      verifyQuery(SELECT_COLUMN_LONG_SUM_ADDED, "57\n459");
 
       verifySegmentsCompacted(2, MAX_ROWS_PER_SEGMENT_COMPACTED);
 
@@ -1768,31 +1653,19 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   public void testAutoCompactionDutyWithOverlappingInterval() throws Exception
   {
     // Create WEEK segment with 2013-08-26 to 2013-09-02
-    final Map<String, Object> weekGranularity = Map.of(
-        "segmentGranularity", "WEEK",
-        "queryGranularity", "NONE",
-        "intervals", List.of("2013-08-31T-07/2013-09-02T-07")
-    );
-    loadData(payload -> payload.granularitySpec(weekGranularity).dynamicPartitionWithMaxRows(10));
+    Map<String, Object> specs = Map.of("segmentGranularity", "WEEK", "queryGranularity", "NONE", "intervals", List.of("2013-08-31T-07/2013-09-02T-07"));
+    loadData(INDEX_TASK_WITH_GRANULARITY_SPEC, specs);
     // Create MONTH segment with 2013-09-01 to 2013-10-01
-    final Map<String, Object> monthGranularity = Map.of(
-        "segmentGranularity", "MONTH",
-        "queryGranularity", "NONE",
-        "intervals", List.of("2013-09-01T-07/2013-09-02T-07")
-    );
-    loadData(payload -> payload.granularitySpec(monthGranularity).dynamicPartitionWithMaxRows(10));
+    specs = Map.of("segmentGranularity", "MONTH", "queryGranularity", "NONE", "intervals", List.of("2013-09-01T-07/2013-09-02T-07"));
+    loadData(INDEX_TASK_WITH_GRANULARITY_SPEC, specs);
 
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       verifySegmentsCount(2);
 
       // Result is not rollup
       // For dim "page", result has values "Gypsy Danger" and "Striker Eureka"
-      Map<String, Object> queryAndResultFields = ImmutableMap.of(
-          "%%FIELD_TO_QUERY%%", "added",
-          "%%EXPECTED_COUNT_RESULT%%", 2,
-          "%%EXPECTED_SCAN_RESULT%%", ImmutableList.of(ImmutableMap.of("events", ImmutableList.of(ImmutableList.of(57.0), ImmutableList.of(459.0))))
-      );
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
+      verifyQuery(SELECT_COLUMN_ADDED, "57.0\n459.0");
+      verifyQuery(SELECT_TOTAL_COUNT, "2");
 
       submitCompactionConfig(
           MAX_ROWS_PER_SEGMENT_COMPACTED,
@@ -1806,11 +1679,13 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       );
       // Compact the MONTH segment
       forceTriggerAutoCompaction(2);
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
+      verifyQuery(SELECT_COLUMN_ADDED, "57.0\n459.0");
+      verifyQuery(SELECT_TOTAL_COUNT, "2");
 
       // Compact the WEEK segment
       forceTriggerAutoCompaction(2);
-      verifyQuery(INDEX_ROLLUP_QUERIES_RESOURCE, queryAndResultFields);
+      verifyQuery(SELECT_COLUMN_ADDED, "57.0\n459.0");
+      verifyQuery(SELECT_TOTAL_COUNT, "2");
 
       // Verify all task succeed
       List<TaskStatusPlus> compactTasksBefore = getCompleteTasksForDataSource(fullDatasourceName);
@@ -1825,40 +1700,14 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     }
   }
 
-  private void loadData(Consumer<TaskPayload> updatePayload)
+  private void loadData(Supplier<TaskPayload> updatePayload)
   {
     loadData(updatePayload, Map.of());
   }
 
-  private void loadData(Consumer<TaskPayload> updatePayload, Map<String, Object> granularitySpec)
+  private void loadData(Supplier<TaskPayload> taskPayloadSupplier, Map<String, Object> granularitySpec)
   {
-    final TaskPayload taskPayload = TaskPayload
-        .ofType("index")
-        .dataSource(fullDatasourceName)
-        .inputFormat(Map.of("type", "json"))
-        .localInputSourceWithFiles(
-            Resources.WIKIPEDIA_1_JSON,
-            Resources.WIKIPEDIA_2_JSON,
-            Resources.WIKIPEDIA_3_JSON
-        )
-        .timestampColumn("timestamp")
-        .dimensions(
-            "page",
-            "language", "tags", "user", "unpatrolled", "newPage", "robot",
-            "anonymous", "namespace", "continent", "country", "region", "city"
-        )
-        .metricAggregate("count", "count")
-        .metricAggregate("added", "doubleSum")
-        .metricAggregate("deleted", "doubleSum")
-        .metricAggregate("delta", "doubleSum")
-        .metricAggregate(Map.of("name", "thetaSketch", "type", "thetaSketch", "fieldName", "user"))
-        .metricAggregate(Map.of("name", "HLLSketchBuild", "type", "HLLSketchBuild", "fieldName", "user"))
-        .metricAggregate(Map.of("name", "quantilesDoublesSketch", "type", "quantilesDoublesSketch", "fieldName", "deleta"))
-        .partitionsSpec(Map.of("type", "dynamic", "maxRowsPerSegment", 3))
-        .segmentGranularity("DAY")
-        .appendToExisting(false);
-
-    updatePayload.accept(taskPayload);
+    final TaskPayload taskPayload = taskPayloadSupplier.get().dataSource(fullDatasourceName);
     if (!granularitySpec.isEmpty()) {
       taskPayload.granularitySpec(granularitySpec);
     }
@@ -1881,29 +1730,13 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     );
   }
 
-  private void verifyQuery(String queryResource, Map<String, Object> keyValueToReplace)
+  private void verifyQuery(String query, String result)
   {
-    /*String queryResponseTemplate;
-    try {
-      InputStream is = AbstractITBatchIndexTest.class.getResourceAsStream(queryResource);
-      queryResponseTemplate = IOUtils.toString(is, StandardCharsets.UTF_8);
-    }
-    catch (IOException e) {
-      throw new ISE(e, "could not read query file: %s", queryResource);
-    }
-    queryResponseTemplate = StringUtils.replace(
-        queryResponseTemplate,
-        "%%DATASOURCE%%",
-        fullDatasourceName
+    Assertions.assertEquals(
+        result,
+        cluster.runSql(query, dataSource),
+        StringUtils.format("Query[%s] failed", query)
     );
-    for (Map.Entry<String, Object> entry : keyValueToReplace.entrySet()) {
-      queryResponseTemplate = StringUtils.replace(
-          queryResponseTemplate,
-          entry.getKey(),
-          jsonMapper.writeValueAsString(entry.getValue())
-      );
-    }
-    queryHelper.testQueriesFromString(queryResponseTemplate);*/
   }
 
   private void updateClusterConfig(ClusterCompactionConfig clusterConfig) throws Exception
@@ -2105,6 +1938,15 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     // TODO: there is some serious flakiness here
     int segmentCount = getFullSegmentsMetadata(dataSource).size();
     Assertions.assertEquals(numExpectedSegments, segmentCount, "Segment count mismatch");
+    Assertions.assertEquals(
+        String.valueOf(segmentCount),
+        cluster.runSql(
+            "SELECT COUNT(*) FROM sys.segments"
+            + " WHERE datasource='%s' AND is_overshadowed = 0 AND is_available = 1",
+            dataSource
+        ),
+        "Segment count mismatch in sys table"
+    );
   }
 
   private void checkCompactionIntervals(List<String> expectedIntervals)
@@ -2277,6 +2119,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
    */
   private Closeable unloader(String dataSource)
   {
-    return () -> overlord.bindings().segmentsMetadataStorage().markAllSegmentsAsUnused(dataSource);
+    return () -> {
+      overlord.bindings().segmentsMetadataStorage().markAllSegmentsAsUnused(dataSource);
+    };
   }
 }
