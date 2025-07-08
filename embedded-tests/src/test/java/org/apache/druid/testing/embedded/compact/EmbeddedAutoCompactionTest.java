@@ -105,6 +105,9 @@ import java.util.TreeSet;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
+/**
+ * Embedded mode of integration-tests originally present in {@code ITAutoCompactionTest}.
+ */
 public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
 {
   private static final Logger LOG = new Logger(EmbeddedAutoCompactionTest.class);
@@ -123,7 +126,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
               "language", "tags", "user", "unpatrolled", "newPage", "robot",
               "anonymous", "namespace", "continent", "country", "region", "city"
           )
-          .metricAggregate("count", "count")
+          .metricAggregate("ingested_events", "count")
           .metricAggregate("added", "doubleSum")
           .metricAggregate("deleted", "doubleSum")
           .metricAggregate("delta", "doubleSum")
@@ -136,22 +139,12 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
 
   private static final Supplier<TaskPayload> INDEX_TASK_WITH_GRANULARITY_SPEC =
       () -> INDEX_TASK.get().dimensions("language").dynamicPartitionWithMaxRows(10);
+  private static final Supplier<TaskPayload> INDEX_TASK_WITH_DIMENSION_SPEC =
+      () -> INDEX_TASK.get().granularitySpec("DAY", "DAY", true);
 
-  private static final String SELECT_TOTAL_COUNT =
-      "SELECT COUNT(*) FROM %s WHERE \"language\"='en' AND __time < '2013-09-01'";
-  private static final String SELECT_COLUMN_ADDED =
-      "SELECT \"added\" FROM %s WHERE \"language\"='en' AND __time < '2013-09-01'";
-  private static final String SELECT_COLUMN_COUNT =
-      "SELECT \"count\" FROM %s WHERE \"language\"='en' AND __time < '2013-09-01'";
-  private static final String SELECT_COLUMN_SUM_ADDED =
-      "SELECT sum_added FROM %s WHERE \"language\"='en' AND __time < '2013-09-01'";
-  private static final String SELECT_COLUMN_LONG_SUM_ADDED =
-      "SELECT long_sum_added FROM %s WHERE \"language\"='en' AND __time < '2013-09-01'";
-  private static final String SELECT_COLUMN_DOUBLE_SUM_ADDED =
-      "SELECT double_sum_added FROM %s WHERE \"language\"='en' AND __time < '2013-09-01'";
-  private static final String WHERE_LANGUAGE_EN = "WHERE \"language\"='en' AND __time < '2013-09-01'";
   private static final String SELECT_APPROX_COUNT_DISTINCT =
-      "SELECT APPROX_COUNT_DISTINCT_DS_THETA(\"thetaSketch\"),"
+      "SELECT"
+      + " APPROX_COUNT_DISTINCT_DS_THETA(\"thetaSketch\"),"
       + " APPROX_COUNT_DISTINCT_DS_HLL(\"HLLSketchBuild\")"
       + " FROM %s";
   private static final List<Pair<String, String>> INDEX_QUERIES_RESOURCE = List.of(
@@ -159,12 +152,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
           "SELECT MIN(__time), MAX(__time) FROM %s",
           "2013-08-31T01:02:33.000Z,2013-09-01T12:41:27.000Z"
       ),
-      Pair.of(
-          "SELECT APPROX_COUNT_DISTINCT_DS_THETA(\"thetaSketch\"),"
-          + " APPROX_COUNT_DISTINCT_DS_HLL(\"HLLSketchBuild\")"
-           + " FROM %s",
-          "5,5"
-      ),
+      Pair.of(SELECT_APPROX_COUNT_DISTINCT, "5,5"),
       Pair.of(
           "SELECT EARLIEST(\"user\"), LATEST(\"user\") FROM %s WHERE __time < '2013-09-01'",
           "nuclear,stringer"
@@ -186,7 +174,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
           .isoTimestampColumn("timestamp")
           .appendToExisting(true)
           .granularitySpec("DAY", "HOUR", true)
-          .metricAggregate("count", "count")
+          .metricAggregate("ingested_events", "count")
           .metricAggregate("thetaSketch", "thetaSketch", "user")
           .metricAggregate("HLLSketchBuild", "HLLSketchBuild", "user")
           .metricAggregate("quantilesDoublesSketch", "quantilesDoublesSketch", "delta")
@@ -281,10 +269,10 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       intervalsBeforeCompaction.sort(null);
       // 2 segments across 1 days...
       verifySegmentsCount(2);
-      verifyQuery(SELECT_COLUMN_ADDED, "\"\"\n31");
-      verifyQuery(SELECT_COLUMN_COUNT, "2\n\"\"");
-      verifyQuery(SELECT_COLUMN_SUM_ADDED, "62\n\"\"");
-      verifyQuery(SELECT_TOTAL_COUNT, "2");
+      verifyScanResult("added", "...||31");
+      verifyScanResult("ingested_events", "2||...");
+      verifyScanResult("sum_added", "62||...");
+      verifyScanResult("COUNT(*)", "2");
       verifyQuery(SELECT_APPROX_COUNT_DISTINCT, "2,2");
 
       submitCompactionConfig(
@@ -294,7 +282,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
           new UserCompactionTaskDimensionsConfig(DimensionsSpec.getDefaultSchemas(ImmutableList.of("language"))),
           null,
           new AggregatorFactory[]{
-              new CountAggregatorFactory("count"),
+              new CountAggregatorFactory("ingested_events"),
               // FloatSumAggregator combine method takes in two Float but return Double
               new FloatSumAggregatorFactory("sum_added", "added"),
               new SketchMergeAggregatorFactory("thetaSketch", "user", 16384, true, false, null),
@@ -308,10 +296,10 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // added = null, count = 3, sum_added = 93.0
       forceTriggerAutoCompaction(1);
 
-      verifyQuery(SELECT_COLUMN_ADDED, "\"\"");
-      verifyQuery(SELECT_COLUMN_COUNT, "3");
-      verifyQuery(SELECT_COLUMN_SUM_ADDED, "93.0");
-      verifyQuery(SELECT_TOTAL_COUNT, "1");
+      verifyScanResult("added", "...");
+      verifyScanResult("ingested_events", "3");
+      verifyScanResult("sum_added", "93.0");
+      verifyScanResult("COUNT(*)", "1");
       verifyQuery(SELECT_APPROX_COUNT_DISTINCT, "3,3");
 
       verifySegmentsCompacted(1, MAX_ROWS_PER_SEGMENT_COMPACTED);
@@ -338,10 +326,10 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // 2 segments across 1 days...
       verifySegmentsCount(2);
 
-      verifyQuery(SELECT_TOTAL_COUNT, "2");
-      verifyQuery(SELECT_COLUMN_ADDED, "\"\"\n31");
-      verifyQuery(SELECT_COLUMN_COUNT, "2\n\"\"");
-      verifyQuery(SELECT_COLUMN_SUM_ADDED, "62\n\"\"");
+      verifyScanResult("COUNT(*)", "2");
+      verifyScanResult("added", "...||31");
+      verifyScanResult("ingested_events", "2||...");
+      verifyScanResult("sum_added", "62||...");
       verifyQuery(SELECT_APPROX_COUNT_DISTINCT, "2,2");
 
       submitCompactionConfig(
@@ -351,7 +339,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
           new UserCompactionTaskDimensionsConfig(DimensionsSpec.getDefaultSchemas(ImmutableList.of("language"))),
           null,
           new AggregatorFactory[]{
-              new CountAggregatorFactory("count"),
+              new CountAggregatorFactory("ingested_events"),
               new LongSumAggregatorFactory("sum_added", "added"),
               new SketchMergeAggregatorFactory("thetaSketch", "user", 16384, true, false, null),
               new HllSketchBuildAggregatorFactory(
@@ -372,10 +360,10 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // added = null, count = 3, sum_added = 93
       forceTriggerAutoCompaction(1);
 
-      verifyQuery(SELECT_COLUMN_ADDED, "\"\"");
-      verifyQuery(SELECT_COLUMN_COUNT, "3");
-      verifyQuery(SELECT_COLUMN_SUM_ADDED, "93");
-      verifyQuery(SELECT_TOTAL_COUNT, "1");
+      verifyScanResult("added", "...");
+      verifyScanResult("ingested_events", "3");
+      verifyScanResult("sum_added", "93");
+      verifyScanResult("COUNT(*)", "1");
       verifyQuery(SELECT_APPROX_COUNT_DISTINCT, "3,3");
 
       verifySegmentsCompacted(1, MAX_ROWS_PER_SEGMENT_COMPACTED);
@@ -401,8 +389,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       intervalsBeforeCompaction.sort(null);
       // 2 segments across 1 days...
       verifySegmentsCount(2);
-      verifyQuery(SELECT_COLUMN_ADDED, "31\n31");
-      verifyQuery(SELECT_TOTAL_COUNT, "2");
+      verifyScanResult("added", "31||31");
+      verifyScanResult("COUNT(*)", "2");
 
       submitCompactionConfig(
           MAX_ROWS_PER_SEGMENT_COMPACTED,
@@ -410,7 +398,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
           new UserCompactionTaskGranularityConfig(null, null, true),
           new UserCompactionTaskDimensionsConfig(DimensionsSpec.getDefaultSchemas(ImmutableList.of("language"))),
           null,
-          new AggregatorFactory[] {new CountAggregatorFactory("count"), new LongSumAggregatorFactory("sum_added", "added")},
+          new AggregatorFactory[] {new CountAggregatorFactory("ingested_events"), new LongSumAggregatorFactory("sum_added", "added")},
           false,
           CompactionEngine.NATIVE
       );
@@ -418,10 +406,10 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // added = null, count = 2, sum_added = 62
       forceTriggerAutoCompaction(1);
 
-      verifyQuery(SELECT_COLUMN_ADDED, "\"\"");
-      verifyQuery(SELECT_COLUMN_COUNT, "2");
-      verifyQuery(SELECT_COLUMN_SUM_ADDED, "62");
-      verifyQuery(SELECT_TOTAL_COUNT, "1");
+      verifyScanResult("added", "...");
+      verifyScanResult("ingested_events", "2");
+      verifyScanResult("sum_added", "62");
+      verifyScanResult("COUNT(*)", "1");
 
       verifySegmentsCompacted(1, MAX_ROWS_PER_SEGMENT_COMPACTED);
       checkCompactionIntervals(intervalsBeforeCompaction);
@@ -451,8 +439,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       intervalsBeforeCompaction.sort(null);
       // 2 segments across 1 days...
       verifySegmentsCount(2);
-      verifyQuery(SELECT_COLUMN_ADDED, "31\n31");
-      verifyQuery(SELECT_TOTAL_COUNT, "2");
+      verifyScanResult("added", "31||31");
+      verifyScanResult("COUNT(*)", "2");
 
       submitCompactionConfig(
           MAX_ROWS_PER_SEGMENT_COMPACTED,
@@ -468,8 +456,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // added = 62
       forceTriggerAutoCompaction(1);
 
-      verifyQuery(SELECT_COLUMN_ADDED, "62");
-      verifyQuery(SELECT_TOTAL_COUNT, "1");
+      verifyScanResult("added", "62");
+      verifyScanResult("COUNT(*)", "1");
 
       verifySegmentsCompacted(1, MAX_ROWS_PER_SEGMENT_COMPACTED);
       checkCompactionIntervals(intervalsBeforeCompaction);
@@ -494,9 +482,9 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       intervalsBeforeCompaction.sort(null);
       // 2 segments across 1 days...
       verifySegmentsCount(2);
-      verifyQuery(SELECT_COLUMN_COUNT, "2\n2");
-      verifyQuery(SELECT_COLUMN_SUM_ADDED, "62\n62");
-      verifyQuery(SELECT_TOTAL_COUNT, "2");
+      verifyScanResult("ingested_events", "2||2");
+      verifyScanResult("sum_added", "62||62");
+      verifyScanResult("COUNT(*)", "2");
 
       submitCompactionConfig(
           MAX_ROWS_PER_SEGMENT_COMPACTED,
@@ -504,7 +492,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
           new UserCompactionTaskGranularityConfig(null, null, true),
           new UserCompactionTaskDimensionsConfig(DimensionsSpec.getDefaultSchemas(ImmutableList.of("language"))),
           null,
-          new AggregatorFactory[] {new CountAggregatorFactory("count"), new LongSumAggregatorFactory("sum_added", "added")},
+          new AggregatorFactory[] {new CountAggregatorFactory("ingested_events"), new LongSumAggregatorFactory("sum_added", "added")},
           false,
           CompactionEngine.NATIVE
       );
@@ -512,9 +500,9 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // added = null, count = 4, sum_added = 124
       forceTriggerAutoCompaction(1);
 
-      verifyQuery(SELECT_COLUMN_COUNT, "4");
-      verifyQuery(SELECT_COLUMN_SUM_ADDED, "124");
-      verifyQuery(SELECT_TOTAL_COUNT, "1");
+      verifyScanResult("ingested_events", "4");
+      verifyScanResult("sum_added", "124");
+      verifyScanResult("COUNT(*)", "1");
 
       verifySegmentsCompacted(1, MAX_ROWS_PER_SEGMENT_COMPACTED);
       checkCompactionIntervals(intervalsBeforeCompaction);
@@ -595,8 +583,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       );
       // Compacted into 1 segment for the entire year.
       forceTriggerAutoCompaction(1);
-      verifyQuery(SELECT_TOTAL_COUNT, "1");
-      verifyQuery(SELECT_COLUMN_ADDED, "516.0");
+      verifyScanResult("COUNT(*)", "1");
+      verifyScanResult("added", "516.0");
       verifySegmentsCompacted(1, MAX_ROWS_PER_SEGMENT_COMPACTED);
       verifySegmentsCompactedDimensionSchema(dimensionSchemas);
     }
@@ -1378,8 +1366,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     Map<String, Object> specs = Map.of("segmentGranularity", "MONTH", "queryGranularity", "DAY", "rollup", false, "intervals", List.of("2013-08-31T-07/2013-09-02T-07"));
     loadData(INDEX_TASK_WITH_GRANULARITY_SPEC, specs);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
-      verifyQuery(SELECT_COLUMN_ADDED, "57.0\n459.0");
-      verifyQuery(SELECT_TOTAL_COUNT, "2");
+      verifyScanResult("added", "57.0||459.0");
+      verifyScanResult("COUNT(*)", "2");
       submitCompactionConfig(
           MAX_ROWS_PER_SEGMENT_COMPACTED,
           NO_SKIP_OFFSET,
@@ -1396,8 +1384,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // does not have data on every week on the month
       forceTriggerAutoCompaction(3);
       // Make sure that no data is lost after compaction
-      verifyQuery(SELECT_COLUMN_ADDED, "57.0\n459.0");
-      verifyQuery(SELECT_TOTAL_COUNT, "2");
+      verifyScanResult("added", "57.0||459.0");
+      verifyScanResult("COUNT(*)", "2");
       verifySegmentsCompacted(1, MAX_ROWS_PER_SEGMENT_COMPACTED);
       List<TaskStatusPlus> tasks = getCompleteTasksForDataSource(fullDatasourceName);
       TaskStatusPlus compactTask = null;
@@ -1424,8 +1412,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     Map<String, Object> specs = Map.of("segmentGranularity", "WEEK", "queryGranularity", "DAY", "rollup", false, "intervals", List.of("2013-08-31T-07/2013-09-02T-07"));
     loadData(INDEX_TASK_WITH_GRANULARITY_SPEC, specs);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
-      verifyQuery(SELECT_COLUMN_ADDED, "57.0\n459.0");
-      verifyQuery(SELECT_TOTAL_COUNT, "2");
+      verifyScanResult("added", "57.0||459.0");
+      verifyScanResult("COUNT(*)", "2");
       submitCompactionConfig(
           MAX_ROWS_PER_SEGMENT_COMPACTED,
           NO_SKIP_OFFSET,
@@ -1439,8 +1427,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       // we expect the compaction task's interval to align with the MONTH segmentGranularity (2013-08-01 to 2013-10-01)
       forceTriggerAutoCompaction(2);
       // Make sure that no data is lost after compaction
-      verifyQuery(SELECT_COLUMN_ADDED, "57.0\n459.0");
-      verifyQuery(SELECT_TOTAL_COUNT, "2");
+      verifyScanResult("added", "57.0||459.0");
+      verifyScanResult("COUNT(*)", "2");
       verifySegmentsCompacted(2, MAX_ROWS_PER_SEGMENT_COMPACTED);
       List<TaskStatusPlus> tasks = getCompleteTasksForDataSource(fullDatasourceName);
       TaskStatusPlus compactTask = null;
@@ -1465,8 +1453,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     Map<String, Object> specs = Map.of("segmentGranularity", "DAY", "queryGranularity", "DAY", "rollup", false, "intervals", List.of("2013-08-31T-07/2013-09-02T-07"));
     loadData(INDEX_TASK_WITH_GRANULARITY_SPEC, specs);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
-      verifyQuery(SELECT_COLUMN_ADDED, "57.0\n459.0");
-      verifyQuery(SELECT_TOTAL_COUNT, "2");
+      verifyScanResult("added", "57.0||459.0");
+      verifyScanResult("COUNT(*)", "2");
       submitCompactionConfig(
           MAX_ROWS_PER_SEGMENT_COMPACTED,
           NO_SKIP_OFFSET,
@@ -1475,8 +1463,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
           CompactionEngine.NATIVE
       );
       forceTriggerAutoCompaction(2);
-      verifyQuery(SELECT_COLUMN_ADDED, "516.0");
-      verifyQuery(SELECT_TOTAL_COUNT, "1");
+      verifyScanResult("added", "516.0");
+      verifyScanResult("COUNT(*)", "1");
       verifySegmentsCompacted(2, MAX_ROWS_PER_SEGMENT_COMPACTED);
 
       List<TaskStatusPlus> compactTasksBefore = getCompleteTasksForDataSource(fullDatasourceName);
@@ -1494,8 +1482,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
     Map<String, Object> specs = Map.of("segmentGranularity", "DAY", "queryGranularity", "NONE", "intervals", List.of("2013-08-31T-07/2013-09-02T-07"));
     loadData(INDEX_TASK_WITH_GRANULARITY_SPEC, specs);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
-      verifyQuery(SELECT_COLUMN_ADDED, "57.0\n459.0");
-      verifyQuery(SELECT_TOTAL_COUNT, "2");
+      verifyScanResult("added", "57.0||459.0");
+      verifyScanResult("COUNT(*)", "2");
       submitCompactionConfig(
           MAX_ROWS_PER_SEGMENT_COMPACTED,
           NO_SKIP_OFFSET,
@@ -1504,8 +1492,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
           engine
       );
       forceTriggerAutoCompaction(2);
-      verifyQuery(SELECT_COLUMN_ADDED, "516.0");
-      verifyQuery(SELECT_TOTAL_COUNT, "1");
+      verifyScanResult("added", "516.0");
+      verifyScanResult("COUNT(*)", "1");
       verifySegmentsCompacted(2, MAX_ROWS_PER_SEGMENT_COMPACTED);
 
       List<TaskStatusPlus> compactTasksBefore = getCompleteTasksForDataSource(fullDatasourceName);
@@ -1522,7 +1510,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   {
     // Index data with dimensions "page", "language", "user", "unpatrolled", "newPage", "robot", "anonymous",
     // "namespace", "continent", "country", "region", "city"
-    loadData(INDEX_TASK);
+    loadData(INDEX_TASK_WITH_DIMENSION_SPEC);
     try (final Closeable ignored = unloader(fullDatasourceName)) {
       final List<String> intervalsBeforeCompaction = getSegmentIntervals(fullDatasourceName);
       intervalsBeforeCompaction.sort(null);
@@ -1530,8 +1518,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       verifySegmentsCount(4);
 
       // Result is not rollup
-      verifyQuery(SELECT_COLUMN_ADDED, "57.0\n459.0");
-      verifyQuery(SELECT_TOTAL_COUNT, "2");
+      verifyScanResult("added", "57.0||459.0");
+      verifyScanResult("COUNT(*)", "2");
 
       // Compact and change dimension to only "language"
       submitCompactionConfig(
@@ -1547,8 +1535,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       forceTriggerAutoCompaction(2);
 
       // Result should rollup on language dimension
-      verifyQuery(SELECT_COLUMN_ADDED, "516");
-      verifyQuery(SELECT_TOTAL_COUNT, "1");
+      verifyScanResult("added", "516.0");
+      verifyScanResult("COUNT(*)", "1");
       verifySegmentsCompacted(2, MAX_ROWS_PER_SEGMENT_COMPACTED);
 
       List<TaskStatusPlus> compactTasksBefore = getCompleteTasksForDataSource(fullDatasourceName);
@@ -1574,8 +1562,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
 
       // Result is not rollup
       // For dim "page", result has values "Gypsy Danger" and "Striker Eureka"
-      verifyQuery(SELECT_COLUMN_ADDED, "57.0\n459.0");
-      verifyQuery(SELECT_TOTAL_COUNT, "2");
+      verifyScanResult("added", "57.0||459.0");
+      verifyScanResult("COUNT(*)", "2");
 
       // Compact and filter with selector on dim "page" and value "Striker Eureka"
       submitCompactionConfig(
@@ -1591,8 +1579,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       forceTriggerAutoCompaction(intervalsBeforeCompaction, useSupervisors, 2);
 
       // For dim "page", result should only contain value "Striker Eureka"
-      verifyQuery(SELECT_COLUMN_ADDED, "459.0");
-      verifyQuery(SELECT_TOTAL_COUNT, "1");
+      verifyScanResult("added", "459.0");
+      verifyScanResult("COUNT(*)", "1");
       verifySegmentsCompacted(2, MAX_ROWS_PER_SEGMENT_COMPACTED);
 
       List<TaskStatusPlus> compactTasksBefore = getCompleteTasksForDataSource(fullDatasourceName);
@@ -1617,8 +1605,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       verifySegmentsCount(4);
 
       // For dim "page", result has values "Gypsy Danger" and "Striker Eureka"
-      verifyQuery(SELECT_COLUMN_ADDED, "57.0\n459.0");
-      verifyQuery(SELECT_TOTAL_COUNT, "2");
+      verifyScanResult("added", "57.0||459.0");
+      verifyScanResult("COUNT(*)", "2");
 
       // Compact and add longSum and doubleSum metrics
       submitCompactionConfig(
@@ -1635,8 +1623,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
 
       // Result should be the same with the addition of new metrics, "double_sum_added" and "long_sum_added".
       // These new metrics should have the same value as the input field "added"
-      verifyQuery(SELECT_COLUMN_DOUBLE_SUM_ADDED, "57.0\n459.0");
-      verifyQuery(SELECT_COLUMN_LONG_SUM_ADDED, "57\n459");
+      verifyScanResult("double_sum_added", "57.0||459.0");
+      verifyScanResult("long_sum_added", "57||459");
 
       verifySegmentsCompacted(2, MAX_ROWS_PER_SEGMENT_COMPACTED);
 
@@ -1663,8 +1651,8 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
 
       // Result is not rollup
       // For dim "page", result has values "Gypsy Danger" and "Striker Eureka"
-      verifyQuery(SELECT_COLUMN_ADDED, "57.0\n459.0");
-      verifyQuery(SELECT_TOTAL_COUNT, "2");
+      verifyScanResult("added", "57.0||459.0");
+      verifyScanResult("COUNT(*)", "2");
 
       submitCompactionConfig(
           MAX_ROWS_PER_SEGMENT_COMPACTED,
@@ -1678,13 +1666,13 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
       );
       // Compact the MONTH segment
       forceTriggerAutoCompaction(2);
-      verifyQuery(SELECT_COLUMN_ADDED, "57.0\n459.0");
-      verifyQuery(SELECT_TOTAL_COUNT, "2");
+      verifyScanResult("added", "57.0||459.0");
+      verifyScanResult("COUNT(*)", "2");
 
       // Compact the WEEK segment
       forceTriggerAutoCompaction(2);
-      verifyQuery(SELECT_COLUMN_ADDED, "57.0\n459.0");
-      verifyQuery(SELECT_TOTAL_COUNT, "2");
+      verifyScanResult("added", "57.0||459.0");
+      verifyScanResult("COUNT(*)", "2");
 
       // Verify all task succeed
       List<TaskStatusPlus> compactTasksBefore = getCompleteTasksForDataSource(fullDatasourceName);
@@ -1721,11 +1709,7 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
   private void verifyQuery(List<Pair<String, String>> queries)
   {
     queries.forEach(
-        query -> Assertions.assertEquals(
-            query.rhs,
-            cluster.runSql(query.lhs, dataSource),
-            StringUtils.format("Query[%s] failed", query.lhs)
-        )
+        query -> verifyQuery(query.lhs, query.rhs)
     );
   }
 
@@ -1735,6 +1719,31 @@ public class EmbeddedAutoCompactionTest extends EmbeddedClusterTestBase
         result,
         cluster.runSql(query, dataSource),
         StringUtils.format("Query[%s] failed", query)
+    );
+  }
+
+  /**
+   * Verifies the result of a SELECT query
+   *
+   * @param field  Field to select
+   * @param result CSV result with special strings {@code ||} to represent
+   *               new-lines and {@code ...} to represent an empty string.
+   */
+  private void verifyScanResult(String field, String result)
+  {
+    final String sql = StringUtils.format(
+        "SELECT %s FROM %s WHERE \"language\" = 'en' AND __time < '2013-09-01'",
+        field, dataSource
+    );
+
+    // replace empty placeholder with empty string
+    result = StringUtils.replace(result, "...", "\"\"");
+    result = StringUtils.replace(result, "||", "\n");
+
+    Assertions.assertEquals(
+        result,
+        cluster.runSql(sql),
+        StringUtils.format("Query[%s] failed", sql)
     );
   }
 
