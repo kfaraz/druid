@@ -40,6 +40,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 
@@ -52,6 +53,14 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class DruidContainer extends TestcontainerResource<DruidContainer.ContainerImpl>
 {
   private static final Logger log = new Logger(DruidContainer.class);
+
+  /**
+   * Forbidden server properties that may be used by EmbeddedDruidServers but
+   * interfere with the functioning of DruidContainer-based service.
+   */
+  private static final Set<String> FORBIDDEN_PROPERTIES = Set.of(
+      "druid.extensions.modulesForEmbeddedTests"
+  );
 
   private static final String BASE_MOUNT_DIR = "target/embedded/";
 
@@ -140,6 +149,12 @@ public class DruidContainer extends TestcontainerResource<DruidContainer.Contain
   @Override
   protected ContainerImpl createContainer()
   {
+    log.info(
+        "Removing forbidden properties[%s] from the specified server properties[%s].",
+        FORBIDDEN_PROPERTIES, properties
+    );
+    FORBIDDEN_PROPERTIES.forEach(properties::remove);
+
     // TODO: Just override the stuff that we don't need, rest should be okay
     addProperty(
         "druid.zk.service.host",
