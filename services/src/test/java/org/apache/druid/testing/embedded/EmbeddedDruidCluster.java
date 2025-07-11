@@ -35,7 +35,6 @@ import org.apache.druid.utils.RuntimeInfo;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.Properties;
 import java.util.stream.Collectors;
 
@@ -82,6 +81,7 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
   private final List<Class<? extends DruidModule>> extensionModules = new ArrayList<>();
   private final Properties commonProperties = new Properties();
 
+  private boolean hasDruidContainers = false;
   private boolean startedFirstDruidServer = false;
   private EmbeddedZookeeper zookeeper;
 
@@ -156,6 +156,15 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
   }
 
   /**
+   * Configures this cluster to allow the use of {@code DruidContainer} services.
+   */
+  public EmbeddedDruidCluster useDruidContainers()
+  {
+    this.hasDruidContainers = true;
+    return this;
+  }
+
+  /**
    * Adds an extension to this cluster. The list of extensions is populated in
    * the common property {@code druid.extensions.modulesForEmbeddedTest}.
    */
@@ -221,6 +230,19 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
     return this;
   }
 
+  public String getCommonProperty(String key)
+  {
+    return commonProperties.getProperty(key);
+  }
+
+  /**
+   * @return true if this cluster uses one or more {@code DruidContainer} services.
+   */
+  public boolean hasDruidContainers()
+  {
+    return hasDruidContainers;
+  }
+
   /**
    * The test directory used by this cluster. Each Druid service creates a
    * sub-folder inside this directory to write out task logs or segments.
@@ -228,21 +250,6 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
   public TestFolder getTestFolder()
   {
     return testFolder;
-  }
-
-  /**
-   * The embedded Zookeeper server used by this cluster, if any.
-   *
-   * @throws NullPointerException if this cluster has no embedded zookeeper.
-   */
-  public EmbeddedZookeeper getZookeeper()
-  {
-    return Objects.requireNonNull(zookeeper, "No embedded zookeeper configured for this cluster");
-  }
-
-  public String getCommonProperty(String key)
-  {
-    return commonProperties.getProperty(key);
   }
 
   /**

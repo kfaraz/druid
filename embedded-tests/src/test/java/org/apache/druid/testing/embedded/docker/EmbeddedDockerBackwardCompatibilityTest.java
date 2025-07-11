@@ -19,25 +19,69 @@
 
 package org.apache.druid.testing.embedded.docker;
 
+import org.apache.druid.common.utils.IdUtils;
+import org.apache.druid.java.util.common.StringUtils;
+import org.apache.druid.testing.embedded.DruidDocker;
+import org.apache.druid.testing.embedded.EmbeddedBroker;
+import org.apache.druid.testing.embedded.EmbeddedClusterApis;
 import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
-import org.apache.druid.testing.embedded.EmbeddedIndexer;
-import org.apache.druid.testing.embedded.EmbeddedOverlord;
+import org.apache.druid.testing.embedded.EmbeddedRouter;
 import org.apache.druid.testing.embedded.derby.StandaloneDerbyMetadataResource;
+import org.apache.druid.testing.embedded.indexing.Resources;
 import org.apache.druid.testing.embedded.junit5.EmbeddedClusterTestBase;
+import org.apache.druid.testing.embedded.minio.MinIOStorageResource;
+import org.junit.jupiter.api.Test;
 
 public class EmbeddedDockerBackwardCompatibilityTest extends EmbeddedClusterTestBase
 {
-  private final DruidContainer coordinator = new DockerizedCoordinator();
-  private final EmbeddedOverlord overlord = new EmbeddedOverlord();
+  static {
+    System.setProperty(DruidDocker.PROPERTY_TEST_IMAGE, "apache/druid:tang");
+  }
+
+  private final DruidContainer overlord = DruidDockerContainers.newOverlord().withDockerTestImage();
+  private final DruidContainer coordinator = DruidDockerContainers.newCoordinator().withDockerTestImage();
+  private final DruidContainer indexer = DruidDockerContainers.newIndexer().withDockerTestImage();
+  private final DruidContainer historical = DruidDockerContainers.newHistorical().withDockerTestImage();
 
   @Override
   public EmbeddedDruidCluster createCluster()
   {
+    // TODO: support minio properly
+    //  that would need supporting extensions and common props
     return EmbeddedDruidCluster.withZookeeper()
                                .useLatchableEmitter()
+                               .useDruidContainers()
                                .addResource(new StandaloneDerbyMetadataResource())
+                               .addResource(new MinIOStorageResource())
                                .addResource(coordinator)
-                               .addServer(overlord)
-                               .addServer(new EmbeddedIndexer());
+                               .addResource(overlord)
+                               .addResource(indexer)
+                               .addResource(historical)
+                               .addServer(new EmbeddedBroker())
+                               .addServer(new EmbeddedRouter());
+  }
+
+  @Test
+  public void test_runATask()
+  {
+    final String taskId = IdUtils.getRandomId();
+    final Object task = createIndexTaskForInlineData(
+        taskId,
+        StringUtils.replace(Resources.CSV_DATA_10_DAYS, "\n", "\\n")
+    );
+
+    cluster.callApi().onLeaderOverlord(o -> o.runTask(taskId, task));
+    System.out.println("Finish off the things");
+
+    // TODO: We can extend an existing test as long as none of the servers are being referenced directly
+    //  but then how do we wait for events
+  }
+
+  private Object createIndexTaskForInlineData(String taskId, String inlineDataCsv)
+  {
+    return EmbeddedClusterApis.createTaskFromPayload(
+        taskId,
+        StringUtils.format(Resources.INDEX_TASK_PAYLOAD_WITH_INLINE_DATA, inlineDataCsv, dataSource)
+    );
   }
 }

@@ -22,9 +22,11 @@ package org.apache.druid.testing.embedded.derby;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.metadata.MetadataStorageConnectorConfig;
 import org.apache.druid.metadata.storage.derby.DerbyMetadataStorage;
-import org.apache.druid.testing.embedded.docker.DruidContainer;
+import org.apache.druid.testing.embedded.DruidDocker;
 import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
 import org.apache.druid.testing.embedded.EmbeddedResource;
+
+import java.util.Map;
 
 /**
  * Resource to run a Derby metadata store in this JVM but functioning as a
@@ -36,14 +38,22 @@ public class StandaloneDerbyMetadataResource implements EmbeddedResource
    * This must be the same as the database name used in
    * {@link MetadataStorageConnectorConfig#getConnectURI()}.
    */
-  private static final String DATABASE_NAME = "druid";
+  private static final String DATABASE_PATH = "target/derby";
 
   private final DerbyMetadataStorage storage;
   private final MetadataStorageConnectorConfig connectorConfig;
 
   public StandaloneDerbyMetadataResource()
   {
-    this.connectorConfig = new MetadataStorageConnectorConfig();
+    this.connectorConfig = MetadataStorageConnectorConfig.create(
+        StringUtils.format(
+            "jdbc:derby://%s:%s/%s;create=true",
+            "localhost", 1527, DATABASE_PATH
+        ),
+        null,
+        null,
+        Map.of()
+    );
     this.storage = new DerbyMetadataStorage(connectorConfig);
   }
 
@@ -63,15 +73,15 @@ public class StandaloneDerbyMetadataResource implements EmbeddedResource
   public void onStarted(EmbeddedDruidCluster cluster)
   {
     cluster.addCommonProperty("druid.metadata.storage.connector.connectURI", connectorConfig.getConnectURI());
-    cluster.addCommonProperty(DruidContainer.METADATA_STORAGE_CONNECT_URI, getConnectUriForDocker());
+    cluster.addCommonProperty(DruidDocker.PROPERTY_METADATA_STORE_CONNECT_URI, getConnectUriForDocker());
   }
 
   public String getConnectUriForDocker()
   {
     return StringUtils.format(
         "jdbc:derby://%s/%s;create=true",
-        DruidContainer.connectStringForPort(connectorConfig.getPort()),
-        DATABASE_NAME
+        DruidDocker.connectStringForPort(connectorConfig.getPort()),
+        DATABASE_PATH
     );
   }
 }
