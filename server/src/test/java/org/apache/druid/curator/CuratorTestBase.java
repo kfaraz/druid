@@ -149,4 +149,9 @@ public class CuratorTestBase
   {
     return server.getConnectString();
   }
+
+  public int getPort()
+  {
+    return server.getPort();
+  }
 }

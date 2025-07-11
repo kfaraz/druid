@@ -19,13 +19,15 @@
 
 package org.apache.druid.testing.embedded.docker;
 
-import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.utility.DockerImageName;
+import org.apache.druid.discovery.NodeRole;
 
-public class DruidContainer extends GenericContainer<DruidContainer>
+/**
+ * Docker container for running a Historical node.
+ */
+public class DockerizedHistorical extends DruidContainer
 {
-  public DruidContainer(String dockerImageName)
+  public DockerizedHistorical()
   {
-    super(DockerImageName.parse(dockerImageName));
+    super(NodeRole.HISTORICAL, 8083);
   }
 }

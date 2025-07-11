@@ -20,6 +20,7 @@
 package org.apache.druid.testing.embedded;
 
 import org.apache.druid.curator.CuratorTestBase;
+import org.apache.druid.testing.embedded.docker.DruidContainer;
 
 /**
  * {@link EmbeddedResource} for an embedded zookeeper cluster that can be
@@ -39,6 +40,18 @@ public class EmbeddedZookeeper implements EmbeddedResource
   public void stop()
   {
     zk.tearDownServerAndCurator();
+  }
+
+  @Override
+  public void onStarted(EmbeddedDruidCluster cluster)
+  {
+    cluster.addCommonProperty("druid.zk.service.host", getConnectString());
+    cluster.addCommonProperty(
+        DruidContainer.ZK_SERVICE_HOST,
+        DruidContainer.connectStringForPort(zk.getPort())
+    );
+
+    EmbeddedResource.super.onStarted(cluster);
   }
 
   /**

@@ -132,10 +132,16 @@ public abstract class EmbeddedDruidServer<T extends EmbeddedDruidServer<T>> impl
    * Called from {@link EmbeddedDruidCluster#addServer(EmbeddedDruidServer)} to
    * tie the lifecycle of this server to the cluster.
    */
-  final void onAddedToCluster(EmbeddedDruidCluster cluster, Properties commonProperties)
+  @Override
+  public final void onAddedToCluster(EmbeddedDruidCluster cluster)
   {
     this.lifecycle.set(
-        new EmbeddedServerLifecycle(this, cluster.getTestFolder(), cluster.getZookeeper(), commonProperties)
+        new EmbeddedServerLifecycle(
+            this,
+            cluster.getTestFolder(),
+            cluster.getZookeeper(),
+            cluster.getCommonProperties()
+        )
     );
   }
 
@@ -180,9 +186,9 @@ public abstract class EmbeddedDruidServer<T extends EmbeddedDruidServer<T>> impl
     serverProperties.setProperty("druid.storage.storageDirectory", storageDirectory);
 
     // Add properties for Zookeeper
-    if (zookeeper != null) {
+    /*if (zookeeper != null) {
       serverProperties.setProperty("druid.zk.service.host", zookeeper.getConnectString());
-    }
+    }*/
 
     if (this instanceof EmbeddedHistorical) {
       serverProperties.setProperty(

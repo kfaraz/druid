@@ -173,7 +173,7 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
    */
   public EmbeddedDruidCluster addServer(EmbeddedDruidServer server)
   {
-    server.onAddedToCluster(this, commonProperties);
+    server.onAddedToCluster(this);
     servers.add(server);
     resources.add(server);
     return this;
@@ -188,6 +188,7 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
   public EmbeddedDruidCluster addResource(EmbeddedResource resource)
   {
     validateNotStarted();
+    resource.onAddedToCluster(this);
     resources.add(resource);
     return this;
   }
@@ -222,6 +223,11 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
   public EmbeddedZookeeper getZookeeper()
   {
     return Objects.requireNonNull(zookeeper, "No embedded zookeeper configured for this cluster");
+  }
+
+  public String getCommonProperty(String key)
+  {
+    return commonProperties.getProperty(key);
   }
 
   /**

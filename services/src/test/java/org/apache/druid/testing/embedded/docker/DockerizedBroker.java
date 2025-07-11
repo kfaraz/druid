@@ -19,24 +19,15 @@
 
 package org.apache.druid.testing.embedded.docker;
 
-import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
-import org.apache.druid.testing.embedded.EmbeddedRouter;
-import org.apache.druid.testing.embedded.junit5.EmbeddedClusterTestBase;
-import org.junit.jupiter.api.Test;
+import org.apache.druid.discovery.NodeRole;
 
-public class EmbeddedDockerImageTest extends EmbeddedClusterTestBase
+/**
+ * Docker container for running a Broker node.
+ */
+public class DockerizedBroker extends DruidContainer
 {
-  @Override
-  protected EmbeddedDruidCluster createCluster()
+  public DockerizedBroker()
   {
-    return EmbeddedDruidCluster.withZookeeper()
-                               .addResource(new DruidDockerResource())
-                               .addServer(new EmbeddedRouter());
-  }
-
-  @Test
-  public void test_runDockerContainers()
-  {
-    System.out.println("things are finally running");
+    super(NodeRole.BROKER, 8082);
   }
 }

@@ -19,22 +19,15 @@
 
 package org.apache.druid.testing.embedded.docker;
 
-import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
-import org.apache.druid.testing.embedded.TestcontainerResource;
+import org.apache.druid.discovery.NodeRole;
 
-public class DruidDockerResource extends TestcontainerResource<DruidContainer>
+/**
+ * Docker container for running a Coordinator node.
+ */
+public class DockerizedCoordinator extends DruidContainer
 {
-  private static final String DEFAULT_IMAGE = "apache/druid:32.0.0";
-
-  @Override
-  protected DruidContainer createContainer()
+  public DockerizedCoordinator()
   {
-    return new DruidContainer(DEFAULT_IMAGE);
-  }
-
-  @Override
-  public void onStarted(EmbeddedDruidCluster cluster)
-  {
-    super.onStarted(cluster);
+    super(NodeRole.COORDINATOR, 8081);
   }
 }
