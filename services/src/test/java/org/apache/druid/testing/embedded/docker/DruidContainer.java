@@ -97,6 +97,12 @@ public class DruidContainer<C extends DruidContainer<C>> extends TestcontainerRe
   }
 
   @Override
+  public void beforeStart(EmbeddedDruidCluster cluster)
+  {
+    this.cluster = cluster;
+  }
+
+  @Override
   protected ContainerImpl createContainer()
   {
     addProperty(
@@ -142,12 +148,6 @@ public class DruidContainer<C extends DruidContainer<C>> extends TestcontainerRe
         )
         .withExposedPorts(port)
         .waitingFor(Wait.forHttp("/status/health").forPort(port));
-  }
-
-  @Override
-  public void onAddedToCluster(EmbeddedDruidCluster cluster)
-  {
-    this.cluster = cluster;
   }
 
   private void writePropertiesToFile(Properties properties, String file)

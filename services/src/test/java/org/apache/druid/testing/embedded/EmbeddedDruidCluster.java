@@ -77,7 +77,7 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
   private final EmbeddedClusterApis clusterApis;
   private final TestFolder testFolder = new TestFolder();
 
-  private final List<EmbeddedDruidServer> servers = new ArrayList<>();
+  private final List<EmbeddedDruidServer<?>> servers = new ArrayList<>();
   private final List<EmbeddedResource> resources = new ArrayList<>();
   private final List<Class<? extends DruidModule>> extensionModules = new ArrayList<>();
   private final Properties commonProperties = new Properties();
@@ -157,7 +157,7 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
 
   /**
    * Adds an extension to this cluster. The list of extensions is populated in
-   * the common property {@code druid.extensions.modulesForSimulation}.
+   * the common property {@code druid.extensions.modulesForEmbeddedTest}.
    */
   public EmbeddedDruidCluster addExtension(Class<? extends DruidModule> moduleClass)
   {
@@ -167,15 +167,31 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
   }
 
   /**
+   * Adds extensions to this cluster.
+   *
+   * @see #addExtension(Class)
+   */
+  @SafeVarargs
+  public final EmbeddedDruidCluster addExtensions(Class<? extends DruidModule>... moduleClasses)
+  {
+    validateNotStarted();
+    extensionModules.addAll(List.of(moduleClasses));
+    return this;
+  }
+
+  /**
    * Adds a Druid server to this cluster. A server added to the cluster after the
    * cluster has started must be started explicitly by calling
    * {@link EmbeddedDruidServer#start()}.
    */
-  public EmbeddedDruidCluster addServer(EmbeddedDruidServer server)
+  public EmbeddedDruidCluster addServer(EmbeddedDruidServer<?> server)
   {
-    server.onAddedToCluster(this);
+    server.onAddedToCluster(commonProperties);
     servers.add(server);
     resources.add(server);
+    if (startedFirstDruidServer) {
+      server.beforeStart(this);
+    }
     return this;
   }
 
@@ -188,7 +204,6 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
   public EmbeddedDruidCluster addResource(EmbeddedResource resource)
   {
     validateNotStarted();
-    resource.onAddedToCluster(this);
     resources.add(resource);
     return this;
   }
@@ -253,6 +268,7 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
         }
 
         log.info("Starting resource[%s].", resource);
+        resource.beforeStart(this);
         resource.start();
         resource.onStarted(this);
       }

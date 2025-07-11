@@ -39,9 +39,14 @@ public interface EmbeddedResource
    */
   void stop() throws Exception;
 
-  default void onAddedToCluster(EmbeddedDruidCluster cluster)
+  /**
+   * Called before {@link #start()} with a pointer to the current cluster. This is primarily useful for any
+   * final initialization of {@link EmbeddedDruidServer} that need to configure themselves based on some
+   * shared resources which have already been started, such as {@link TestFolder}.
+   */
+  default void beforeStart(EmbeddedDruidCluster cluster)
   {
-    // Do nothing by default.
+    // do nothing by default
   }
 
   /**
