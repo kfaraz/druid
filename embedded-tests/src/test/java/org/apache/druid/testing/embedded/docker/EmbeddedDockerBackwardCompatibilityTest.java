@@ -27,7 +27,7 @@ import org.apache.druid.testing.embedded.EmbeddedClusterApis;
 import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
 import org.apache.druid.testing.embedded.EmbeddedOverlord;
 import org.apache.druid.testing.embedded.EmbeddedRouter;
-import org.apache.druid.testing.embedded.derby.StandaloneDerbyMetadataResource;
+import org.apache.druid.testing.embedded.derby.EmbeddedDerbyMetadataResource;
 import org.apache.druid.testing.embedded.indexing.Resources;
 import org.apache.druid.testing.embedded.junit5.EmbeddedClusterTestBase;
 import org.apache.druid.testing.embedded.minio.MinIOStorageResource;
@@ -46,7 +46,7 @@ public class EmbeddedDockerBackwardCompatibilityTest extends EmbeddedClusterTest
   // Docker containers
   private final DruidContainer overlordLeader = DruidContainers.newOverlord().withTestImage();
   private final DruidContainer coordinator = DruidContainers.newCoordinator().withTestImage();
-  private final DruidContainer indexer = DruidContainers.newIndexer().withTestImage();
+  private final DruidContainer middleManager = DruidContainers.newMiddleManager().withTestImage();
   private final DruidContainer historical = DruidContainers.newHistorical().withTestImage();
   private final DruidContainer broker = DruidContainers.newBroker().withTestImage();
 
@@ -62,12 +62,12 @@ public class EmbeddedDockerBackwardCompatibilityTest extends EmbeddedClusterTest
     return EmbeddedDruidCluster.withZookeeper()
                                .useLatchableEmitter()
                                .useDruidContainers()
-                               .addResource(new StandaloneDerbyMetadataResource())
+                               .addResource(new EmbeddedDerbyMetadataResource())
                                .addResource(new MinIOStorageResource())
                                .addCommonProperty("druid.extensions.loadList", "[\"druid-s3-extensions\"]")
                                .addResource(coordinator)
                                .addResource(overlordLeader)
-                               .addResource(indexer)
+                               .addResource(middleManager)
                                .addResource(historical)
                                .addResource(broker)
                                .addServer(overlordFollower)

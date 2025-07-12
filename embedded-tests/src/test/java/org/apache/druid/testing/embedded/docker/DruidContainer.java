@@ -46,19 +46,15 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 
 /**
- * TODO:
- * - clean up the directory mounting logic
- *
  * Implementation of {@link TestcontainerResource} to run Druid services.
  * Depending on the image used, some extensions can be used out-of-the-box
  * such as {@code druid-s3-extensions} or {@code postgresql-metadata-storage},
  * simply by adding them to {@code druid.extensions.loadList}.
  * <p>
- * {@link DruidContainers} should be used for integration testing only when it is
- * necessary to test backward compatibility or a Docker-specific feature.
- * For all other testing needs, use plain old {@code EmbeddedDruidServer} as they
- * are much faster, allow easy debugging and do not require downloading any
- * images.
+ * {@link DruidContainers} should be used only for testing backward compatiblity
+ * or a Docker-specific feature. For all other testing needs, use plain old
+ * {@code EmbeddedDruidServer} as they are much faster, allow easy debugging and
+ * do not require downloading any images.
  * <p>
  * Supported Druid images:
  * <ul>
@@ -105,9 +101,11 @@ public class DruidContainer extends TestcontainerResource<DruidContainer.Contain
   private EmbeddedDruidCluster cluster;
 
   private String containerDirectory;
-  private String clusterLogsDirectory;
-  private String deepStorageDirectory;
-  private String clusterConfDirectory;
+
+  private MountedDir clusterLogsDirectory;
+  private MountedDir serviceLogsDirectory;
+  private MountedDir deepStorageDirectory;
+  private MountedDir clusterConfDirectory;
 
   DruidContainer(NodeRole nodeRole, int port)
   {
@@ -177,7 +175,7 @@ public class DruidContainer extends TestcontainerResource<DruidContainer.Contain
     return name;
   }
 
-  public String getContainerMountDir()
+  public String getContainerMountedDir()
   {
     return containerDirectory;
   }
@@ -187,11 +185,28 @@ public class DruidContainer extends TestcontainerResource<DruidContainer.Contain
   {
     this.cluster = cluster;
 
-    this.containerDirectory = cluster.getTestFolder().getOrCreateFolder(name).getAbsolutePath();
-    this.deepStorageDirectory = cluster.getTestFolder().getOrCreateFolder("deep-store").getAbsolutePath();
-    this.clusterLogsDirectory = cluster.getTestFolder().getOrCreateFolder("indexer-logs").getAbsolutePath();
-    this.clusterConfDirectory = cluster.getTestFolder().getOrCreateFolder("conf").getAbsolutePath();
+    // Set up directories used by the entire cluster (including embedded servers)
+    this.deepStorageDirectory = new MountedDir(
+        "/tmp/druid/deep-store",
+        cluster.getTestFolder().getOrCreateFolder("deep-store").getAbsolutePath()
+    );
+    this.clusterLogsDirectory = new MountedDir(
+        "/tmp/druid/indexer-logs",
+        cluster.getTestFolder().getOrCreateFolder("indexer-logs").getAbsolutePath()
+    );
+    this.clusterConfDirectory = new MountedDir(
+        "/opt/shared/conf",
+        cluster.getTestFolder().getOrCreateFolder("conf").getAbsolutePath()
+    );
 
+    // Set up directories used by this container
+    this.containerDirectory = cluster.getTestFolder().getOrCreateFolder(name).getAbsolutePath();
+    this.serviceLogsDirectory = new MountedDir(
+        "/opt/druid/log",
+        containerDirectory + "/log"
+    );
+
+    // Create the log directory upfront to avoid permission issues
     mkdirpUnchecked(new File(containerDirectory, "log"));
   }
 
@@ -199,10 +214,44 @@ public class DruidContainer extends TestcontainerResource<DruidContainer.Contain
   protected ContainerImpl createContainer()
   {
     log.info(
-        "Removing forbidden properties[%s] for Druid container[%s].",
-        FORBIDDEN_PROPERTIES, name
+        "Starting Druid container[%s] on port[%d] with mounted directory[%s].",
+        name, port, containerDirectory
     );
-    FORBIDDEN_PROPERTIES.forEach(properties::remove);
+
+    return new ContainerImpl(imageName, port)
+        .withNetwork(Network.newNetwork())
+        .withNetworkAliases(nodeRole.getJsonName())
+        .withCommand(nodeRole.getJsonName())
+        .withFileSystemBind(clusterConfDirectory.hostPath, clusterConfDirectory.containerPath, BindMode.READ_WRITE)
+        .withFileSystemBind(deepStorageDirectory.hostPath, deepStorageDirectory.containerPath, BindMode.READ_WRITE)
+        .withFileSystemBind(clusterLogsDirectory.hostPath, clusterLogsDirectory.containerPath, BindMode.READ_WRITE)
+        .withFileSystemBind(serviceLogsDirectory.hostPath, serviceLogsDirectory.containerPath, BindMode.READ_WRITE)
+        .withEnv(
+            Map.of(
+                "DRUID_CONFIG_COMMON",
+                clusterConfDirectory.containerPath + "/" + writeCommonPropertiesToFile(),
+                StringUtils.format("DRUID_CONFIG_%s", nodeRole.getJsonName()),
+                clusterConfDirectory.containerPath + "/" + writeServerPropertiesToFile(),
+                "DRUID_SET_HOST_IP", "0",
+                "DRUID_SET_HOST", "0"
+            )
+        )
+        .withExposedPorts(port)
+        .waitingFor(Wait.forHttp("/status/health").forPort(port));
+  }
+
+  /**
+   * Writes the common properties to a file.
+   *
+   * @return Name of the file.
+   */
+  private String writeCommonPropertiesToFile()
+  {
+    final String fileName = "common.runtime.properties";
+    final File commonPropertiesFile = new File(clusterConfDirectory.hostPath, fileName);
+    if (commonPropertiesFile.exists()) {
+      return fileName;
+    }
 
     final Properties commonProperties = new Properties();
     commonProperties.putAll(cluster.getCommonProperties());
@@ -220,60 +269,43 @@ public class DruidContainer extends TestcontainerResource<DruidContainer.Contain
         "druid.s3.endpoint.url",
         getConnectUrlForContainer(cluster.getCommonProperty("druid.s3.endpoint.url"))
     );
-    commonProperties.setProperty("druid.storage.storageDirectory", "/tmp/druid/deep-store");
-    commonProperties.setProperty("druid.indexer.logs.directory", "/tmp/druid/indexer-logs");
 
+    commonProperties.setProperty("druid.storage.storageDirectory", deepStorageDirectory.containerPath);
+    commonProperties.setProperty("druid.indexer.logs.directory", clusterLogsDirectory.containerPath);
+
+    log.info(
+        "Writing common properties for Druid containers to file[%s]: [%s]",
+        commonPropertiesFile, commonProperties
+    );
+    writePropertiesToFile(commonProperties, commonPropertiesFile);
+
+    return fileName;
+  }
+
+  /**
+   * Writes the server properties to a file.
+   *
+   * @return Name of the file.
+   */
+  private String writeServerPropertiesToFile()
+  {
+    FORBIDDEN_PROPERTIES.forEach(properties::remove);
     addProperty("druid.host", hostMachine());
     addProperty("druid.plaintextPort", String.valueOf(port));
 
-    log.info(
-        "Starting Druid container[%s] on port[%d] with common properties[%s]"
-        + " and server properties[%s]. Mounting directory[%s].",
-        name, port, commonProperties, properties, containerDirectory
-    );
+    final String fileName = StringUtils.format("%s.runtime.properties", name);
+    final File propertiesFile = new File(clusterConfDirectory.hostPath, fileName);
 
-    // Write out an empty common properties file for the time being
-    // All needed properties will just go to the service specific properties file
-    final String commonPropertiesFile = "common.runtime.properties";
-    writePropertiesToFile(
-        commonProperties,
-        new File(clusterConfDirectory, commonPropertiesFile)
-    );
-
-    final String serverPropertiesFile = StringUtils.format("%s.runtime.properties", name);
     final Properties serverProperties = new Properties();
     serverProperties.putAll(properties);
-    writePropertiesToFile(
-        serverProperties,
-        new File(clusterConfDirectory, serverPropertiesFile)
+
+    log.info(
+        "Writing runtime properties for Druid container[%s] to file[%s]: [%s]",
+        name, propertiesFile, serverProperties
     );
+    writePropertiesToFile(serverProperties, propertiesFile);
 
-    return new ContainerImpl(imageName, port)
-        .withNetwork(Network.newNetwork())
-        .withNetworkAliases(nodeRole.getJsonName())
-        .withCommand(nodeRole.getJsonName())
-        .withFileSystemBind(clusterConfDirectory, "/opt/shared/conf", BindMode.READ_WRITE)
-        .withFileSystemBind(deepStorageDirectory, "/tmp/druid/deep-store", BindMode.READ_WRITE)
-        .withFileSystemBind(clusterLogsDirectory, "/tmp/druid/indexer-logs", BindMode.READ_WRITE)
-        .withFileSystemBind(containerDirectory + "/log", "/opt/druid/log", BindMode.READ_WRITE)
-        .withEnv(
-            Map.of(
-                "DRUID_CONFIG_COMMON",
-                "/opt/shared/conf/" + commonPropertiesFile,
-                StringUtils.format("DRUID_CONFIG_%s", nodeRole.getJsonName()),
-                "/opt/shared/conf/" + serverPropertiesFile,
-                "DRUID_SET_HOST_IP", "0",
-                "DRUID_SET_HOST", "0"
-            )
-        )
-        .withExposedPorts(port)
-        .waitingFor(Wait.forHttp("/status/health").forPort(port));
-  }
-
-  @Override
-  public String toString()
-  {
-    return name;
+    return fileName;
   }
 
   private static void writePropertiesToFile(Properties properties, File file)
@@ -321,6 +353,12 @@ public class DruidContainer extends TestcontainerResource<DruidContainer.Contain
     return DruidNode.getDefaultHost();
   }
 
+  @Override
+  public String toString()
+  {
+    return name;
+  }
+
   /**
    * Implementation of {@link GenericContainer} for running Druid services.
    */
@@ -336,6 +374,18 @@ public class DruidContainer extends TestcontainerResource<DruidContainer.Contain
       setPortBindings(
           List.of(StringUtils.format("%d:%d", port, port))
       );
+    }
+  }
+
+  private static class MountedDir
+  {
+    final String hostPath;
+    final String containerPath;
+
+    MountedDir(String containerPath, String hostPath)
+    {
+      this.hostPath = hostPath;
+      this.containerPath = containerPath;
     }
   }
 }

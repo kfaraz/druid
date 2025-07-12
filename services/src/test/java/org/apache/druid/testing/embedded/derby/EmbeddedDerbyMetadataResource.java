@@ -29,9 +29,11 @@ import java.util.Map;
 
 /**
  * Derby metadata store that runs in the test JVM but functions as a standalone process.
- * Other services can connect to it on the exposed {@link #PORT}.
+ * Clients can connect to it on the exposed {@link #PORT}. This resource should
+ * be used only when running {@code DruidContainers}. If all servers are running
+ * in embedded mode, use {@link InMemoryDerbyResource} instead.
  */
-public class StandaloneDerbyMetadataResource implements EmbeddedResource
+public class EmbeddedDerbyMetadataResource implements EmbeddedResource
 {
   private static final String DATABASE_NAME = "druid";
   private static final int PORT = 1527;
@@ -39,7 +41,7 @@ public class StandaloneDerbyMetadataResource implements EmbeddedResource
   private final DerbyMetadataStorage storage;
   private final MetadataStorageConnectorConfig connectorConfig;
 
-  public StandaloneDerbyMetadataResource()
+  public EmbeddedDerbyMetadataResource()
   {
     this.connectorConfig = MetadataStorageConnectorConfig.create(
         StringUtils.format(

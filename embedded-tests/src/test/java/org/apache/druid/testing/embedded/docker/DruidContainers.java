@@ -91,7 +91,7 @@ public final class DruidContainers
         "druid.segmentCache.locations",
         StringUtils.format(
             "[{\"path\":\"%s\",\"maxSize\":\"%s\"}]",
-            historical.getContainerMountDir() + "/segment-cache",
+            historical.getContainerMountedDir() + "/segment-cache",
             HumanReadableBytes.parse("100M")
         )
     );
