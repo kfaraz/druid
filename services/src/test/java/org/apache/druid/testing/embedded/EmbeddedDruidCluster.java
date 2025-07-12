@@ -229,22 +229,9 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
     return this;
   }
 
-  public String getCommonProperty(String key)
-  {
-    return commonProperties.getProperty(key);
-  }
-
   public Properties getCommonProperties()
   {
     return commonProperties;
-  }
-
-  /**
-   * @return true if this cluster uses one or more {@code DruidContainer} services.
-   */
-  public boolean hasDruidContainers()
-  {
-    return hasDruidContainers;
   }
 
   /**
@@ -254,6 +241,14 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
   public TestFolder getTestFolder()
   {
     return testFolder;
+  }
+
+  /**
+   * @return true if this cluster uses one or more {@code DruidContainer} services.
+   */
+  public boolean hasDruidContainers()
+  {
+    return hasDruidContainers;
   }
 
   /**

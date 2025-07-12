@@ -85,10 +85,10 @@ public abstract class EmbeddedDruidServer<T extends EmbeddedDruidServer<T>> impl
           );
 
           if (cluster.hasDruidContainers()) {
-            // DruidContainers use this property to load extensions
+            // Do not load any extension as they are needed only by DruidContainers
             self.addProperty("druid.extensions.loadList", "[]");
           } else {
-            // Do not use localhost if the cluster has any DruidContainers
+            // Use localhost only if the cluster has no DruidContainers
             // Otherwise, the DruidContainer services cannot connect to embedded servers
             self.addProperty("druid.host", "localhost");
           }

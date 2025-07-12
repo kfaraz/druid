@@ -259,15 +259,15 @@ public class DruidContainer extends TestcontainerResource<DruidContainer.Contain
 
     commonProperties.setProperty(
         "druid.zk.service.host",
-        getConnectUrlForContainer(cluster.getCommonProperty("druid.zk.service.host"))
+        getConnectUrlForContainer(commonProperties.getProperty("druid.zk.service.host"))
     );
     commonProperties.setProperty(
         "druid.metadata.storage.connector.connectURI",
-        getConnectUrlForContainer(cluster.getCommonProperty("druid.metadata.storage.connector.connectURI"))
+        getConnectUrlForContainer(commonProperties.getProperty("druid.metadata.storage.connector.connectURI"))
     );
     commonProperties.setProperty(
         "druid.s3.endpoint.url",
-        getConnectUrlForContainer(cluster.getCommonProperty("druid.s3.endpoint.url"))
+        getConnectUrlForContainer(commonProperties.getProperty("druid.s3.endpoint.url"))
     );
 
     commonProperties.setProperty("druid.storage.storageDirectory", deepStorageDirectory.containerPath);
