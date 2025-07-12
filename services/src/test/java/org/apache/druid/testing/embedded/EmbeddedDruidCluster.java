@@ -235,6 +235,11 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
     return commonProperties.getProperty(key);
   }
 
+  public Properties getCommonProperties()
+  {
+    return commonProperties;
+  }
+
   /**
    * @return true if this cluster uses one or more {@code DruidContainer} services.
    */

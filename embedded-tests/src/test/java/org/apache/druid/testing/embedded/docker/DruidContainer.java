@@ -46,9 +46,20 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * TODO:
- * - add extensions
- * - add common properties? such as using a specific emitter or minio storage stuff
- * - how to watch events
+ * - allow adding extensions
+ * - clean up the directory mounting logic
+ *
+ * Implementation of {@link TestcontainerResource} to run Druid services.
+ * <p>
+ * Supported images:
+ * <ul>
+ * <li>{@link #APACHE_DRUID_32}</li>
+ * <li>{@link #APACHE_DRUID_33} (default)</li>
+ * </ul>
+ * Older images are currently not supported since they had some bug with unsetting
+ * environment variable {@code DRUID_SET_HOST_IP}, resulting in the property
+ * {@code druid.host=<default-host>} always being set by {@code druid.sh}.
+ * This caused containerized services to fail to connect to each other.
  */
 public class DruidContainer extends TestcontainerResource<DruidContainer.ContainerImpl>
 {
@@ -56,14 +67,15 @@ public class DruidContainer extends TestcontainerResource<DruidContainer.Contain
 
   /**
    * Forbidden server properties that may be used by EmbeddedDruidServers but
-   * interfere with the functioning of DruidContainer-based service.
+   * interfere with the functioning of DruidContainer-based services.
    */
   private static final Set<String> FORBIDDEN_PROPERTIES = Set.of(
-      "druid.extensions.modulesForEmbeddedTests"
+      "druid.extensions.modulesForEmbeddedTests",
+      "druid.emitter"
   );
 
-  private static final String BASE_MOUNT_DIR = "target/embedded/";
-
+  private static final String APACHE_DRUID_31 = "apache/druid:31.0.2";
+  private static final String APACHE_DRUID_32 = "apache/druid:32.0.1";
   private static final String APACHE_DRUID_33 = "apache/druid:33.0.0";
 
   /**
@@ -77,23 +89,24 @@ public class DruidContainer extends TestcontainerResource<DruidContainer.Contain
 
   private final String name;
   private final NodeRole nodeRole;
-  private final String baseContainerDirPath;
 
   private int port;
-
   private EmbeddedDruidCluster cluster;
+
+  private String containerDirectory;
+  private String clusterLogsDirectory;
+  private String deepStorageDirectory;
+  private String clusterConfDirectory;
 
   DruidContainer(NodeRole nodeRole, int port)
   {
     this.name = StringUtils.format(
-        "%s-%s-%d",
-        getClass().getSimpleName(),
+        "container_%s_%d",
         nodeRole.getJsonName(),
         SERVER_ID.incrementAndGet()
     );
     this.nodeRole = nodeRole;
     this.port = port;
-    this.baseContainerDirPath = BASE_MOUNT_DIR + name;
   }
 
   public DruidContainer withPort(int port)
@@ -108,6 +121,24 @@ public class DruidContainer extends TestcontainerResource<DruidContainer.Contain
   public DruidContainer withApache33Image()
   {
     this.imageName = APACHE_DRUID_33;
+    return this;
+  }
+
+  /**
+   * Uses the {@link #APACHE_DRUID_32} image for this container.
+   */
+  public DruidContainer withApache32Image()
+  {
+    this.imageName = APACHE_DRUID_32;
+    return this;
+  }
+
+  /**
+   * Uses the {@link #APACHE_DRUID_31} image for this container.
+   */
+  public DruidContainer withApache31Image()
+  {
+    this.imageName = APACHE_DRUID_31;
     return this;
   }
 
@@ -135,81 +166,89 @@ public class DruidContainer extends TestcontainerResource<DruidContainer.Contain
     return name;
   }
 
-  public String getBaseMountDir()
+  public String getContainerMountDir()
   {
-    return baseContainerDirPath;
+    return containerDirectory;
   }
 
   @Override
   public void beforeStart(EmbeddedDruidCluster cluster)
   {
     this.cluster = cluster;
+
+    this.containerDirectory = cluster.getTestFolder().getOrCreateFolder(name).getAbsolutePath();
+    this.deepStorageDirectory = cluster.getTestFolder().getOrCreateFolder("deep-store").getAbsolutePath();
+    this.clusterLogsDirectory = cluster.getTestFolder().getOrCreateFolder("indexer-logs").getAbsolutePath();
+    this.clusterConfDirectory = cluster.getTestFolder().getOrCreateFolder("conf").getAbsolutePath();
+
+    mkdirpUnchecked(new File(containerDirectory, "log"));
   }
 
   @Override
   protected ContainerImpl createContainer()
   {
     log.info(
-        "Removing forbidden properties[%s] from the specified server properties[%s].",
-        FORBIDDEN_PROPERTIES, properties
+        "Removing forbidden properties[%s] for Druid container[%s].",
+        FORBIDDEN_PROPERTIES, name
     );
     FORBIDDEN_PROPERTIES.forEach(properties::remove);
 
-    // TODO: Just override the stuff that we don't need, rest should be okay
-    addProperty(
+    final Properties commonProperties = new Properties();
+    commonProperties.putAll(cluster.getCommonProperties());
+    FORBIDDEN_PROPERTIES.forEach(commonProperties::remove);
+
+    commonProperties.setProperty(
         "druid.zk.service.host",
         cluster.getCommonProperty(DruidDocker.PROPERTY_ZK_CONNECT_STRING)
     );
-    addProperty(
+    commonProperties.setProperty(
         "druid.metadata.storage.connector.connectURI",
         cluster.getCommonProperty(DruidDocker.PROPERTY_METADATA_STORE_CONNECT_URI)
     );
-    addProperty(
-        "druid.extensions.loadList",
-        cluster.getCommonProperty("druid.extensions.loadList")
-    );
+    commonProperties.setProperty("druid.storage.storageDirectory", "/tmp/druid/deep-store");
+    commonProperties.setProperty("druid.indexer.logs.directory", "/tmp/druid/indexer-logs");
 
     addProperty("druid.host", DruidDocker.hostMachine());
     addProperty("druid.plaintextPort", String.valueOf(port));
 
     log.info(
-        "Starting Druid container[%s] on port[%d] with properties[%s]. Mounting directory[%s].",
-        name, port, properties, baseContainerDirPath
+        "Starting Druid container[%s] on port[%d] with common properties[%s]"
+        + " and server properties[%s]. Mounting directory[%s].",
+        name, port, commonProperties, properties, containerDirectory
     );
-
-    mkdirpUnchecked(new File(baseContainerDirPath));
-    mkdirpUnchecked(new File(baseContainerDirPath, "/shared/conf"));
 
     // Write out an empty common properties file for the time being
     // All needed properties will just go to the service specific properties file
-    final String commonPropertiesFile = "conf/common.runtime.properties";
+    final String commonPropertiesFile = "common.runtime.properties";
     writePropertiesToFile(
-        new Properties(),
-        baseContainerDirPath + "/shared/" + commonPropertiesFile
+        commonProperties,
+        new File(clusterConfDirectory, commonPropertiesFile)
     );
 
-    final String serverPropertiesFile = "conf/runtime.properties";
+    final String serverPropertiesFile = StringUtils.format("%s.runtime.properties", name);
     final Properties serverProperties = new Properties();
     serverProperties.putAll(properties);
     writePropertiesToFile(
         serverProperties,
-        baseContainerDirPath + "/shared/" + serverPropertiesFile
+        new File(clusterConfDirectory, serverPropertiesFile)
     );
 
     return new ContainerImpl(imageName, port)
         .withNetwork(Network.newNetwork())
         .withNetworkAliases(nodeRole.getJsonName())
         .withCommand(nodeRole.getJsonName())
-        .withFileSystemBind(baseContainerDirPath + "/shared", "/opt/shared", BindMode.READ_WRITE)
-        .withFileSystemBind(baseContainerDirPath + "/service", "/opt/druid/var", BindMode.READ_WRITE)
-        .withFileSystemBind(baseContainerDirPath + "/log", "/opt/druid/log", BindMode.READ_WRITE)
+        .withFileSystemBind(clusterConfDirectory, "/opt/shared/conf", BindMode.READ_WRITE)
+        .withFileSystemBind(deepStorageDirectory, "/tmp/druid/deep-store", BindMode.READ_WRITE)
+        .withFileSystemBind(clusterLogsDirectory, "/tmp/druid/indexer-logs", BindMode.READ_WRITE)
+        .withFileSystemBind(containerDirectory + "/log", "/opt/druid/log", BindMode.READ_WRITE)
         .withEnv(
             Map.of(
                 "DRUID_CONFIG_COMMON",
-                "/opt/shared/" + commonPropertiesFile,
+                "/opt/shared/conf/" + commonPropertiesFile,
                 StringUtils.format("DRUID_CONFIG_%s", nodeRole.getJsonName()),
-                "/opt/shared/" + serverPropertiesFile,
-                "DRUID_SET_HOST_IP", "0"
+                "/opt/shared/conf/" + serverPropertiesFile,
+                "DRUID_SET_HOST_IP", "0",
+                "DRUID_SET_HOST", "0"
             )
         )
         .withExposedPorts(port)
@@ -222,7 +261,7 @@ public class DruidContainer extends TestcontainerResource<DruidContainer.Contain
     return name;
   }
 
-  private static void writePropertiesToFile(Properties properties, String file)
+  private static void writePropertiesToFile(Properties properties, File file)
   {
     try (FileOutputStream out = new FileOutputStream(file)) {
       properties.store(out, "Druid config");
@@ -243,7 +282,7 @@ public class DruidContainer extends TestcontainerResource<DruidContainer.Contain
   }
 
   /**
-   * Druid implementation of {@link GenericContainer}.
+   * Implementation of {@link GenericContainer} for running Druid services.
    */
   public static class ContainerImpl extends GenericContainer<ContainerImpl>
   {

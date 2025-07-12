@@ -29,16 +29,13 @@ import org.apache.druid.testing.embedded.EmbeddedResource;
 import java.util.Map;
 
 /**
- * Resource to run a Derby metadata store in this JVM but functioning as a
- * standalone process.
+ * Derby metadata store that runs in the test JVM but functions as a standalone process.
+ * Other services can connect to it on the exposed {@link #PORT}.
  */
 public class StandaloneDerbyMetadataResource implements EmbeddedResource
 {
-  /**
-   * This must be the same as the database name used in
-   * {@link MetadataStorageConnectorConfig#getConnectURI()}.
-   */
-  private static final String DATABASE_PATH = "target/derby";
+  private static final String DATABASE_NAME = "druid";
+  private static final int PORT = 1527;
 
   private final DerbyMetadataStorage storage;
   private final MetadataStorageConnectorConfig connectorConfig;
@@ -48,13 +45,22 @@ public class StandaloneDerbyMetadataResource implements EmbeddedResource
     this.connectorConfig = MetadataStorageConnectorConfig.create(
         StringUtils.format(
             "jdbc:derby://%s:%s/%s;create=true",
-            "localhost", 1527, DATABASE_PATH
+            "localhost", PORT, DATABASE_NAME
         ),
         null,
         null,
         Map.of()
     );
     this.storage = new DerbyMetadataStorage(connectorConfig);
+  }
+
+  @Override
+  public void beforeStart(EmbeddedDruidCluster cluster)
+  {
+    System.setProperty(
+        "derby.system.home",
+        cluster.getTestFolder().getOrCreateFolder("derby").getAbsolutePath()
+    );
   }
 
   @Override
@@ -67,6 +73,7 @@ public class StandaloneDerbyMetadataResource implements EmbeddedResource
   public void stop() throws Exception
   {
     storage.stop();
+    System.clearProperty("derby.system.home");
   }
 
   @Override
@@ -81,7 +88,7 @@ public class StandaloneDerbyMetadataResource implements EmbeddedResource
     return StringUtils.format(
         "jdbc:derby://%s/%s;create=true",
         DruidDocker.connectStringForPort(connectorConfig.getPort()),
-        DATABASE_PATH
+        DATABASE_NAME
     );
   }
 }

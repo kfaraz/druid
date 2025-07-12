@@ -20,17 +20,22 @@
 package org.apache.druid.testing.embedded.docker;
 
 import org.apache.druid.common.utils.IdUtils;
+import org.apache.druid.indexing.overlord.Segments;
 import org.apache.druid.java.util.common.StringUtils;
+import org.apache.druid.query.DruidMetrics;
 import org.apache.druid.testing.embedded.DruidDocker;
-import org.apache.druid.testing.embedded.EmbeddedBroker;
 import org.apache.druid.testing.embedded.EmbeddedClusterApis;
 import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
+import org.apache.druid.testing.embedded.EmbeddedOverlord;
 import org.apache.druid.testing.embedded.EmbeddedRouter;
 import org.apache.druid.testing.embedded.derby.StandaloneDerbyMetadataResource;
 import org.apache.druid.testing.embedded.indexing.Resources;
 import org.apache.druid.testing.embedded.junit5.EmbeddedClusterTestBase;
-import org.apache.druid.testing.embedded.minio.MinIOStorageResource;
+import org.apache.druid.timeline.DataSegment;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+
+import java.util.Set;
 
 public class EmbeddedDockerBackwardCompatibilityTest extends EmbeddedClusterTestBase
 {
@@ -38,26 +43,37 @@ public class EmbeddedDockerBackwardCompatibilityTest extends EmbeddedClusterTest
     System.setProperty(DruidDocker.PROPERTY_TEST_IMAGE, "apache/druid:tang");
   }
 
-  private final DruidContainer overlord = DruidDockerContainers.newOverlord().withDockerTestImage();
-  private final DruidContainer coordinator = DruidDockerContainers.newCoordinator().withDockerTestImage();
-  private final DruidContainer indexer = DruidDockerContainers.newIndexer().withDockerTestImage();
-  private final DruidContainer historical = DruidDockerContainers.newHistorical().withDockerTestImage();
+  // Docker containers
+  private final DruidContainer overlordLeader = DruidDockerContainers.newOverlord().withApache31Image();
+  private final DruidContainer coordinator = DruidDockerContainers.newCoordinator().withApache31Image();
+  private final DruidContainer indexer = DruidDockerContainers.newIndexer().withApache31Image();
+  private final DruidContainer historical = DruidDockerContainers.newHistorical().withApache31Image();
+  private final DruidContainer broker = DruidDockerContainers.newBroker().withApache31Image();
+
+  // Follower EmbeddedOverlord to watch segment publish events
+  private final EmbeddedOverlord overlordFollower = new EmbeddedOverlord()
+      .addProperty("druid.plaintextPort", "7090")
+      .addProperty("druid.manager.segments.useIncrementalCache", "always")
+      .addProperty("druid.manager.segments.pollDuration", "PT0.1s");
 
   @Override
   public EmbeddedDruidCluster createCluster()
   {
-    // TODO: support minio properly
-    //  that would need supporting extensions and common props
     return EmbeddedDruidCluster.withZookeeper()
                                .useLatchableEmitter()
                                .useDruidContainers()
                                .addResource(new StandaloneDerbyMetadataResource())
-                               .addResource(new MinIOStorageResource())
+                               //.addResource(new MinIOStorageResource())
+                               .addCommonProperty(
+                                   "druid.extensions.loadList", "[]"
+                                   // "[\"druid-s3-extensions\"]"
+                               )
                                .addResource(coordinator)
-                               .addResource(overlord)
+                               .addResource(overlordLeader)
                                .addResource(indexer)
                                .addResource(historical)
-                               .addServer(new EmbeddedBroker())
+                               .addResource(broker)
+                               .addServer(overlordFollower)
                                .addServer(new EmbeddedRouter());
   }
 
@@ -71,10 +87,19 @@ public class EmbeddedDockerBackwardCompatibilityTest extends EmbeddedClusterTest
     );
 
     cluster.callApi().onLeaderOverlord(o -> o.runTask(taskId, task));
-    System.out.println("Finish off the things");
 
-    // TODO: We can extend an existing test as long as none of the servers are being referenced directly
-    //  but then how do we wait for events
+    // Wait for follower Overlord to add the new segments to its cache
+    overlordFollower.latchableEmitter().waitForEvent(
+        event -> event.hasMetricName("segment/metadataCache/used/count")
+                      .hasDimension(DruidMetrics.DATASOURCE, dataSource)
+                      .hasValue(10)
+    );
+
+    final Set<DataSegment> allUsedSegments = overlordFollower
+        .bindings()
+        .segmentsMetadataStorage()
+        .retrieveAllUsedSegments(dataSource, Segments.INCLUDING_OVERSHADOWED);
+    Assertions.assertEquals(10, allUsedSegments.size());
   }
 
   private Object createIndexTaskForInlineData(String taskId, String inlineDataCsv)

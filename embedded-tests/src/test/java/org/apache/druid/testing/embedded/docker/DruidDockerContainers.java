@@ -80,7 +80,7 @@ public class DruidDockerContainers
         "druid.segmentCache.locations",
         StringUtils.format(
             "[{\"path\":\"%s\",\"maxSize\":\"%s\"}]",
-            historical.getBaseMountDir() + "/segment-cache",
+            historical.getContainerMountDir() + "/segment-cache",
             HumanReadableBytes.parse("100M")
         )
     );

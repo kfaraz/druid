@@ -75,7 +75,7 @@ public abstract class EmbeddedDruidServer<T extends EmbeddedDruidServer<T>> impl
           // Add properties for temporary directories used by the servers
           final String logsDirectory = cluster.getTestFolder().getOrCreateFolder("indexer-logs").getAbsolutePath();
           final String taskDirectory = cluster.getTestFolder().newFolder().getAbsolutePath();
-          final String storageDirectory = cluster.getTestFolder().newFolder().getAbsolutePath();
+          final String storageDirectory = cluster.getTestFolder().getOrCreateFolder("deep-store").getAbsolutePath();
           log.info(
               "Server[%s] using directories: task directory[%s], logs directory[%s], storage directory[%s].",
               self.getName(),
@@ -84,9 +84,12 @@ public abstract class EmbeddedDruidServer<T extends EmbeddedDruidServer<T>> impl
               storageDirectory
           );
 
-          // Do not use localhost if the cluster has any DruidContainers
-          // Otherwise, the DruidContainer services cannot connect to embedded servers
-          if (!cluster.hasDruidContainers()) {
+          if (cluster.hasDruidContainers()) {
+            // DruidContainers use this property to load extensions
+            self.addProperty("druid.extensions.loadList", "[]");
+          } else {
+            // Do not use localhost if the cluster has any DruidContainers
+            // Otherwise, the DruidContainer services cannot connect to embedded servers
             self.addProperty("druid.host", "localhost");
           }
 

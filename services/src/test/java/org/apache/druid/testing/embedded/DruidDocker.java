@@ -30,14 +30,17 @@ public class DruidDocker
   /**
    * Used by {@code DruidContainer} to set the value of {@code druid.zk.service.host}.
    */
-  public static final String PROPERTY_ZK_CONNECT_STRING = "druid.testing.embedded.docker.zk.connectURI";
+  public static final String PROPERTY_ZK_CONNECT_STRING = "druid.testing.docker.zk.connectURI";
 
   /**
    * Used by {@code DruidContainer} to set the value of {@code druid.metadata.storage.connector.connectURI}.
    */
-  public static final String PROPERTY_METADATA_STORE_CONNECT_URI = "druid.testing.embedded.docker.metadata.connectURI";
+  public static final String PROPERTY_METADATA_STORE_CONNECT_URI = "druid.testing.docker.metadata.connectURI";
 
-  public static final String PROPERTY_TEST_IMAGE = "druid.testing.embedded.docker.image";
+  /**
+   * Java system property to specify the name of the Docker test image.
+   */
+  public static final String PROPERTY_TEST_IMAGE = "druid.testing.docker.image";
 
   /**
    * Creates a connect String that can be used by Druid Docker containers to talk
@@ -45,7 +48,7 @@ public class DruidDocker
    */
   public static String connectStringForPort(int port)
   {
-    return StringUtils.format("%s:%d", hostMachine(), port);
+    return StringUtils.format("%s:%d", "host.docker.internal", port);
   }
 
   /**
