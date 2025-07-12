@@ -41,6 +41,12 @@ public class EmbeddedZookeeper implements EmbeddedResource
     zk.tearDownServerAndCurator();
   }
 
+  @Override
+  public void onStarted(EmbeddedDruidCluster cluster)
+  {
+    cluster.addCommonProperty("druid.zk.service.host", getConnectString());
+  }
+
   /**
    * Connection string for this embedded Zookeeper.
    *

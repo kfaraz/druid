@@ -35,7 +35,6 @@ import org.apache.druid.utils.RuntimeInfo;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.Properties;
 import java.util.stream.Collectors;
 
@@ -77,11 +76,12 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
   private final EmbeddedClusterApis clusterApis;
   private final TestFolder testFolder = new TestFolder();
 
-  private final List<EmbeddedDruidServer> servers = new ArrayList<>();
+  private final List<EmbeddedDruidServer<?>> servers = new ArrayList<>();
   private final List<EmbeddedResource> resources = new ArrayList<>();
   private final List<Class<? extends DruidModule>> extensionModules = new ArrayList<>();
   private final Properties commonProperties = new Properties();
 
+  private boolean hasDruidContainers = false;
   private boolean startedFirstDruidServer = false;
   private EmbeddedZookeeper zookeeper;
 
@@ -156,6 +156,15 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
   }
 
   /**
+   * Configures this cluster to allow the use of {@code DruidContainer} services.
+   */
+  public EmbeddedDruidCluster useDruidContainers()
+  {
+    this.hasDruidContainers = true;
+    return this;
+  }
+
+  /**
    * Adds an extension to this cluster. The list of extensions is populated in
    * the common property {@code druid.extensions.modulesForEmbeddedTest}.
    */
@@ -184,9 +193,8 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
    * cluster has started must be started explicitly by calling
    * {@link EmbeddedDruidServer#start()}.
    */
-  public EmbeddedDruidCluster addServer(EmbeddedDruidServer server)
+  public EmbeddedDruidCluster addServer(EmbeddedDruidServer<?> server)
   {
-    server.onAddedToCluster(commonProperties);
     servers.add(server);
     resources.add(server);
     if (startedFirstDruidServer) {
@@ -221,6 +229,11 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
     return this;
   }
 
+  public Properties getCommonProperties()
+  {
+    return commonProperties;
+  }
+
   /**
    * The test directory used by this cluster. Each Druid service creates a
    * sub-folder inside this directory to write out task logs or segments.
@@ -231,13 +244,11 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
   }
 
   /**
-   * The embedded Zookeeper server used by this cluster, if any.
-   *
-   * @throws NullPointerException if this cluster has no embedded zookeeper.
+   * @return true if this cluster uses one or more {@code DruidContainer} services.
    */
-  public EmbeddedZookeeper getZookeeper()
+  public boolean hasDruidContainers()
   {
-    return Objects.requireNonNull(zookeeper, "No embedded zookeeper configured for this cluster");
+    return hasDruidContainers;
   }
 
   /**
