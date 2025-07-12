@@ -19,39 +19,26 @@
 
 package org.apache.druid.testing.embedded.derby;
 
-import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.metadata.MetadataStorageConnectorConfig;
 import org.apache.druid.metadata.storage.derby.DerbyMetadataStorage;
 import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
 import org.apache.druid.testing.embedded.EmbeddedResource;
 
-import java.util.Map;
-
 /**
  * Derby metadata store that runs in the test JVM but functions as a standalone process.
- * Clients can connect to it on the exposed {@link #PORT}. This resource should
+ * Clients can connect to it on the exposed port {@code 1527}. This resource should
  * be used only when running {@code DruidContainers}. If all servers are running
  * in embedded mode, use {@link InMemoryDerbyResource} instead.
  */
 public class EmbeddedDerbyMetadataResource implements EmbeddedResource
 {
-  private static final String DATABASE_NAME = "druid";
-  private static final int PORT = 1527;
-
   private final DerbyMetadataStorage storage;
   private final MetadataStorageConnectorConfig connectorConfig;
 
   public EmbeddedDerbyMetadataResource()
   {
-    this.connectorConfig = MetadataStorageConnectorConfig.create(
-        StringUtils.format(
-            "jdbc:derby://%s:%s/%s;create=true",
-            "localhost", PORT, DATABASE_NAME
-        ),
-        null,
-        null,
-        Map.of()
-    );
+    // Builds URI "jdbc:derby://localhost:1527/druid;create=true" by default
+    this.connectorConfig = new MetadataStorageConnectorConfig();
     this.storage = new DerbyMetadataStorage(connectorConfig);
   }
 
