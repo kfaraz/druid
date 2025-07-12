@@ -37,7 +37,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Set;
 
-public class EmbeddedDockerBackwardCompatibilityTest extends EmbeddedClusterTestBase
+public class IngestionDockerTest extends EmbeddedClusterTestBase
 {
   static {
     System.setProperty(DruidContainer.PROPERTY_TEST_IMAGE, "apache/druid:tang");
@@ -46,9 +46,12 @@ public class EmbeddedDockerBackwardCompatibilityTest extends EmbeddedClusterTest
   // Docker containers
   private final DruidContainer overlordLeader = DruidContainers.newOverlord().withTestImage();
   private final DruidContainer coordinator = DruidContainers.newCoordinator().withTestImage();
-  private final DruidContainer middleManager = DruidContainers.newMiddleManager().withTestImage();
   private final DruidContainer historical = DruidContainers.newHistorical().withTestImage();
   private final DruidContainer broker = DruidContainers.newBroker().withTestImage();
+  private final DruidContainer middleManager = DruidContainers
+      .newMiddleManager()
+      .withTestImage()
+      .addProperty("druid.worker.capacity", "5");
 
   // Follower EmbeddedOverlord to watch segment publish events
   private final EmbeddedOverlord overlordFollower = new EmbeddedOverlord()
@@ -72,6 +75,30 @@ public class EmbeddedDockerBackwardCompatibilityTest extends EmbeddedClusterTest
                                .addResource(broker)
                                .addServer(overlordFollower)
                                .addServer(new EmbeddedRouter());
+  }
+
+  @Test
+  public void test_runIndexTask_andKillData()
+  {
+
+  }
+
+  @Test
+  public void test_runIndexParallelTask_andCompactData()
+  {
+
+  }
+
+  @Test
+  public void test_runMsqTask_andQueryData()
+  {
+
+  }
+
+  @Test
+  public void test_runKafkaSupervisor_andConcurrentCompactionSupervisor()
+  {
+
   }
 
   @Test
