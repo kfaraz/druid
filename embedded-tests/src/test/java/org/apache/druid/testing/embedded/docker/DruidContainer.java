@@ -21,9 +21,10 @@ package org.apache.druid.testing.embedded.docker;
 
 import org.apache.druid.discovery.NodeRole;
 import org.apache.druid.java.util.common.FileUtils;
+import org.apache.druid.java.util.common.IAE;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.logger.Logger;
-import org.apache.druid.testing.embedded.DruidDocker;
+import org.apache.druid.server.DruidNode;
 import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
 import org.apache.druid.testing.embedded.TestcontainerResource;
 import org.testcontainers.containers.BindMode;
@@ -46,23 +47,38 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * TODO:
- * - allow adding extensions
  * - clean up the directory mounting logic
  *
  * Implementation of {@link TestcontainerResource} to run Druid services.
+ * Depending on the image used, some extensions can be used out-of-the-box
+ * such as {@code druid-s3-extensions} or {@code postgresql-metadata-storage},
+ * simply by adding them to {@code druid.extensions.loadList}.
  * <p>
- * Supported images:
+ * {@link DruidContainers} should be used for integration testing only when it is
+ * necessary to test backward compatibility or a Docker-specific feature.
+ * For all other testing needs, use plain old {@code EmbeddedDruidServer} as they
+ * are much faster, allow easy debugging and do not require downloading any
+ * images.
+ * <p>
+ * Supported Druid images:
  * <ul>
+ * <li>{@link #APACHE_DRUID_31}</li>
  * <li>{@link #APACHE_DRUID_32}</li>
  * <li>{@link #APACHE_DRUID_33} (default)</li>
  * </ul>
- * Older images are currently not supported since they had some bug with unsetting
- * environment variable {@code DRUID_SET_HOST_IP}, resulting in the property
- * {@code druid.host=<default-host>} always being set by {@code druid.sh}.
- * This caused containerized services to fail to connect to each other.
  */
 public class DruidContainer extends TestcontainerResource<DruidContainer.ContainerImpl>
 {
+  /**
+   * Java system property to specify the name of the Docker test image.
+   */
+  public static final String PROPERTY_TEST_IMAGE = "druid.testing.docker.image";
+
+  // Standard images
+  private static final String APACHE_DRUID_31 = "apache/druid:31.0.2";
+  private static final String APACHE_DRUID_32 = "apache/druid:32.0.1";
+  private static final String APACHE_DRUID_33 = "apache/druid:33.0.0";
+
   private static final Logger log = new Logger(DruidContainer.class);
 
   /**
@@ -74,23 +90,18 @@ public class DruidContainer extends TestcontainerResource<DruidContainer.Contain
       "druid.emitter"
   );
 
-  private static final String APACHE_DRUID_31 = "apache/druid:31.0.2";
-  private static final String APACHE_DRUID_32 = "apache/druid:32.0.1";
-  private static final String APACHE_DRUID_33 = "apache/druid:33.0.0";
-
   /**
    * A static incremental ID is used instead of a random number to ensure that
    * tests are more deterministic and easier to debug.
    */
   private static final AtomicInteger SERVER_ID = new AtomicInteger(0);
 
-  private final Map<String, String> properties = new HashMap<>();
-  private String imageName = APACHE_DRUID_33;
-
   private final String name;
   private final NodeRole nodeRole;
+  private final Map<String, String> properties = new HashMap<>();
 
   private int port;
+  private String imageName = APACHE_DRUID_33;
   private EmbeddedDruidCluster cluster;
 
   private String containerDirectory;
@@ -143,14 +154,14 @@ public class DruidContainer extends TestcontainerResource<DruidContainer.Contain
   }
 
   /**
-   * Uses the docker test image specified by the system property
-   * {@link DruidDocker#PROPERTY_TEST_IMAGE} for this container.
+   * Uses the Docker test image specified by the system property
+   * {@link #PROPERTY_TEST_IMAGE} for this container.
    */
-  public DruidContainer withDockerTestImage()
+  public DruidContainer withTestImage()
   {
     this.imageName = Objects.requireNonNull(
-        System.getProperty(DruidDocker.PROPERTY_TEST_IMAGE),
-        StringUtils.format("System property[%s] is not set", DruidDocker.PROPERTY_TEST_IMAGE)
+        System.getProperty(PROPERTY_TEST_IMAGE),
+        StringUtils.format("System property[%s] is not set", PROPERTY_TEST_IMAGE)
     );
     return this;
   }
@@ -199,16 +210,20 @@ public class DruidContainer extends TestcontainerResource<DruidContainer.Contain
 
     commonProperties.setProperty(
         "druid.zk.service.host",
-        cluster.getCommonProperty(DruidDocker.PROPERTY_ZK_CONNECT_STRING)
+        getConnectUrlForContainer(cluster.getCommonProperty("druid.zk.service.host"))
     );
     commonProperties.setProperty(
         "druid.metadata.storage.connector.connectURI",
-        cluster.getCommonProperty(DruidDocker.PROPERTY_METADATA_STORE_CONNECT_URI)
+        getConnectUrlForContainer(cluster.getCommonProperty("druid.metadata.storage.connector.connectURI"))
+    );
+    commonProperties.setProperty(
+        "druid.s3.endpoint.url",
+        getConnectUrlForContainer(cluster.getCommonProperty("druid.s3.endpoint.url"))
     );
     commonProperties.setProperty("druid.storage.storageDirectory", "/tmp/druid/deep-store");
     commonProperties.setProperty("druid.indexer.logs.directory", "/tmp/druid/indexer-logs");
 
-    addProperty("druid.host", DruidDocker.hostMachine());
+    addProperty("druid.host", hostMachine());
     addProperty("druid.plaintextPort", String.valueOf(port));
 
     log.info(
@@ -279,6 +294,31 @@ public class DruidContainer extends TestcontainerResource<DruidContainer.Contain
     catch (Exception e) {
       throw new RuntimeException(e);
     }
+  }
+
+  private static String getConnectUrlForContainer(String connectUrl)
+  {
+    if (connectUrl.contains("localhost")) {
+      return StringUtils.replace(connectUrl, "localhost", "host.docker.internal");
+    } else if (connectUrl.contains("127.0.0.1")) {
+      return StringUtils.replace(connectUrl, "127.0.0.1", "host.docker.internal");
+    } else {
+      throw new IAE(
+          "Connect URL[%s] must have 'localhost' or '127.0.0.1' as host to be"
+          + " reachable by DruidContainers.",
+          connectUrl
+      );
+    }
+  }
+
+  /**
+   * Hostname for the host machine running the containers. Using this hostname
+   * instead of "localhost" allows all the Druid containers to talk to each
+   * other and also other EmbeddedDruidServers.
+   */
+  private static String hostMachine()
+  {
+    return DruidNode.getDefaultHost();
   }
 
   /**

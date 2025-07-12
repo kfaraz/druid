@@ -129,6 +129,7 @@ public abstract class EmbeddedDruidServer<T extends EmbeddedDruidServer<T>> impl
   @Override
   public void beforeStart(EmbeddedDruidCluster cluster)
   {
+    initServerLifecycle(cluster.getCommonProperties());
     for (BeforeStart hook : beforeStartHooks) {
       hook.run(cluster, this);
     }
@@ -186,9 +187,11 @@ public abstract class EmbeddedDruidServer<T extends EmbeddedDruidServer<T>> impl
    * Called from {@link EmbeddedDruidCluster#addServer(EmbeddedDruidServer)} to
    * tie the lifecycle of this server to the cluster.
    */
-  final void onAddedToCluster(Properties commonProperties)
+  private void initServerLifecycle(Properties commonProperties)
   {
-    this.lifecycle.set(new EmbeddedServerLifecycle(this, commonProperties));
+    if (lifecycle.get() == null) {
+      lifecycle.set(new EmbeddedServerLifecycle(this, commonProperties));
+    }
   }
 
   /**

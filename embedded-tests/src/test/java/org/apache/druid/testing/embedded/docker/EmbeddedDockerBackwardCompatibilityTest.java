@@ -23,7 +23,6 @@ import org.apache.druid.common.utils.IdUtils;
 import org.apache.druid.indexing.overlord.Segments;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.query.DruidMetrics;
-import org.apache.druid.testing.embedded.DruidDocker;
 import org.apache.druid.testing.embedded.EmbeddedClusterApis;
 import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
 import org.apache.druid.testing.embedded.EmbeddedOverlord;
@@ -31,6 +30,7 @@ import org.apache.druid.testing.embedded.EmbeddedRouter;
 import org.apache.druid.testing.embedded.derby.StandaloneDerbyMetadataResource;
 import org.apache.druid.testing.embedded.indexing.Resources;
 import org.apache.druid.testing.embedded.junit5.EmbeddedClusterTestBase;
+import org.apache.druid.testing.embedded.minio.MinIOStorageResource;
 import org.apache.druid.timeline.DataSegment;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -40,15 +40,15 @@ import java.util.Set;
 public class EmbeddedDockerBackwardCompatibilityTest extends EmbeddedClusterTestBase
 {
   static {
-    System.setProperty(DruidDocker.PROPERTY_TEST_IMAGE, "apache/druid:tang");
+    System.setProperty(DruidContainer.PROPERTY_TEST_IMAGE, "apache/druid:tang");
   }
 
   // Docker containers
-  private final DruidContainer overlordLeader = DruidDockerContainers.newOverlord().withApache31Image();
-  private final DruidContainer coordinator = DruidDockerContainers.newCoordinator().withApache31Image();
-  private final DruidContainer indexer = DruidDockerContainers.newIndexer().withApache31Image();
-  private final DruidContainer historical = DruidDockerContainers.newHistorical().withApache31Image();
-  private final DruidContainer broker = DruidDockerContainers.newBroker().withApache31Image();
+  private final DruidContainer overlordLeader = DruidContainers.newOverlord().withTestImage();
+  private final DruidContainer coordinator = DruidContainers.newCoordinator().withTestImage();
+  private final DruidContainer indexer = DruidContainers.newIndexer().withTestImage();
+  private final DruidContainer historical = DruidContainers.newHistorical().withTestImage();
+  private final DruidContainer broker = DruidContainers.newBroker().withTestImage();
 
   // Follower EmbeddedOverlord to watch segment publish events
   private final EmbeddedOverlord overlordFollower = new EmbeddedOverlord()
@@ -63,11 +63,8 @@ public class EmbeddedDockerBackwardCompatibilityTest extends EmbeddedClusterTest
                                .useLatchableEmitter()
                                .useDruidContainers()
                                .addResource(new StandaloneDerbyMetadataResource())
-                               //.addResource(new MinIOStorageResource())
-                               .addCommonProperty(
-                                   "druid.extensions.loadList", "[]"
-                                   // "[\"druid-s3-extensions\"]"
-                               )
+                               .addResource(new MinIOStorageResource())
+                               .addCommonProperty("druid.extensions.loadList", "[\"druid-s3-extensions\"]")
                                .addResource(coordinator)
                                .addResource(overlordLeader)
                                .addResource(indexer)

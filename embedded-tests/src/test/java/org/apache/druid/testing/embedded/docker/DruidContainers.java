@@ -23,8 +23,19 @@ import org.apache.druid.discovery.NodeRole;
 import org.apache.druid.java.util.common.HumanReadableBytes;
 import org.apache.druid.java.util.common.StringUtils;
 
-public class DruidDockerContainers
+/**
+ * Factory for {@link DruidContainer} that can run specific services.
+ *
+ * @see #newOverlord()
+ * @see #newCoordinator()
+ */
+public final class DruidContainers
 {
+  private DruidContainers()
+  {
+    // no instantiation
+  }
+
   /**
    * Creates a new {@link DruidContainer} to run a Coordinator node.
    */

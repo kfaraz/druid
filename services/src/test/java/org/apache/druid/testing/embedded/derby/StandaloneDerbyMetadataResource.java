@@ -22,7 +22,6 @@ package org.apache.druid.testing.embedded.derby;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.metadata.MetadataStorageConnectorConfig;
 import org.apache.druid.metadata.storage.derby.DerbyMetadataStorage;
-import org.apache.druid.testing.embedded.DruidDocker;
 import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
 import org.apache.druid.testing.embedded.EmbeddedResource;
 
@@ -79,16 +78,9 @@ public class StandaloneDerbyMetadataResource implements EmbeddedResource
   @Override
   public void onStarted(EmbeddedDruidCluster cluster)
   {
-    cluster.addCommonProperty("druid.metadata.storage.connector.connectURI", connectorConfig.getConnectURI());
-    cluster.addCommonProperty(DruidDocker.PROPERTY_METADATA_STORE_CONNECT_URI, getConnectUriForDocker());
-  }
-
-  public String getConnectUriForDocker()
-  {
-    return StringUtils.format(
-        "jdbc:derby://%s/%s;create=true",
-        DruidDocker.connectStringForPort(connectorConfig.getPort()),
-        DATABASE_NAME
+    cluster.addCommonProperty(
+        "druid.metadata.storage.connector.connectURI",
+        connectorConfig.getConnectURI()
     );
   }
 }
