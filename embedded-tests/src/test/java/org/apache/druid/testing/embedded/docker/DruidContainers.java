@@ -19,12 +19,12 @@
 
 package org.apache.druid.testing.embedded.docker;
 
-import org.apache.druid.discovery.NodeRole;
 import org.apache.druid.java.util.common.HumanReadableBytes;
 import org.apache.druid.java.util.common.StringUtils;
+import org.apache.druid.testing.DruidCommand;
 
 /**
- * Factory for {@link DruidContainer} that can run specific services.
+ * Factory for {@link DruidContainerResource} that can run specific services.
  *
  * @see #newOverlord()
  * @see #newCoordinator()
@@ -37,24 +37,24 @@ public final class DruidContainers
   }
 
   /**
-   * Creates a new {@link DruidContainer} to run a Coordinator node.
+   * Creates a new {@link DruidContainerResource} to run a Coordinator node.
    */
-  public static DruidContainer newCoordinator()
+  public static DruidContainerResource newCoordinator()
   {
-    return new DruidContainer(NodeRole.COORDINATOR, 8081)
+    return new DruidContainerResource(DruidCommand.COORDINATOR, 8081)
         .addProperty("druid.coordinator.startDelay", "PT0.1S")
         .addProperty("druid.coordinator.period", "PT0.5S")
         .addProperty("druid.manager.segments.pollDuration", "PT0.1S");
   }
 
   /**
-   * Creates a new {@link DruidContainer} to run an Overlord node.
+   * Creates a new {@link DruidContainerResource} to run an Overlord node.
    */
-  public static DruidContainer newOverlord()
+  public static DruidContainerResource newOverlord()
   {
     // Keep a small sync timeout so that Peons and Indexers are not stuck
     // handling a change request when Overlord has already shutdown
-    return new DruidContainer(NodeRole.OVERLORD, 8090)
+    return new DruidContainerResource(DruidCommand.OVERLORD, 8090)
         .addProperty("druid.indexer.storage.type", "metadata")
         .addProperty("druid.indexer.queue.startDelay", "PT0S")
         .addProperty("druid.indexer.queue.restartDelay", "PT0S")
@@ -62,11 +62,11 @@ public final class DruidContainers
   }
 
   /**
-   * Creates a new {@link DruidContainer} to run an Indexer node.
+   * Creates a new {@link DruidContainerResource} to run an Indexer node.
    */
-  public static DruidContainer newIndexer()
+  public static DruidContainerResource newIndexer()
   {
-    return new DruidContainer(NodeRole.INDEXER, 8091)
+    return new DruidContainerResource(DruidCommand.INDEXER, 8091)
         .addProperty("druid.lookup.enableLookupSyncOnStartup", "false")
         .addProperty("druid.processing.buffer.sizeBytes", "50MiB")
         .addProperty("druid.processing.numMergeBuffers", "2")
@@ -74,19 +74,19 @@ public final class DruidContainers
   }
 
   /**
-   * Creates a new {@link DruidContainer} to run a MiddleManager node.
+   * Creates a new {@link DruidContainerResource} to run a MiddleManager node.
    */
-  public static DruidContainer newMiddleManager()
+  public static DruidContainerResource newMiddleManager()
   {
-    return new DruidContainer(NodeRole.MIDDLE_MANAGER, 8091);
+    return new DruidContainerResource(DruidCommand.MIDDLE_MANAGER, 8091);
   }
 
   /**
-   * Creates a new {@link DruidContainer} to run a Historical node.
+   * Creates a new {@link DruidContainerResource} to run a Historical node.
    */
-  public static DruidContainer newHistorical()
+  public static DruidContainerResource newHistorical()
   {
-    final DruidContainer historical = new DruidContainer(NodeRole.HISTORICAL, 8083);
+    final DruidContainerResource historical = new DruidContainerResource(DruidCommand.HISTORICAL, 8083);
     historical.addProperty(
         "druid.segmentCache.locations",
         StringUtils.format(
@@ -102,18 +102,18 @@ public final class DruidContainers
   }
 
   /**
-   * Creates a new {@link DruidContainer} to run a Broker node.
+   * Creates a new {@link DruidContainerResource} to run a Broker node.
    */
-  public static DruidContainer newBroker()
+  public static DruidContainerResource newBroker()
   {
-    return new DruidContainer(NodeRole.BROKER, 8082);
+    return new DruidContainerResource(DruidCommand.BROKER, 8082);
   }
 
   /**
-   * Creates a new {@link DruidContainer} to run a Router node.
+   * Creates a new {@link DruidContainerResource} to run a Router node.
    */
-  public static DruidContainer newRouter()
+  public static DruidContainerResource newRouter()
   {
-    return new DruidContainer(NodeRole.ROUTER, 8888);
+    return new DruidContainerResource(DruidCommand.ROUTER, 8888);
   }
 }

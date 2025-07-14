@@ -40,15 +40,15 @@ import java.util.Set;
 public class IngestionDockerTest extends EmbeddedClusterTestBase
 {
   static {
-    System.setProperty(DruidContainer.PROPERTY_TEST_IMAGE, "apache/druid:tang");
+    System.setProperty(DruidContainerResource.PROPERTY_TEST_IMAGE, "apache/druid:tang");
   }
 
   // Docker containers
-  private final DruidContainer overlordLeader = DruidContainers.newOverlord().withTestImage();
-  private final DruidContainer coordinator = DruidContainers.newCoordinator().withTestImage();
-  private final DruidContainer historical = DruidContainers.newHistorical().withTestImage();
-  private final DruidContainer broker = DruidContainers.newBroker().withTestImage();
-  private final DruidContainer middleManager = DruidContainers
+  private final DruidContainerResource overlordLeader = DruidContainers.newOverlord().withTestImage();
+  private final DruidContainerResource coordinator = DruidContainers.newCoordinator().withTestImage();
+  private final DruidContainerResource historical = DruidContainers.newHistorical().withTestImage();
+  private final DruidContainerResource broker = DruidContainers.newBroker().withTestImage();
+  private final DruidContainerResource middleManager = DruidContainers
       .newMiddleManager()
       .withTestImage()
       .addProperty("druid.worker.capacity", "5");

@@ -19,19 +19,19 @@
 
 package org.apache.druid.testing.embedded.docker;
 
-import org.apache.druid.discovery.NodeRole;
 import org.apache.druid.java.util.common.FileUtils;
 import org.apache.druid.java.util.common.IAE;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.server.DruidNode;
+import org.apache.druid.testing.DruidCommand;
+import org.apache.druid.testing.DruidContainer;
+import org.apache.druid.testing.DruidImage;
 import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
 import org.apache.druid.testing.embedded.TestcontainerResource;
 import org.testcontainers.containers.BindMode;
-import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.containers.wait.strategy.Wait;
-import org.testcontainers.utility.DockerImageName;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -46,7 +46,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 
 /**
- * Implementation of {@link TestcontainerResource} to run Druid services.
+ * {@link TestcontainerResource} to run Druid services.
  * Depending on the image used, some extensions can be used out-of-the-box
  * such as {@code druid-s3-extensions} or {@code postgresql-metadata-storage},
  * simply by adding them to {@code druid.extensions.loadList}.
@@ -55,27 +55,15 @@ import java.util.concurrent.atomic.AtomicInteger;
  * or a Docker-specific feature. For all other testing needs, use plain old
  * {@code EmbeddedDruidServer} as they are much faster, allow easy debugging and
  * do not require downloading any images.
- * <p>
- * Supported Druid images:
- * <ul>
- * <li>{@link #APACHE_DRUID_31}</li>
- * <li>{@link #APACHE_DRUID_32}</li>
- * <li>{@link #APACHE_DRUID_33} (default)</li>
- * </ul>
  */
-public class DruidContainer extends TestcontainerResource<DruidContainer.ContainerImpl>
+public class DruidContainerResource extends TestcontainerResource<DruidContainer>
 {
   /**
    * Java system property to specify the name of the Docker test image.
    */
   public static final String PROPERTY_TEST_IMAGE = "druid.testing.docker.image";
 
-  // Standard images
-  private static final String APACHE_DRUID_31 = "apache/druid:31.0.2";
-  private static final String APACHE_DRUID_32 = "apache/druid:32.0.1";
-  private static final String APACHE_DRUID_33 = "apache/druid:33.0.0";
-
-  private static final Logger log = new Logger(DruidContainer.class);
+  private static final Logger log = new Logger(DruidContainerResource.class);
 
   /**
    * Forbidden server properties that may be used by EmbeddedDruidServers but
@@ -93,11 +81,11 @@ public class DruidContainer extends TestcontainerResource<DruidContainer.Contain
   private static final AtomicInteger SERVER_ID = new AtomicInteger(0);
 
   private final String name;
-  private final NodeRole nodeRole;
+  private final DruidCommand command;
   private final Map<String, String> properties = new HashMap<>();
 
   private int port;
-  private String imageName = APACHE_DRUID_33;
+  private String imageName = DruidImage._33_0_0.getName();
   private EmbeddedDruidCluster cluster;
 
   private String containerDirectory;
@@ -107,47 +95,47 @@ public class DruidContainer extends TestcontainerResource<DruidContainer.Contain
   private MountedDir deepStorageDirectory;
   private MountedDir clusterConfDirectory;
 
-  DruidContainer(NodeRole nodeRole, int port)
+  DruidContainerResource(DruidCommand command, int port)
   {
     this.name = StringUtils.format(
         "container_%s_%d",
-        nodeRole.getJsonName(),
+        command.getName(),
         SERVER_ID.incrementAndGet()
     );
-    this.nodeRole = nodeRole;
+    this.command = command;
     this.port = port;
   }
 
-  public DruidContainer withPort(int port)
+  public DruidContainerResource withPort(int port)
   {
     this.port = port;
     return this;
   }
 
   /**
-   * Uses the {@link #APACHE_DRUID_33} image for this container.
+   * Uses the {@link DruidImage#_33_0_0 Apache Druid 33.0.0 image} for this container.
    */
-  public DruidContainer withApache33Image()
+  public DruidContainerResource withApache33Image()
   {
-    this.imageName = APACHE_DRUID_33;
+    this.imageName = DruidImage._33_0_0.getName();
     return this;
   }
 
   /**
-   * Uses the {@link #APACHE_DRUID_32} image for this container.
+   * Uses the {@link DruidImage#_32_0_1 Apache Druid 32.0.1 image} for this container.
    */
-  public DruidContainer withApache32Image()
+  public DruidContainerResource withApache32Image()
   {
-    this.imageName = APACHE_DRUID_32;
+    this.imageName = DruidImage._32_0_1.getName();
     return this;
   }
 
   /**
-   * Uses the {@link #APACHE_DRUID_31} image for this container.
+   * Uses the {@link DruidImage#_31_0_2 Apache Druid 31.0.2 image} for this container.
    */
-  public DruidContainer withApache31Image()
+  public DruidContainerResource withApache31Image()
   {
-    this.imageName = APACHE_DRUID_31;
+    this.imageName = DruidImage._31_0_2.getName();
     return this;
   }
 
@@ -155,7 +143,7 @@ public class DruidContainer extends TestcontainerResource<DruidContainer.Contain
    * Uses the Docker test image specified by the system property
    * {@link #PROPERTY_TEST_IMAGE} for this container.
    */
-  public DruidContainer withTestImage()
+  public DruidContainerResource withTestImage()
   {
     this.imageName = Objects.requireNonNull(
         System.getProperty(PROPERTY_TEST_IMAGE),
@@ -164,15 +152,10 @@ public class DruidContainer extends TestcontainerResource<DruidContainer.Contain
     return this;
   }
 
-  public DruidContainer addProperty(String key, String value)
+  public DruidContainerResource addProperty(String key, String value)
   {
     properties.put(key, value);
     return this;
-  }
-
-  public String getName()
-  {
-    return name;
   }
 
   public String getContainerMountedDir()
@@ -211,17 +194,17 @@ public class DruidContainer extends TestcontainerResource<DruidContainer.Contain
   }
 
   @Override
-  protected ContainerImpl createContainer()
+  protected DruidContainer createContainer()
   {
     log.info(
         "Starting Druid container[%s] on port[%d] with mounted directory[%s].",
         name, port, containerDirectory
     );
 
-    return new ContainerImpl(imageName, port)
+    final DruidContainer container = new DruidContainer(command, imageName)
         .withNetwork(Network.newNetwork())
-        .withNetworkAliases(nodeRole.getJsonName())
-        .withCommand(nodeRole.getJsonName())
+        .withNetworkAliases(command.getName())
+        .withExposedPorts(port)
         .withFileSystemBind(clusterConfDirectory.hostPath, clusterConfDirectory.containerPath, BindMode.READ_WRITE)
         .withFileSystemBind(deepStorageDirectory.hostPath, deepStorageDirectory.containerPath, BindMode.READ_WRITE)
         .withFileSystemBind(clusterLogsDirectory.hostPath, clusterLogsDirectory.containerPath, BindMode.READ_WRITE)
@@ -230,14 +213,19 @@ public class DruidContainer extends TestcontainerResource<DruidContainer.Contain
             Map.of(
                 "DRUID_CONFIG_COMMON",
                 clusterConfDirectory.containerPath + "/" + writeCommonPropertiesToFile(),
-                StringUtils.format("DRUID_CONFIG_%s", nodeRole.getJsonName()),
+                StringUtils.format("DRUID_CONFIG_%s", command.getName()),
                 clusterConfDirectory.containerPath + "/" + writeServerPropertiesToFile(),
                 "DRUID_SET_HOST_IP", "0",
                 "DRUID_SET_HOST", "0"
             )
         )
-        .withExposedPorts(port)
         .waitingFor(Wait.forHttp("/status/health").forPort(port));
+
+    // Bind the port statically (rather than using a mapped port) to the same
+    // value used in `druid.plaintextPort` to make this node discoverable
+    // by other services (both embedded and dockerized).
+    container.setPortBindings(List.of(StringUtils.format("%d:%d", port, port)));
+    return container;
   }
 
   /**
@@ -357,24 +345,6 @@ public class DruidContainer extends TestcontainerResource<DruidContainer.Contain
   public String toString()
   {
     return name;
-  }
-
-  /**
-   * Implementation of {@link GenericContainer} for running Druid services.
-   */
-  public static class ContainerImpl extends GenericContainer<ContainerImpl>
-  {
-    public ContainerImpl(String imageName, int port)
-    {
-      super(DockerImageName.parse(imageName));
-
-      // The port needs to be bound statically (rather than using a mapped port)
-      // so that we can set `druid.plaintextPort` and make this node discoverable
-      // by other services (both embedded and dockerized)
-      setPortBindings(
-          List.of(StringUtils.format("%d:%d", port, port))
-      );
-    }
   }
 
   private static class MountedDir
