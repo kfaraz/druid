@@ -20,7 +20,11 @@
 package org.apache.druid.testing;
 
 import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.images.builder.Transferable;
 import org.testcontainers.utility.DockerImageName;
+
+import java.io.StringWriter;
+import java.util.Properties;
 
 /**
  * Testcontainer for running Apache Druid services.
@@ -37,29 +41,92 @@ import org.testcontainers.utility.DockerImageName;
 public class DruidContainer extends GenericContainer<DruidContainer>
 {
   /**
+   * Standard images for {@link DruidContainer}.
+   */
+  public static class Image
+  {
+    public static final DockerImageName APACHE_31 = DockerImageName.parse("apache/druid:31.0.2");
+    public static final DockerImageName APACHE_32 = DockerImageName.parse("apache/druid:32.0.1");
+    public static final DockerImageName APACHE_33 = DockerImageName.parse("apache/druid:33.0.0");
+  }
+
+  private static final String COMMON_PROPERTIES_PATH = "/tmp/druid_conf_common.runtime.properties";
+  private static final String SERVICE_PROPERTIES_PATH = "/tmp/druid_conf_runtime.properties";
+
+  private Properties commonProperties = new Properties();
+  private Properties serviceProperties = new Properties();
+
+  private final DruidCommand command;
+
+  /**
    * Creates a new {@link DruidContainer} which uses the given image name.
    *
    * @param command   Druid command to run. e.g. "coordinator", "overlord".
    * @param imageName Name of the Druid image to use
    * @see DruidCommand for standard Druid commands.
-   * @see DruidImage for standard images.
+   * @see Image for standard Druid images
    */
-  public DruidContainer(DruidCommand command, String imageName)
+  public DruidContainer(String command, String imageName)
   {
-    super(DockerImageName.parse(imageName));
-    setCommand(command.getName());
+    this(DruidCommand.valueOf(command), DockerImageName.parse(imageName));
   }
 
   /**
-   * Creates a new {@link DruidContainer} which uses the given standard image.
+   * Creates a new {@link DruidContainer} which uses the given image name.
    *
-   * @param command Druid command to run. e.g. "coordinator", "overlord".
-   * @param image   Druid image to use for the Testcontainer.
+   * @param command   Druid command to run. e.g. "coordinator", "overlord".
+   * @param imageName Name of the Druid image to use
    * @see DruidCommand for standard Druid commands.
-   * @see DruidImage for standard images.
+   * @see Image for standard Druid images
    */
-  public static DruidContainer forCommandWithImage(DruidCommand command, DruidImage image)
+  public DruidContainer(DruidCommand command, DockerImageName imageName)
   {
-    return new DruidContainer(command, image.getName());
+    super(imageName);
+    this.command = command;
+
+    setCommand(command.getName());
+    withExposedPorts(command.getExposedPorts());
+    withEnv("DRUID_CONFIG_COMMON", COMMON_PROPERTIES_PATH);
+    withEnv("DRUID_CONFIG_" + command.getName(), SERVICE_PROPERTIES_PATH);
+
+    serviceProperties.putAll(command.getDefaultProperties());
+  }
+
+  /**
+   * Sets the common properties to be used for the service running on this container.
+   * The properties are written out to the file {@link #COMMON_PROPERTIES_PATH}.
+   */
+  public DruidContainer withCommonProperties(Properties commonProperties)
+  {
+    this.commonProperties.putAll(commonProperties);
+    return this;
+  }
+
+  /**
+   * Sets the runtime properties to be used for the service running on this container.
+   * The properties are written out to the file {@link #SERVICE_PROPERTIES_PATH}.
+   */
+  public DruidContainer withServiceProperties(Properties serviceProperties)
+  {
+    this.serviceProperties.putAll(serviceProperties);
+    return this;
+  }
+
+  @Override
+  protected void containerIsCreated(String containerId)
+  {
+    copyFileToContainer(Transferable.of(toString(commonProperties), 0777), COMMON_PROPERTIES_PATH);
+    copyFileToContainer(Transferable.of(toString(serviceProperties), 0777), SERVICE_PROPERTIES_PATH);
+  }
+
+  private static String toString(Properties properties)
+  {
+    try (StringWriter writer = new StringWriter()) {
+      properties.store(writer, "Druid Runtime Properties");
+      return writer.toString();
+    }
+    catch (Exception e) {
+      throw new RuntimeException("Could not serialize Druid runtime properties", e);
+    }
   }
 }

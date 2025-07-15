@@ -19,7 +19,7 @@
 
 package org.apache.druid.testing.embedded.docker;
 
-import org.apache.druid.java.util.common.HumanReadableBytes;
+import org.apache.druid.java.util.common.IAE;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.testing.DruidCommand;
 
@@ -41,7 +41,7 @@ public final class DruidContainers
    */
   public static DruidContainerResource newCoordinator()
   {
-    return new DruidContainerResource(DruidCommand.COORDINATOR, 8081)
+    return new DruidContainerResource(DruidCommand.COORDINATOR)
         .addProperty("druid.coordinator.startDelay", "PT0.1S")
         .addProperty("druid.coordinator.period", "PT0.5S")
         .addProperty("druid.manager.segments.pollDuration", "PT0.1S");
@@ -54,7 +54,7 @@ public final class DruidContainers
   {
     // Keep a small sync timeout so that Peons and Indexers are not stuck
     // handling a change request when Overlord has already shutdown
-    return new DruidContainerResource(DruidCommand.OVERLORD, 8090)
+    return new DruidContainerResource(DruidCommand.OVERLORD)
         .addProperty("druid.indexer.storage.type", "metadata")
         .addProperty("druid.indexer.queue.startDelay", "PT0S")
         .addProperty("druid.indexer.queue.restartDelay", "PT0S")
@@ -66,7 +66,7 @@ public final class DruidContainers
    */
   public static DruidContainerResource newIndexer()
   {
-    return new DruidContainerResource(DruidCommand.INDEXER, 8091)
+    return new DruidContainerResource(DruidCommand.INDEXER)
         .addProperty("druid.lookup.enableLookupSyncOnStartup", "false")
         .addProperty("druid.processing.buffer.sizeBytes", "50MiB")
         .addProperty("druid.processing.numMergeBuffers", "2")
@@ -78,7 +78,11 @@ public final class DruidContainers
    */
   public static DruidContainerResource newMiddleManager()
   {
-    return new DruidContainerResource(DruidCommand.MIDDLE_MANAGER, 8091);
+    return new DruidContainerResource(DruidCommand.MIDDLE_MANAGER)
+        .addProperty("druid.lookup.enableLookupSyncOnStartup", "false")
+        .addProperty("druid.processing.buffer.sizeBytes", "50MiB")
+        .addProperty("druid.processing.numMergeBuffers", "2")
+        .addProperty("druid.processing.numThreads", "5");
   }
 
   /**
@@ -86,19 +90,10 @@ public final class DruidContainers
    */
   public static DruidContainerResource newHistorical()
   {
-    final DruidContainerResource historical = new DruidContainerResource(DruidCommand.HISTORICAL, 8083);
-    historical.addProperty(
-        "druid.segmentCache.locations",
-        StringUtils.format(
-            "[{\"path\":\"%s\",\"maxSize\":\"%s\"}]",
-            historical.getContainerMountedDir() + "/segment-cache",
-            HumanReadableBytes.parse("100M")
-        )
-    );
-    historical.addProperty("druid.processing.buffer.sizeBytes", "50MiB");
-    historical.addProperty("druid.processing.numMergeBuffers", "2");
-    historical.addProperty("druid.processing.numThreads", "5");
-    return historical;
+    return new DruidContainerResource(DruidCommand.HISTORICAL)
+        .addProperty("druid.processing.buffer.sizeBytes", "50MiB")
+        .addProperty("druid.processing.numMergeBuffers", "2")
+        .addProperty("druid.processing.numThreads", "5");
   }
 
   /**
@@ -106,7 +101,11 @@ public final class DruidContainers
    */
   public static DruidContainerResource newBroker()
   {
-    return new DruidContainerResource(DruidCommand.BROKER, 8082);
+    return new DruidContainerResource(DruidCommand.BROKER)
+        .addProperty("druid.lookup.enableLookupSyncOnStartup", "false")
+        .addProperty("druid.processing.buffer.sizeBytes", "50MiB")
+        .addProperty("druid.processing.numMergeBuffers", "2")
+        .addProperty("druid.processing.numThreads", "5");
   }
 
   /**
@@ -114,6 +113,21 @@ public final class DruidContainers
    */
   public static DruidContainerResource newRouter()
   {
-    return new DruidContainerResource(DruidCommand.ROUTER, 8888);
+    return new DruidContainerResource(DruidCommand.ROUTER);
+  }
+
+  public static String getConnectUriForContainers(String connectUri)
+  {
+    if (connectUri.contains("localhost")) {
+      return StringUtils.replace(connectUri, "localhost", "host.docker.internal");
+    } else if (connectUri.contains("127.0.0.1")) {
+      return StringUtils.replace(connectUri, "127.0.0.1", "host.docker.internal");
+    } else {
+      throw new IAE(
+          "Connect URL[%s] must have 'localhost' or '127.0.0.1' as host to be"
+          + " reachable by DruidContainers.",
+          connectUri
+      );
+    }
   }
 }

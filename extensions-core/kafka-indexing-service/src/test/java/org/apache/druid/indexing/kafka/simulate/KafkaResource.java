@@ -20,6 +20,9 @@
 package org.apache.druid.indexing.kafka.simulate;
 
 import org.apache.druid.indexing.kafka.KafkaConsumerConfigs;
+import org.apache.druid.java.util.common.IAE;
+import org.apache.druid.java.util.common.StringUtils;
+import org.apache.druid.server.DruidNode;
 import org.apache.druid.testing.embedded.TestcontainerResource;
 import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.clients.admin.NewTopic;
@@ -39,17 +42,29 @@ import java.util.concurrent.ThreadLocalRandom;
  */
 public class KafkaResource extends TestcontainerResource<KafkaContainer>
 {
-  public KafkaResource()
-  {
-    super();
-  }
-
   private static final String KAFKA_IMAGE = "apache/kafka:4.0.0";
+  private boolean useWithDruidContainers = false;
 
   @Override
   protected KafkaContainer createContainer()
   {
-    return new KafkaContainer(KAFKA_IMAGE);
+    if (useWithDruidContainers) {
+      return new KafkaContainer(KAFKA_IMAGE) {
+        @Override
+        public String getBootstrapServers()
+        {
+          return druidContainerCompatibleUri(super.getBootstrapServers());
+        }
+      };
+    } else {
+      return new KafkaContainer(KAFKA_IMAGE);
+    }
+  }
+
+  public KafkaResource useWithDruidContainers()
+  {
+    this.useWithDruidContainers = true;
+    return this;
   }
 
   public String getBootstrapServerUrl()
@@ -147,5 +162,20 @@ public class KafkaResource extends TestcontainerResource<KafkaContainer>
   private Map<String, Object> commonClientProperties()
   {
     return Map.of("bootstrap.servers", getBootstrapServerUrl());
+  }
+
+  private static String druidContainerCompatibleUri(String connectUri)
+  {
+    if (connectUri.contains("localhost")) {
+      return StringUtils.replace(connectUri, "localhost", DruidNode.getDefaultHost());
+    } else if (connectUri.contains("127.0.0.1")) {
+      return StringUtils.replace(connectUri, "127.0.0.1", DruidNode.getDefaultHost());
+    } else {
+      throw new IAE(
+          "Connect URL[%s] must have 'localhost' or '127.0.0.1' as host to be"
+          + " reachable by DruidContainers.",
+          connectUri
+      );
+    }
   }
 }
