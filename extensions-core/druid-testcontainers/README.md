@@ -6,11 +6,11 @@ The dependencies in the pom must be minimal so that this module can be used inde
 ## Usage
 
 ```
-final DruidContainer container = DruidContainer.forCommandWithImage(DruidCommand.OVERLORD, DruidImage._33_0_0); 
+final DruidContainer container = new DruidContainer("overlord", "apache/druid:33.0.0");
 container.start();
 ```
 
-## Supported Images
+## Standard Druid Images
 
 1. `apache/druid:33.0.0`
 2. `apache/druid:32.0.1`
@@ -21,4 +21,3 @@ container.start();
 - Add Druid command for running a starter cluster in a single container
 - Publish this extension as a community module for Testcontainers
 - Contribute the code to the main Testcontainers repository
-

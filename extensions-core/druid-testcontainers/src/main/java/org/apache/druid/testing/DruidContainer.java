@@ -53,10 +53,8 @@ public class DruidContainer extends GenericContainer<DruidContainer>
   private static final String COMMON_PROPERTIES_PATH = "/tmp/druid_conf_common.runtime.properties";
   private static final String SERVICE_PROPERTIES_PATH = "/tmp/druid_conf_runtime.properties";
 
-  private Properties commonProperties = new Properties();
-  private Properties serviceProperties = new Properties();
-
-  private final DruidCommand command;
+  private final Properties commonProperties = new Properties();
+  private final Properties serviceProperties = new Properties();
 
   /**
    * Creates a new {@link DruidContainer} which uses the given image name.
@@ -82,7 +80,6 @@ public class DruidContainer extends GenericContainer<DruidContainer>
   public DruidContainer(DruidCommand command, DockerImageName imageName)
   {
     super(imageName);
-    this.command = command;
 
     setCommand(command.getName());
     withExposedPorts(command.getExposedPorts());
