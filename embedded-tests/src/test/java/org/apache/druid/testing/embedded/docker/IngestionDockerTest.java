@@ -64,10 +64,6 @@ import java.util.concurrent.ThreadLocalRandom;
  */
 public class IngestionDockerTest extends EmbeddedClusterTestBase
 {
-  static {
-    System.setProperty(DruidContainerResource.PROPERTY_TEST_IMAGE, "apache/druid:tang");
-  }
-
   // Druid Docker containers
   protected final DruidContainerResource overlordLeader = DruidContainers.newOverlord().withTestImage();
   protected final DruidContainerResource coordinator = DruidContainers.newCoordinator().withTestImage();
