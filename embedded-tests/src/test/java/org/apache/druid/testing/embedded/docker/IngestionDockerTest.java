@@ -60,7 +60,7 @@ import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Runs some basic ingestion tasks using {@link DruidContainers}.
+ * Runs some basic ingestion tests using {@link DruidContainers}.
  */
 public class IngestionDockerTest extends EmbeddedClusterTestBase
 {
@@ -69,11 +69,11 @@ public class IngestionDockerTest extends EmbeddedClusterTestBase
   }
 
   // Druid Docker containers
-  private final DruidContainerResource overlordLeader = DruidContainers.newOverlord().withTestImage();
-  private final DruidContainerResource coordinator = DruidContainers.newCoordinator().withTestImage();
-  private final DruidContainerResource historical = DruidContainers.newHistorical().withTestImage();
-  private final DruidContainerResource broker1 = DruidContainers.newBroker().withTestImage();
-  private final DruidContainerResource middleManager = DruidContainers
+  protected final DruidContainerResource overlordLeader = DruidContainers.newOverlord().withTestImage();
+  protected final DruidContainerResource coordinator = DruidContainers.newCoordinator().withTestImage();
+  protected final DruidContainerResource historical = DruidContainers.newHistorical().withTestImage();
+  protected final DruidContainerResource broker1 = DruidContainers.newBroker().withTestImage();
+  protected final DruidContainerResource middleManager = DruidContainers
       .newMiddleManager()
       .withTestImage()
       .addProperty("druid.segment.handoff.pollDuration", "PT0.1s");
@@ -84,8 +84,9 @@ public class IngestionDockerTest extends EmbeddedClusterTestBase
       .addProperty("druid.manager.segments.useIncrementalCache", "always")
       .addProperty("druid.manager.segments.pollDuration", "PT0.1s");
 
-  // Additional EmbeddedBroker to wait for realtime segments to become queryable
-  private final EmbeddedBroker broker2 = new EmbeddedBroker().addProperty("druid.plaintextPort", "7082");
+  // Additional EmbeddedBroker to wait for segments to become queryable
+  private final EmbeddedBroker broker2 = new EmbeddedBroker()
+      .addProperty("druid.plaintextPort", "7082");
 
   private final KafkaResource kafkaServer = new KafkaResource();
 
@@ -135,7 +136,7 @@ public class IngestionDockerTest extends EmbeddedClusterTestBase
   }
 
   @Test
-  public void test_runATask()
+  public void test_runIndexTask()
   {
     final String taskId = IdUtils.getRandomId();
     final Object task = createIndexTaskForInlineData(
@@ -144,8 +145,8 @@ public class IngestionDockerTest extends EmbeddedClusterTestBase
     );
 
     cluster.callApi().onLeaderOverlord(o -> o.runTask(taskId, task));
-
-    waitAndVerifyUsedSegmentCount(10);
+    waitForCachedUsedSegmentCount(10);
+    verifyUsedSegmentCount(10);
   }
 
   private Object createIndexTaskForInlineData(String taskId, String inlineDataCsv)
@@ -167,7 +168,7 @@ public class IngestionDockerTest extends EmbeddedClusterTestBase
     );
 
     // Submit and start a supervisor
-    final String supervisorId = dataSource + "_supe";
+    final String supervisorId = dataSource;
     final KafkaSupervisorSpec kafkaSupervisorSpec = createKafkaSupervisor(supervisorId, topic);
 
     final Map<String, String> startSupervisorResult = cluster.callApi().onLeaderOverlord(
@@ -183,7 +184,6 @@ public class IngestionDockerTest extends EmbeddedClusterTestBase
     SupervisorStatus supervisorStatus = cluster.callApi().getSupervisorStatus(supervisorId);
     Assertions.assertFalse(supervisorStatus.isSuspended());
     Assertions.assertTrue(supervisorStatus.isHealthy());
-    Assertions.assertEquals(dataSource, supervisorStatus.getDataSource());
     Assertions.assertEquals("RUNNING", supervisorStatus.getState());
     Assertions.assertEquals(topic, supervisorStatus.getSource());
 
@@ -205,13 +205,14 @@ public class IngestionDockerTest extends EmbeddedClusterTestBase
     supervisorStatus = cluster.callApi().getSupervisorStatus(supervisorId);
     Assertions.assertTrue(supervisorStatus.isSuspended());
 
-    waitAndVerifyUsedSegmentCount(10);
+    waitForCachedUsedSegmentCount(10);
+    verifyUsedSegmentCount(10);
   }
 
   private KafkaSupervisorSpec createKafkaSupervisor(String supervisorId, String topic)
   {
     return new KafkaSupervisorSpec(
-        supervisorId,
+        null,
         null,
         DataSchema.builder()
                   .withDataSource(dataSource)
@@ -268,18 +269,24 @@ public class IngestionDockerTest extends EmbeddedClusterTestBase
 
   /**
    * Waits for the {@link #overlordFollower} to add the expected number of used
-   * segments to its cache and then verifies the count by querying the segment
-   * storage.
+   * segments to its cache. This is a proxy for waiting for the task to finish.
+   * Since the tasks are being managed by the {@link #overlordLeader} which is
+   * running in a container, we cannot watch the metrics emitted by it.
    */
-  private void waitAndVerifyUsedSegmentCount(int expectedCount)
+  private void waitForCachedUsedSegmentCount(int expectedCount)
   {
-    // Wait for follower Overlord to add the new segments to its cache
     overlordFollower.latchableEmitter().waitForEvent(
         event -> event.hasMetricName("segment/metadataCache/used/count")
                       .hasDimension(DruidMetrics.DATASOURCE, dataSource)
                       .hasValueAtLeast(expectedCount)
     );
+  }
 
+  /**
+   * Verifies the total number of used segments in {@link #dataSource}.
+   */
+  private void verifyUsedSegmentCount(int expectedCount)
+  {
     final Set<DataSegment> allUsedSegments = overlordFollower
         .bindings()
         .segmentsMetadataStorage()
