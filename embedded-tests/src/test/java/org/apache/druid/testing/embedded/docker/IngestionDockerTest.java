@@ -87,7 +87,7 @@ public class IngestionDockerTest extends EmbeddedClusterTestBase
   // Additional EmbeddedBroker to wait for realtime segments to become queryable
   private final EmbeddedBroker broker2 = new EmbeddedBroker().addProperty("druid.plaintextPort", "7082");
 
-  private final KafkaResource kafkaServer = new KafkaResource().useWithDruidContainers();
+  private final KafkaResource kafkaServer = new KafkaResource();
 
   @Override
   public EmbeddedDruidCluster createCluster()

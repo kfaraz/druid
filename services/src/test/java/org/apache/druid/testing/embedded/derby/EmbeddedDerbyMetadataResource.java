@@ -19,6 +19,7 @@
 
 package org.apache.druid.testing.embedded.derby;
 
+import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.metadata.MetadataStorageConnectorConfig;
 import org.apache.druid.metadata.storage.derby.DerbyMetadataStorage;
 import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
@@ -32,23 +33,23 @@ import org.apache.druid.testing.embedded.EmbeddedResource;
  */
 public class EmbeddedDerbyMetadataResource implements EmbeddedResource
 {
-  private final DerbyMetadataStorage storage;
-  private final MetadataStorageConnectorConfig connectorConfig;
+  private static final int PORT = 1527;
+  private static final String CONNECT_URI = "jdbc:derby://%s:%d/druid;create=true";
 
-  public EmbeddedDerbyMetadataResource()
-  {
-    // Builds URI "jdbc:derby://localhost:1527/druid;create=true" by default
-    this.connectorConfig = new MetadataStorageConnectorConfig();
-    this.storage = new DerbyMetadataStorage(connectorConfig);
-  }
+  private DerbyMetadataStorage storage;
+  private MetadataStorageConnectorConfig connectorConfig;
 
   @Override
   public void beforeStart(EmbeddedDruidCluster cluster)
   {
+    // Create the database in the TestFolder
     System.setProperty(
         "derby.system.home",
         cluster.getTestFolder().getOrCreateFolder("derby").getAbsolutePath()
     );
+
+    connectorConfig = initConnectorConfig(cluster);
+    storage = new DerbyMetadataStorage(connectorConfig);
   }
 
   @Override
@@ -71,5 +72,29 @@ public class EmbeddedDerbyMetadataResource implements EmbeddedResource
         "druid.metadata.storage.connector.connectURI",
         connectorConfig.getConnectURI()
     );
+  }
+
+  private MetadataStorageConnectorConfig initConnectorConfig(EmbeddedDruidCluster cluster)
+  {
+    return new MetadataStorageConnectorConfig()
+    {
+      @Override
+      public String getHost()
+      {
+        return cluster.getEmbeddedServiceHostname();
+      }
+
+      @Override
+      public int getPort()
+      {
+        return PORT;
+      }
+
+      @Override
+      public String getConnectURI()
+      {
+        return StringUtils.format(CONNECT_URI, getHost(), getPort());
+      }
+    };
   }
 }

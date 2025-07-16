@@ -23,6 +23,7 @@ import org.apache.druid.indexing.kafka.KafkaConsumerConfigs;
 import org.apache.druid.java.util.common.IAE;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.server.DruidNode;
+import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
 import org.apache.druid.testing.embedded.TestcontainerResource;
 import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.clients.admin.NewTopic;
@@ -43,28 +44,29 @@ import java.util.concurrent.ThreadLocalRandom;
 public class KafkaResource extends TestcontainerResource<KafkaContainer>
 {
   private static final String KAFKA_IMAGE = "apache/kafka:4.0.0";
-  private boolean useWithDruidContainers = false;
+  private static final int KAFKA_PORT = 9092;
+
+  private EmbeddedDruidCluster cluster;
+
+  @Override
+  public void beforeStart(EmbeddedDruidCluster cluster)
+  {
+    this.cluster = cluster;
+  }
 
   @Override
   protected KafkaContainer createContainer()
   {
-    if (useWithDruidContainers) {
-      return new KafkaContainer(KAFKA_IMAGE) {
-        @Override
-        public String getBootstrapServers()
-        {
-          return druidContainerCompatibleUri(super.getBootstrapServers());
-        }
-      };
-    } else {
-      return new KafkaContainer(KAFKA_IMAGE);
-    }
-  }
-
-  public KafkaResource useWithDruidContainers()
-  {
-    this.useWithDruidContainers = true;
-    return this;
+    // The result of getBootstrapServers() is the first entry in KafkaContainer.advertisedListeners.
+    // Override getBootstrapServers() to ensure that both DruidContainers and
+    // EmbeddedDruidServers can connect to the Kafka brokers.
+    return new KafkaContainer(KAFKA_IMAGE) {
+      @Override
+      public String getBootstrapServers()
+      {
+        return String.format("%s:%s", cluster.getEmbeddedServiceHostname(), getMappedPort(KAFKA_PORT));
+      }
+    };
   }
 
   public String getBootstrapServerUrl()

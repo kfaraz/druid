@@ -116,12 +116,20 @@ public final class DruidContainers
     return new DruidContainerResource(DruidCommand.ROUTER);
   }
 
-  public static String getConnectUriForContainers(String connectUri)
+  /**
+   * Updates the given URI by replacing occurrence of {@code localhost} or
+   * {@code 127.0.0.1} with {@code host.docker.internal}. This allows a service
+   * running in a DruidContainer to connect to services on the host machine.
+   *
+   * @throws IAE if the given connectUri does not contain {@code localhost} or
+   * {@code 127.0.0.1}.
+   */
+  public static String makeUriContainerCompatible(String connectUri, String compatibleHostname)
   {
     if (connectUri.contains("localhost")) {
-      return StringUtils.replace(connectUri, "localhost", "host.docker.internal");
+      return StringUtils.replace(connectUri, "localhost", compatibleHostname);
     } else if (connectUri.contains("127.0.0.1")) {
-      return StringUtils.replace(connectUri, "127.0.0.1", "host.docker.internal");
+      return StringUtils.replace(connectUri, "127.0.0.1", compatibleHostname);
     } else {
       throw new IAE(
           "Connect URL[%s] must have 'localhost' or '127.0.0.1' as host to be"

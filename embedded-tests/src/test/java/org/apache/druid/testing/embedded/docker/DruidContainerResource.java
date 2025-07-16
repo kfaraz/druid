@@ -53,8 +53,6 @@ import java.util.stream.Collectors;
  * or a Docker-specific feature. For all other testing needs, use plain old
  * {@code EmbeddedDruidServer} as they are much faster, allow easy debugging and
  * do not require downloading any images.
- *
- * TODO: Clean up the logic for Docker connect URIs, i.e. the host.docker.internal magic.
  */
 public class DruidContainerResource extends TestcontainerResource<DruidContainer>
 {
@@ -91,9 +89,9 @@ public class DruidContainerResource extends TestcontainerResource<DruidContainer
 
   private String containerDirectory;
 
-  private MountedDir clusterLogsDirectory;
+  private MountedDir indexerLogsDeepStorageDirectory;
   private MountedDir serviceLogsDirectory;
-  private MountedDir deepStorageDirectory;
+  private MountedDir segmentDeepStorageDirectory;
 
   DruidContainerResource(DruidCommand command)
   {
@@ -156,27 +154,22 @@ public class DruidContainerResource extends TestcontainerResource<DruidContainer
     return this;
   }
 
-  public String getContainerMountedDir()
-  {
-    return containerDirectory;
-  }
-
   @Override
   public void beforeStart(EmbeddedDruidCluster cluster)
   {
     this.cluster = cluster;
 
-    // Set up directories used by the entire cluster (including embedded servers)
-    this.deepStorageDirectory = new MountedDir(
+    // Mount directories used by the entire cluster (including embedded servers)
+    this.segmentDeepStorageDirectory = new MountedDir(
         "/tmp/druid/deep-store",
         cluster.getTestFolder().getOrCreateFolder("deep-store").getAbsolutePath()
     );
-    this.clusterLogsDirectory = new MountedDir(
+    this.indexerLogsDeepStorageDirectory = new MountedDir(
         "/tmp/druid/indexer-logs",
         cluster.getTestFolder().getOrCreateFolder("indexer-logs").getAbsolutePath()
     );
 
-    // Set up directories used by this container
+    // Mount directories used by this container for easier debugging with service logs
     this.containerDirectory = cluster.getTestFolder().getOrCreateFolder(name).getAbsolutePath();
     this.serviceLogsDirectory = new MountedDir(
         "/opt/druid/log",
@@ -201,9 +194,21 @@ public class DruidContainerResource extends TestcontainerResource<DruidContainer
         .withExposedPorts(exposedPorts.toArray(new Integer[0]))
         .withCommonProperties(getCommonProperties())
         .withServiceProperties(getServerProperties())
-        .withFileSystemBind(deepStorageDirectory.hostPath, deepStorageDirectory.containerPath, BindMode.READ_WRITE)
-        .withFileSystemBind(clusterLogsDirectory.hostPath, clusterLogsDirectory.containerPath, BindMode.READ_WRITE)
-        .withFileSystemBind(serviceLogsDirectory.hostPath, serviceLogsDirectory.containerPath, BindMode.READ_WRITE)
+        .withFileSystemBind(
+            segmentDeepStorageDirectory.hostPath,
+            segmentDeepStorageDirectory.containerPath,
+            BindMode.READ_WRITE
+        )
+        .withFileSystemBind(
+            indexerLogsDeepStorageDirectory.hostPath,
+            indexerLogsDeepStorageDirectory.containerPath,
+            BindMode.READ_WRITE
+        )
+        .withFileSystemBind(
+            serviceLogsDirectory.hostPath,
+            serviceLogsDirectory.containerPath,
+            BindMode.READ_WRITE
+        )
         .withEnv(
             Map.of(
                 "DRUID_SET_HOST_IP", "0",
@@ -234,21 +239,11 @@ public class DruidContainerResource extends TestcontainerResource<DruidContainer
     commonProperties.putAll(cluster.getCommonProperties());
     FORBIDDEN_PROPERTIES.forEach(commonProperties::remove);
 
-    commonProperties.setProperty(
-        "druid.zk.service.host",
-        DruidContainers.getConnectUriForContainers(commonProperties.getProperty("druid.zk.service.host"))
-    );
-    commonProperties.setProperty(
-        "druid.metadata.storage.connector.connectURI",
-        DruidContainers.getConnectUriForContainers(commonProperties.getProperty("druid.metadata.storage.connector.connectURI"))
-    );
-    commonProperties.setProperty(
-        "druid.s3.endpoint.url",
-        DruidContainers.getConnectUriForContainers(commonProperties.getProperty("druid.s3.endpoint.url"))
-    );
+    setContainerCompatibleUriProperty("druid.zk.service.host", commonProperties);
+    setContainerCompatibleUriProperty("druid.s3.endpoint.url", commonProperties);
 
-    commonProperties.setProperty("druid.storage.storageDirectory", deepStorageDirectory.containerPath);
-    commonProperties.setProperty("druid.indexer.logs.directory", clusterLogsDirectory.containerPath);
+    commonProperties.setProperty("druid.storage.storageDirectory", segmentDeepStorageDirectory.containerPath);
+    commonProperties.setProperty("druid.indexer.logs.directory", indexerLogsDeepStorageDirectory.containerPath);
 
     log.info(
         "Writing common properties for Druid container[%s]: [%s]",
@@ -287,6 +282,18 @@ public class DruidContainerResource extends TestcontainerResource<DruidContainer
     }
     catch (Exception e) {
       throw new RuntimeException(e);
+    }
+  }
+
+  private void setContainerCompatibleUriProperty(String key, Properties properties)
+  {
+    final String value = properties.getProperty(key);
+    if (value != null) {
+      final String updatedConnectUri = DruidContainers.makeUriContainerCompatible(
+          value,
+          cluster.getEmbeddedServiceHostname()
+      );
+      properties.setProperty(key, updatedConnectUri);
     }
   }
 
