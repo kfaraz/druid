@@ -20,9 +20,6 @@
 package org.apache.druid.indexing.kafka.simulate;
 
 import org.apache.druid.indexing.kafka.KafkaConsumerConfigs;
-import org.apache.druid.java.util.common.IAE;
-import org.apache.druid.java.util.common.StringUtils;
-import org.apache.druid.server.DruidNode;
 import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
 import org.apache.druid.testing.embedded.TestcontainerResource;
 import org.apache.kafka.clients.admin.Admin;
@@ -44,7 +41,6 @@ import java.util.concurrent.ThreadLocalRandom;
 public class KafkaResource extends TestcontainerResource<KafkaContainer>
 {
   private static final String KAFKA_IMAGE = "apache/kafka:4.0.0";
-  private static final int KAFKA_PORT = 9092;
 
   private EmbeddedDruidCluster cluster;
 
@@ -64,7 +60,7 @@ public class KafkaResource extends TestcontainerResource<KafkaContainer>
       @Override
       public String getBootstrapServers()
       {
-        return String.format("%s:%s", cluster.getEmbeddedServiceHostname(), getMappedPort(KAFKA_PORT));
+        return cluster.getEmbeddedConnectUri(super.getBootstrapServers());
       }
     };
   }
@@ -164,20 +160,5 @@ public class KafkaResource extends TestcontainerResource<KafkaContainer>
   private Map<String, Object> commonClientProperties()
   {
     return Map.of("bootstrap.servers", getBootstrapServerUrl());
-  }
-
-  private static String druidContainerCompatibleUri(String connectUri)
-  {
-    if (connectUri.contains("localhost")) {
-      return StringUtils.replace(connectUri, "localhost", DruidNode.getDefaultHost());
-    } else if (connectUri.contains("127.0.0.1")) {
-      return StringUtils.replace(connectUri, "127.0.0.1", DruidNode.getDefaultHost());
-    } else {
-      throw new IAE(
-          "Connect URL[%s] must have 'localhost' or '127.0.0.1' as host to be"
-          + " reachable by DruidContainers.",
-          connectUri
-      );
-    }
   }
 }

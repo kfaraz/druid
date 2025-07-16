@@ -239,11 +239,14 @@ public class DruidContainerResource extends TestcontainerResource<DruidContainer
     commonProperties.putAll(cluster.getCommonProperties());
     FORBIDDEN_PROPERTIES.forEach(commonProperties::remove);
 
-    setContainerCompatibleUriProperty("druid.zk.service.host", commonProperties);
-    setContainerCompatibleUriProperty("druid.s3.endpoint.url", commonProperties);
-
-    commonProperties.setProperty("druid.storage.storageDirectory", segmentDeepStorageDirectory.containerPath);
-    commonProperties.setProperty("druid.indexer.logs.directory", indexerLogsDeepStorageDirectory.containerPath);
+    commonProperties.setProperty(
+        "druid.storage.storageDirectory",
+        segmentDeepStorageDirectory.containerPath
+    );
+    commonProperties.setProperty(
+        "druid.indexer.logs.directory",
+        indexerLogsDeepStorageDirectory.containerPath
+    );
 
     log.info(
         "Writing common properties for Druid container[%s]: [%s]",
@@ -282,18 +285,6 @@ public class DruidContainerResource extends TestcontainerResource<DruidContainer
     }
     catch (Exception e) {
       throw new RuntimeException(e);
-    }
-  }
-
-  private void setContainerCompatibleUriProperty(String key, Properties properties)
-  {
-    final String value = properties.getProperty(key);
-    if (value != null) {
-      final String updatedConnectUri = DruidContainers.makeUriContainerCompatible(
-          value,
-          cluster.getEmbeddedServiceHostname()
-      );
-      properties.setProperty(key, updatedConnectUri);
     }
   }
 

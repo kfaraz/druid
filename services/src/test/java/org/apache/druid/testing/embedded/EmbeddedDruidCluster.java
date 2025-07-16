@@ -24,7 +24,9 @@ import com.google.common.collect.Lists;
 import org.apache.druid.client.broker.BrokerClient;
 import org.apache.druid.client.coordinator.CoordinatorClient;
 import org.apache.druid.initialization.DruidModule;
+import org.apache.druid.java.util.common.IAE;
 import org.apache.druid.java.util.common.ISE;
+import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.rpc.indexing.OverlordClient;
 import org.apache.druid.server.DruidNode;
@@ -84,7 +86,6 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
 
   private boolean hasDruidContainers = false;
   private boolean startedFirstDruidServer = false;
-  private EmbeddedZookeeper zookeeper;
 
   private EmbeddedDruidCluster()
   {
@@ -101,9 +102,7 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
    */
   public static EmbeddedDruidCluster withZookeeper()
   {
-    final EmbeddedDruidCluster cluster = new EmbeddedDruidCluster();
-    cluster.addEmbeddedZookeeper();
-    return cluster;
+    return new EmbeddedDruidCluster().addResource(new EmbeddedZookeeper());
   }
 
   /**
@@ -132,12 +131,6 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
     return new EmbeddedDruidCluster();
   }
 
-  private void addEmbeddedZookeeper()
-  {
-    this.zookeeper = new EmbeddedZookeeper();
-    resources.add(zookeeper);
-  }
-
   /**
    * Configures this cluster to use a {@link LatchableEmitter}. This method is a
    * shorthand for the following:
@@ -157,7 +150,7 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
   }
 
   /**
-   * Configures this cluster to allow the use of {@code DruidContainer} services.
+   * Configures this cluster to allow the use of {@code DruidContainer}-based services.
    */
   public EmbeddedDruidCluster useDruidContainers()
   {
@@ -245,16 +238,35 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
   }
 
   /**
-   * @return true if this cluster uses one or more {@code DruidContainer} services.
+   * Hostname to be used for embedded services (both Druid or external).
+   * Using this hostname ensures that the underlying service is reachable by both
+   * EmbeddedDruidServers and DruidContainers.
    */
-  public boolean hasDruidContainers()
-  {
-    return hasDruidContainers;
-  }
-
   public String getEmbeddedServiceHostname()
   {
     return hasDruidContainers ? DruidNode.getDefaultHost() : "localhost";
+  }
+
+  /**
+   * Replaces {@code localhost} or {@code 127.0.0.1} in the given connectUri
+   * with {@link #getEmbeddedServiceHostname()}. Using the embedded URI ensures
+   * that the underlying service is reachable by both EmbeddedDruidServers and
+   * DruidContainers.
+   */
+  public String getEmbeddedConnectUri(String connectUri)
+  {
+    if (!hasDruidContainers) {
+      return connectUri;
+    } else if (connectUri.contains("localhost")) {
+      return StringUtils.replace(connectUri, "localhost", getEmbeddedServiceHostname());
+    } else if (connectUri.contains("127.0.0.1")) {
+      return StringUtils.replace(connectUri, "127.0.0.1", getEmbeddedServiceHostname());
+    } else {
+      throw new IAE(
+          "Connect URI[%s] must contain 'localhost' or '127.0.0.1' to be reachable.",
+          connectUri
+      );
+    }
   }
 
   /**
