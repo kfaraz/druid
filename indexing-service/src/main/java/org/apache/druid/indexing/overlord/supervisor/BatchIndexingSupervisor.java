@@ -26,20 +26,15 @@ import java.util.List;
 
 /**
  * TODO: Motivation:
- *  - we want a single supervisor as a parallel of streaming supervisor
- *  - it helps us identify a single interface which plugs into the indexing template thing
- *  - there is also a lot of code duplication, so we can bring all of that together now
- *  - but batch supervisor does not create Tasks, it creates MSQ queries
- *  - how do we create tasks out of it?
- *  - or should we just allow it to not create tasks?
- *  - I guess we will need a separate interface for MSQ stuff
- *  - Should the job template also have the same demarcation?
- *
+ *  - batch supervisor as an analog of streaming supervisor
+ *  - ties in to the indexing template
+ *  - remove duplicate code
  *
  * TODO: tasks:
- *  - Wire up CompactionSupervisor and ScheduledBatchSupervisor
+ *  - Wire up CompactionSupervisor
+ *  - Wire up Multi Rule
  *  - Run tests for both
- *  - Write up multi-rule compaction supervisor
+ *  - Wire up scheduled batch
  *  - Write embedded tests for all
  *
  * TODO: spec vs supervisor
@@ -53,7 +48,6 @@ import java.util.List;
  *  - similar to streaming
  *
  * TODO:
- *  - what goes into the supervisor and what goes into the spec?
  *  - start with 3 impls: batch, compaction, multi rule compaction
  *  - Supervisor probably needs to contain stuff that the scheduler is going to ask for
  *  - Is there going to be a lot of retro-fitting? Are we fighting against stuff?

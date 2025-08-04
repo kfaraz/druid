@@ -33,7 +33,7 @@ public interface BatchIndexingJobTemplate
   /**
    * Creates a new job with this template.
    */
-  BatchIndexingJob createTask(
+  BatchIndexingJob createJob(
       IndexingSource source,
       IndexingTarget target,
       Interval interval
