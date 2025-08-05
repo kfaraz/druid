@@ -19,23 +19,12 @@
 
 package org.apache.druid.indexing.overlord.supervisor;
 
-import org.apache.druid.data.input.InputSource;
-import org.apache.druid.data.output.OutputDestination;
-
-import java.util.List;
+import org.joda.time.Interval;
 
 /**
- * ETL template to create a {@link BatchIndexingJob} that indexes data from an
- * {@link InputSource} into an {@link OutputDestination}.
+ * Provides parameters required to create a {@link BatchIndexingJob}.
  */
-public interface BatchIndexingJobTemplate<J extends BatchIndexingJob, P extends JobParams>
+public interface JobParams
 {
-  /**
-   * Creates jobs with this template for the given interval.
-   */
-  List<J> createJobs(
-      InputSource source,
-      OutputDestination destination,
-      P jobParams
-  );
+  Interval getInterval();
 }

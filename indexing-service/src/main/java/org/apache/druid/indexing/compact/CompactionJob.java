@@ -17,25 +17,24 @@
  * under the License.
  */
 
-package org.apache.druid.indexing.overlord.supervisor;
+package org.apache.druid.indexing.compact;
 
-import org.apache.druid.data.input.InputSource;
-import org.apache.druid.data.output.OutputDestination;
-
-import java.util.List;
+import org.apache.druid.indexing.common.task.Task;
+import org.apache.druid.indexing.overlord.supervisor.BatchIndexingJob;
 
 /**
- * ETL template to create a {@link BatchIndexingJob} that indexes data from an
- * {@link InputSource} into an {@link OutputDestination}.
+ * TODO:
+ *  - might need to contain the CompactionCandidate too to help with the priority and stuff.
  */
-public interface BatchIndexingJobTemplate<J extends BatchIndexingJob, P extends JobParams>
+public class CompactionJob extends BatchIndexingJob
 {
-  /**
-   * Creates jobs with this template for the given interval.
-   */
-  List<J> createJobs(
-      InputSource source,
-      OutputDestination destination,
-      P jobParams
-  );
+  public static CompactionJob forTask(Task task)
+  {
+    return new CompactionJob(task);
+  }
+
+  private CompactionJob(Task task)
+  {
+    super(task, null);
+  }
 }

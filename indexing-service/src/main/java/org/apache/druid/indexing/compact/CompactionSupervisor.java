@@ -19,21 +19,26 @@
 
 package org.apache.druid.indexing.compact;
 
+import org.apache.druid.indexing.input.DruidDatasourceDestination;
+import org.apache.druid.indexing.input.DruidInputSource;
 import org.apache.druid.indexing.overlord.DataSourceMetadata;
-import org.apache.druid.indexing.overlord.supervisor.Supervisor;
+import org.apache.druid.indexing.overlord.supervisor.BatchIndexingSupervisor;
 import org.apache.druid.indexing.overlord.supervisor.SupervisorReport;
 import org.apache.druid.indexing.overlord.supervisor.SupervisorStateManager;
 import org.apache.druid.java.util.common.DateTimes;
+import org.apache.druid.java.util.common.Intervals;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.server.coordinator.AutoCompactionSnapshot;
+import org.joda.time.DateTime;
 
 import javax.annotation.Nullable;
+import java.util.Iterator;
 
 /**
  * Supervisor for compaction of a single datasource.
  */
-public class CompactionSupervisor implements Supervisor
+public class CompactionSupervisor implements BatchIndexingSupervisor<CompactionJob>
 {
   private static final Logger log = new Logger(CompactionSupervisor.class);
 
@@ -117,6 +122,28 @@ public class CompactionSupervisor implements Supervisor
   public void reset(@Nullable DataSourceMetadata dataSourceMetadata)
   {
     // do nothing
+  }
+
+  @Override
+  public boolean shouldCreateJobs(DateTime currentTime)
+  {
+    return true;
+  }
+
+  @Override
+  public Iterator<CompactionJob> createJobs(DateTime currentTime)
+  {
+    return supervisorSpec.getTemplate().createJobs(
+        new DruidInputSource(dataSource, null, null, null, null, null, null, null, null, null),
+        new DruidDatasourceDestination(dataSource),
+        new CompactionJobParams(Intervals.ETERNITY)
+    ).iterator();
+  }
+
+  @Override
+  public boolean canRunJob(CompactionJob job, DateTime currentTime)
+  {
+    return false;
   }
 
   public enum State implements SupervisorStateManager.State

@@ -17,25 +17,33 @@
  * under the License.
  */
 
-package org.apache.druid.indexing.overlord.supervisor;
+package org.apache.druid.indexing.compact;
 
 import org.apache.druid.data.input.InputSource;
 import org.apache.druid.data.output.OutputDestination;
+import org.apache.druid.server.coordinator.CatalogDataSourceCompactionConfig;
 
 import java.util.List;
 
 /**
- * ETL template to create a {@link BatchIndexingJob} that indexes data from an
- * {@link InputSource} into an {@link OutputDestination}.
+ * TODO: figure out if we can put more stuff in the catalog.
  */
-public interface BatchIndexingJobTemplate<J extends BatchIndexingJob, P extends JobParams>
+public class CatalogCompactionJobTemplate implements CompactionJobTemplate
 {
-  /**
-   * Creates jobs with this template for the given interval.
-   */
-  List<J> createJobs(
+  private final CatalogDataSourceCompactionConfig config;
+
+  public CatalogCompactionJobTemplate(CatalogDataSourceCompactionConfig config)
+  {
+    this.config = config;
+  }
+
+  @Override
+  public List<CompactionJob> createJobs(
       InputSource source,
-      OutputDestination destination,
-      P jobParams
-  );
+      OutputDestination target,
+      CompactionJobParams params
+  )
+  {
+    return null;
+  }
 }

@@ -17,25 +17,19 @@
  * under the License.
  */
 
-package org.apache.druid.indexing.overlord.supervisor;
+package org.apache.druid.indexing.compact;
 
-import org.apache.druid.data.input.InputSource;
-import org.apache.druid.data.output.OutputDestination;
+import org.apache.druid.server.coordinator.DataSourceCompactionConfig;
 
-import java.util.List;
-
-/**
- * ETL template to create a {@link BatchIndexingJob} that indexes data from an
- * {@link InputSource} into an {@link OutputDestination}.
- */
-public interface BatchIndexingJobTemplate<J extends BatchIndexingJob, P extends JobParams>
+public abstract class CascadingCompactionSpec implements DataSourceCompactionConfig
 {
-  /**
-   * Creates jobs with this template for the given interval.
-   */
-  List<J> createJobs(
-      InputSource source,
-      OutputDestination destination,
-      P jobParams
-  );
+  public static final String TYPE = "cascading";
+
+  // Have a list of rules
+  // Each rule has a period and a template
+
+  // Do we need a different kind of supervisor?
+  // It might help with the logic
+  // Since we are going to do a lot of creation and validation
+  // Sure, but I suppose it can just extend the base one because essentially it is still the same.
 }

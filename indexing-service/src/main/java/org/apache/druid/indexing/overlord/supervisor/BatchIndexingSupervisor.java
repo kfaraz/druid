@@ -19,73 +19,62 @@
 
 package org.apache.druid.indexing.overlord.supervisor;
 
-import org.apache.druid.timeline.SegmentTimeline;
 import org.joda.time.DateTime;
 
-import java.util.List;
+import java.util.Iterator;
 
 /**
  * TODO: Motivation:
  *  - batch supervisor as an analog of streaming supervisor
  *  - ties in to the indexing template
  *  - remove duplicate code
- *
+ * <p>
  * TODO: tasks:
  *  - Wire up CompactionSupervisor
  *  - Wire up Multi Rule
  *  - Run tests for both
  *  - Wire up scheduled batch
  *  - Write embedded tests for all
- *
- * TODO: spec vs supervisor
- *  - spec is the persisted object
- *  - supervisor has a lifecycle start and stop
- *  - any logic which has to do with the lifecycle should be in the supervisor
- *  - so stuff like status, progress, etc. is definitely in the supervisor
- *  - what else can go here?
- *  - spec creates the supervisor
- *  - boilerplate stuff should go into the supervisor so that spec can remain just an interface
- *  - similar to streaming
- *
+ * <p>
  * TODO:
- *  - start with 3 impls: batch, compaction, multi rule compaction
  *  - Supervisor probably needs to contain stuff that the scheduler is going to ask for
  *  - Is there going to be a lot of retro-fitting? Are we fighting against stuff?
  *  - It should all come and fit naturally.
- *  - OVERALL FLOW:
+ * <p>
+ * TODO: OVERALL FLOW:
  *  - Scheduler runs every 5 s (or triggered?)
- *  - Each supervisor (spec?) has a target datasource
- *  - Given target datasource, we have the timeline, which can be empty or not
- *  - Ask the supervisor what needs to be done
- *    - Supervisor checks status of previously submitted tasks
- *    - Supervisor checks the current state of the timeline
- *    - Supervisor creates one or more Tasks for different parts of the timeline
- *    - List of Tasks has implicit priority, we will just submit all of them to the TaskQueue
- *    - Supervisor provides validation of the Tasks
+ *  - Get target datasource of supervisor
+ *  - Get the timeline
+ *  - Ask supervisor to create jobs
+ *    - For compaction:
+ *    - Pass period, timeline and CompactionJobTemplate? to compactible iterator
+ *    - CompactionJobTemplate knows how to create a compaction job
+ *    - For each candidate, create a job
+ *  - Ask the supervisor which jobs can be run now
+ *    - If current job requires more slots than available, should we check later jobs?
+ *      - I guess so 🤷🏻
+ *    - Filter out intervals that are locked, already running or recently done or something
  *  - Run them
- *  - Since scheduler is running every few seconds, we don't need further prioritization
- *  - So we can just launch the Tasks provided by the supervisor, at least for now
- *  - We can worry about the other stuff later
+ *  - If skipped, track reason somewhere
  */
-public interface BatchIndexingSupervisor<S extends BatchIndexingSupervisorSpec> extends Supervisor
+public interface BatchIndexingSupervisor<J extends BatchIndexingJob> extends Supervisor
 {
   /**
-   * @return the spec for this supervisor.
+   * Checks if this supervisor is ready to create jobs at the current time.
    */
-  S getSpec();
+  boolean shouldCreateJobs(DateTime currentTime);
 
   /**
    * Creates jobs to be launched in the current run of the scheduler.
    *
-   * @param timeline    Timeline of the target datasource
    * @param currentTime Time when the current run of the scheduler started
-   * @return Empty list if no tasks are to be submitted in the current run of the
-   * scheduler.
+   * @return Empty iterator if no tasks are to be submitted in the current run
+   * of the scheduler.
    */
-  List<BatchIndexingJob> createJobs(SegmentTimeline timeline, DateTime currentTime);
+  Iterator<J> createJobs(DateTime currentTime);
 
   /**
-   * Checks if a given job is valid for this supervisor (spec?).
+   * Checks if a given job is valid and can be run right now.
    */
-  boolean validateJob(BatchIndexingJob job);
+  boolean canRunJob(J job, DateTime currentTime);
 }

@@ -45,7 +45,7 @@ public class BatchIndexingJob
     return new BatchIndexingJob(null, msqQuery);
   }
 
-  private BatchIndexingJob(
+  protected BatchIndexingJob(
       @Nullable Task task,
       @Nullable ClientSqlQuery msqQuery
   )

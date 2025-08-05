@@ -20,15 +20,18 @@
 package org.apache.druid.indexing.overlord.supervisor;
 
 /**
- * This class is fairly close to being a template or a list of templates.
- * I think that definition might help us keep things simple.
- *
- * TODO: stuff needed here:
- *   - job definition
- *   - schedule??, yeah, for batch schedule is indeed part of the spec itself
- *   - validation logic - yeah most likely
+ * Spec for {@link BatchIndexingSupervisor}. Provides a template to create
+ * {@link BatchIndexingJob}.
  */
-public interface BatchIndexingSupervisorSpec extends SupervisorSpec
+public interface BatchIndexingSupervisorSpec
+    <J extends BatchIndexingJob, P extends JobParams>
+    extends SupervisorSpec
 {
-  String getTargetDatasource();
+  @Override
+  BatchIndexingSupervisor<J> createSupervisor();
+
+  /**
+   * Template used by the corresponding supervisor to create {@link BatchIndexingJob}s.
+   */
+  BatchIndexingJobTemplate<J, P> getTemplate();
 }

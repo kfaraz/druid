@@ -17,25 +17,23 @@
  * under the License.
  */
 
-package org.apache.druid.indexing.overlord.supervisor;
+package org.apache.druid.indexing.compact;
 
-import org.apache.druid.data.input.InputSource;
-import org.apache.druid.data.output.OutputDestination;
+import org.apache.druid.indexing.overlord.supervisor.JobParams;
+import org.joda.time.Interval;
 
-import java.util.List;
-
-/**
- * ETL template to create a {@link BatchIndexingJob} that indexes data from an
- * {@link InputSource} into an {@link OutputDestination}.
- */
-public interface BatchIndexingJobTemplate<J extends BatchIndexingJob, P extends JobParams>
+public class CompactionJobParams implements JobParams
 {
-  /**
-   * Creates jobs with this template for the given interval.
-   */
-  List<J> createJobs(
-      InputSource source,
-      OutputDestination destination,
-      P jobParams
-  );
+  private final Interval interval;
+
+  public CompactionJobParams(Interval interval)
+  {
+    this.interval = interval;
+  }
+
+  @Override
+  public Interval getInterval()
+  {
+    return interval;
+  }
 }

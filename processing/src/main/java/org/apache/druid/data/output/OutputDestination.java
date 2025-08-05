@@ -17,8 +17,17 @@
  * under the License.
  */
 
-package org.apache.druid.indexing.overlord.supervisor;
+package org.apache.druid.data.output;
 
-public interface IndexingTarget
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import org.apache.druid.data.input.InputSource;
+
+/**
+ * Destination where data is written out.
+ */
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = InputSource.TYPE_PROPERTY)
+@JsonSubTypes(value = {})
+public interface OutputDestination
 {
 }

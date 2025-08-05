@@ -17,25 +17,19 @@
  * under the License.
  */
 
-package org.apache.druid.indexing.overlord.supervisor;
+package org.apache.druid.server.compaction;
 
-import org.apache.druid.data.input.InputSource;
-import org.apache.druid.data.output.OutputDestination;
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import org.apache.druid.server.coordinator.CatalogDataSourceCompactionConfig;
+import org.apache.druid.server.coordinator.InlineSchemaDataSourceCompactionConfig;
 
-import java.util.List;
-
-/**
- * ETL template to create a {@link BatchIndexingJob} that indexes data from an
- * {@link InputSource} into an {@link OutputDestination}.
- */
-public interface BatchIndexingJobTemplate<J extends BatchIndexingJob, P extends JobParams>
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type", defaultImpl = InlineSchemaDataSourceCompactionConfig.class)
+@JsonSubTypes(value = {
+    @JsonSubTypes.Type(name = "inline", value = InlineSchemaDataSourceCompactionConfig.class),
+    @JsonSubTypes.Type(name = "catalog", value = CatalogDataSourceCompactionConfig.class)
+})
+public interface CompactionSpec
 {
-  /**
-   * Creates jobs with this template for the given interval.
-   */
-  List<J> createJobs(
-      InputSource source,
-      OutputDestination destination,
-      P jobParams
-  );
+  String getDataSource();
 }

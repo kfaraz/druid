@@ -19,25 +19,19 @@
 
 package org.apache.druid.server.coordinator;
 
-import com.fasterxml.jackson.annotation.JsonSubTypes;
-import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import org.apache.druid.data.input.impl.AggregateProjectionSpec;
 import org.apache.druid.indexer.CompactionEngine;
 import org.apache.druid.java.util.common.granularity.Granularity;
 import org.apache.druid.query.aggregation.AggregatorFactory;
 import org.apache.druid.segment.transform.CompactionTransformSpec;
+import org.apache.druid.server.compaction.CompactionSpec;
 import org.joda.time.Period;
 
 import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Map;
 
-@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type", defaultImpl = InlineSchemaDataSourceCompactionConfig.class)
-@JsonSubTypes(value = {
-    @JsonSubTypes.Type(name = "inline", value = InlineSchemaDataSourceCompactionConfig.class),
-    @JsonSubTypes.Type(name = "catalog", value = CatalogDataSourceCompactionConfig.class)
-})
-public interface DataSourceCompactionConfig
+public interface DataSourceCompactionConfig extends CompactionSpec
 {
   /**
    * Must be synced with Tasks.DEFAULT_MERGE_TASK_PRIORITY
@@ -47,8 +41,6 @@ public interface DataSourceCompactionConfig
   // Approx. 100TB. Chosen instead of Long.MAX_VALUE to avoid overflow on web-console and other clients
   long DEFAULT_INPUT_SEGMENT_SIZE_BYTES = 100_000_000_000_000L;
   Period DEFAULT_SKIP_OFFSET_FROM_LATEST = new Period("P1D");
-
-  String getDataSource();
 
   @Nullable
   CompactionEngine getEngine();

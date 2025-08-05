@@ -23,7 +23,8 @@ import com.fasterxml.jackson.annotation.JacksonInject;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.apache.druid.common.config.Configs;
-import org.apache.druid.indexing.overlord.supervisor.SupervisorSpec;
+import org.apache.druid.indexing.overlord.supervisor.BatchIndexingJobTemplate;
+import org.apache.druid.indexing.overlord.supervisor.BatchIndexingSupervisorSpec;
 import org.apache.druid.server.coordinator.CompactionConfigValidationResult;
 import org.apache.druid.server.coordinator.DataSourceCompactionConfig;
 import org.apache.druid.server.security.ResourceAction;
@@ -35,7 +36,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
-public class CompactionSupervisorSpec implements SupervisorSpec
+public class CompactionSupervisorSpec implements BatchIndexingSupervisorSpec<CompactionJob, CompactionJobParams>
 {
   public static final String TYPE = "autocompact";
   public static final String ID_PREFIX = "autocompact__";
@@ -91,6 +92,20 @@ public class CompactionSupervisorSpec implements SupervisorSpec
   public CompactionSupervisor createSupervisor()
   {
     return new CompactionSupervisor(this, scheduler);
+  }
+
+  @Override
+  public BatchIndexingJobTemplate<CompactionJob, CompactionJobParams> getTemplate()
+  {
+    // TODO: create the appropriate template
+    //  Now the question is why should DataSourceCompactionConfig and CompactionJobTemplate be any different
+    //  1. Deps: config is in server, template has to do with indexing-service only
+    //  2. config might be used by Coordinator too
+    //  3. config really has all the wrong kinds of info, we don't need any of it
+    //  4. and what we want, it doesn't have at all
+    //  5. So I am thinking we can leave DataSourceCompactionConfig as is
+    //  6. And add our very own compaction spec to the mix
+    return null;
   }
 
   @Override

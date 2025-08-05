@@ -17,8 +17,26 @@
  * under the License.
  */
 
-package org.apache.druid.indexing.overlord.supervisor;
+package org.apache.druid.indexing.input;
 
-public interface IndexingSource
+import org.apache.druid.data.output.OutputDestination;
+
+/**
+ * {@link OutputDestination} for writing out data into a Druid datasource.
+ */
+public class DruidDatasourceDestination implements OutputDestination
 {
+  public static final String TYPE = "druid";
+
+  private final String dataSource;
+
+  public DruidDatasourceDestination(String dataSource)
+  {
+    this.dataSource = dataSource;
+  }
+
+  public String getDataSource()
+  {
+    return dataSource;
+  }
 }
