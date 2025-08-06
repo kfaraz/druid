@@ -29,6 +29,22 @@ import org.apache.druid.timeline.SegmentTimeline;
 
 import java.util.List;
 
+/**
+ * TODO:
+ *  - what do we really need here?
+ *  - the config that we have passed in here, what should it have?
+ *  - is this really that different from the catalog-based template?
+ *  - I doubt if there is going to be any real difference
+ *
+ * TODO: steps:
+ *  - validate the input and output
+ *  - get the timeline
+ *  - create a datasourcecompactibleiterator
+ *  - map each item to a Job
+ *
+ * TODO: For cascading, impl would definitely be different but what would the template look like:
+ *  - not like the one below, I feel
+ */
 public class InlineCompactionJobTemplate implements CompactionJobTemplate
 {
   private final InlineSchemaDataSourceCompactionConfig config;
@@ -45,15 +61,12 @@ public class InlineCompactionJobTemplate implements CompactionJobTemplate
       CompactionJobParams params
   )
   {
+    // Validate the input and output
     if (!(source instanceof DruidInputSource)) {
       throw InvalidInput.exception("Invalid input source[%s] for compaction.", source);
     }
 
     final DruidInputSource druidDatasource = (DruidInputSource) source;
-
-    // Steps:
-    // 1. Get the timeline
-    // 2. Create a DatasourceCompactibleSegmentIterator
 
     final SegmentTimeline timeline = null;
     final DataSourceCompactibleSegmentIterator segmentIterator = new DataSourceCompactibleSegmentIterator(

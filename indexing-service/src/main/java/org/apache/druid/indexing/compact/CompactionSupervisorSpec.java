@@ -97,14 +97,6 @@ public class CompactionSupervisorSpec implements BatchIndexingSupervisorSpec<Com
   @Override
   public BatchIndexingJobTemplate<CompactionJob, CompactionJobParams> getTemplate()
   {
-    // TODO: create the appropriate template
-    //  Now the question is why should DataSourceCompactionConfig and CompactionJobTemplate be any different
-    //  1. Deps: config is in server, template has to do with indexing-service only
-    //  2. config might be used by Coordinator too
-    //  3. config really has all the wrong kinds of info, we don't need any of it
-    //  4. and what we want, it doesn't have at all
-    //  5. So I am thinking we can leave DataSourceCompactionConfig as is
-    //  6. And add our very own compaction spec to the mix
     return null;
   }
 

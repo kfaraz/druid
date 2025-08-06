@@ -27,9 +27,6 @@ public abstract class CascadingCompactionSpec implements DataSourceCompactionCon
 
   // Have a list of rules
   // Each rule has a period and a template
-
-  // Do we need a different kind of supervisor?
-  // It might help with the logic
-  // Since we are going to do a lot of creation and validation
-  // Sure, but I suppose it can just extend the base one because essentially it is still the same.
+  // Template shouldn't have datasource - just the stuff we want it to have
+  //  so, what exactly?
 }
