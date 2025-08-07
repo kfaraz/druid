@@ -494,7 +494,11 @@ public class CompactSegments implements CoordinatorCustomDuty
     return numSubmittedTasks;
   }
 
-  private static ClientCompactionTaskQuery createCompactionTask(
+  /**
+   * Creates a {@link ClientCompactionTaskQuery} which can be submitted to an
+   * {@link OverlordClient} to start a compaction task.
+   */
+  public static ClientCompactionTaskQuery createCompactionTask(
       CompactionCandidate candidate,
       DataSourceCompactionConfig config,
       CompactionEngine defaultEngine

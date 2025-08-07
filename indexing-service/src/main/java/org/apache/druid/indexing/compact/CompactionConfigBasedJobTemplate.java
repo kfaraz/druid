@@ -19,15 +19,19 @@
 
 package org.apache.druid.indexing.compact;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.druid.client.indexing.ClientCompactionTaskQuery;
 import org.apache.druid.data.input.InputSource;
 import org.apache.druid.data.output.OutputDestination;
 import org.apache.druid.error.InvalidInput;
+import org.apache.druid.indexing.common.task.CompactionTask;
+import org.apache.druid.indexing.input.DruidDatasourceDestination;
 import org.apache.druid.indexing.input.DruidInputSource;
-import org.apache.druid.java.util.common.Intervals;
 import org.apache.druid.server.compaction.CompactionCandidate;
 import org.apache.druid.server.compaction.DataSourceCompactibleSegmentIterator;
 import org.apache.druid.server.compaction.NewestSegmentFirstPolicy;
 import org.apache.druid.server.coordinator.DataSourceCompactionConfig;
+import org.apache.druid.server.coordinator.duty.CompactSegments;
 import org.apache.druid.timeline.SegmentTimeline;
 
 import java.util.ArrayList;
@@ -53,32 +57,42 @@ public class CompactionConfigBasedJobTemplate implements CompactionJobTemplate
       CompactionJobParams params
   )
   {
-    // Validate the input and output
     if (!(source instanceof DruidInputSource)) {
-      throw InvalidInput.exception("Invalid input source[%s] for compaction.", source);
+      throw InvalidInput.exception("Invalid input source[%s] for compaction", source);
     }
 
-    final DruidInputSource druidDatasource = (DruidInputSource) source;
+    final DruidInputSource druidInputSource = (DruidInputSource) source;
+    if (!druidInputSource.getDataSource().equals(config.getDataSource())) {
+      throw InvalidInput.exception(
+          "Datasource[%s] in compaction config does not match datasource[%s] in input source",
+          config.getDataSource(), druidInputSource.getDataSource()
+      );
+    }
+
+    if (!(destination instanceof DruidDatasourceDestination)) {
+      throw InvalidInput.exception("Invalid output destination[%s] for compaction", destination);
+    }
 
     final SegmentTimeline timeline = null;
     final DataSourceCompactibleSegmentIterator segmentIterator = new DataSourceCompactibleSegmentIterator(
         config,
         timeline,
-        Intervals.complementOf(params.getInterval()),
+        List.of(),
         new NewestSegmentFirstPolicy(null),
         null
     );
+
+    final ObjectMapper mapper = null;
 
     final List<CompactionJob> jobs = new ArrayList<>();
     while (segmentIterator.hasNext()) {
       final CompactionCandidate candidate = segmentIterator.next();
 
-      // Use the candidate and the config to create a Task
-      // Any other stuff that we might need should come from params
-      // What other stuff might we need?
-
-      // Any validation needed here?
-      // jobs.add(CompactionJob.forTask());
+      ClientCompactionTaskQuery taskPayload
+          = CompactSegments.createCompactionTask(candidate, config, null);
+      jobs.add(
+          CompactionJob.forTask(mapper.convertValue(taskPayload, CompactionTask.class))
+      );
     }
 
     return jobs;
