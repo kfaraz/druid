@@ -471,133 +471,161 @@ public class CompactSegments implements CoordinatorCustomDuty
           .incrementCompactedStats(entry.getStats());
 
       final DataSourceCompactionConfig config = compactionConfigs.get(dataSourceName);
-      final List<DataSegment> segmentsToCompact = entry.getSegments();
+      final ClientCompactionTaskQuery taskPayload = createCompactionTask(entry, config, defaultEngine);
 
-      // Create granularitySpec to send to compaction task
-      Granularity segmentGranularityToUse = null;
-      if (config.getGranularitySpec() == null || config.getGranularitySpec().getSegmentGranularity() == null) {
-        // Determines segmentGranularity from the segmentsToCompact
-        // Each batch of segmentToCompact from CompactionSegmentIterator will contain the same interval as
-        // segmentGranularity is not set in the compaction config
-        Interval interval = segmentsToCompact.get(0).getInterval();
-        if (segmentsToCompact.stream().allMatch(segment -> interval.overlaps(segment.getInterval()))) {
-          try {
-            segmentGranularityToUse = GranularityType.fromPeriod(interval.toPeriod()).getDefaultGranularity();
-          }
-          catch (IllegalArgumentException iae) {
-            // This case can happen if the existing segment interval result in complicated periods.
-            // Fall back to setting segmentGranularity as null
-            LOG.warn("Cannot determine segmentGranularity from interval[%s].", interval);
-          }
-        } else {
-          LOG.warn(
-              "Not setting 'segmentGranularity' for auto-compaction task as"
-              + " the segments to compact do not have the same interval."
-          );
-        }
-      } else {
-        segmentGranularityToUse = config.getGranularitySpec().getSegmentGranularity();
-      }
-      final ClientCompactionTaskGranularitySpec granularitySpec = new ClientCompactionTaskGranularitySpec(
-          segmentGranularityToUse,
-          config.getGranularitySpec() != null ? config.getGranularitySpec().getQueryGranularity() : null,
-          config.getGranularitySpec() != null ? config.getGranularitySpec().isRollup() : null
-      );
-
-      // Create dimensionsSpec to send to compaction task
-      final ClientCompactionTaskDimensionsSpec dimensionsSpec;
-      if (config.getDimensionsSpec() != null) {
-        dimensionsSpec = new ClientCompactionTaskDimensionsSpec(
-            config.getDimensionsSpec().getDimensions()
-        );
-      } else {
-        dimensionsSpec = null;
-      }
-
-      Boolean dropExisting = null;
-      if (config.getIoConfig() != null) {
-        dropExisting = config.getIoConfig().isDropExisting();
-      }
-
-      // If all the segments found to be compacted are tombstones then dropExisting
-      // needs to be forced to true. This forcing needs to  happen in the case that
-      // the flag is null, or it is false. It is needed when it is null to avoid the
-      // possibility of the code deciding to default it to false later.
-      // Forcing the flag to true will enable the task ingestion code to generate new, compacted, tombstones to
-      // cover the tombstones found to be compacted as well as to mark them
-      // as compacted (update their lastCompactionState). If we don't force the
-      // flag then every time this compact duty runs it will find the same tombstones
-      // in the interval since their lastCompactionState
-      // was not set repeating this over and over and the duty will not make progress; it
-      // will become stuck on this set of tombstones.
-      // This forcing code should be revised
-      // when/if the autocompaction code policy to decide which segments to compact changes
-      if (dropExisting == null || !dropExisting) {
-        if (segmentsToCompact.stream().allMatch(DataSegment::isTombstone)) {
-          dropExisting = true;
-          LOG.info("Forcing dropExisting to true since all segments to compact are tombstones.");
-        }
-      }
-
-      final CompactionEngine compactionEngine = config.getEngine() == null ? defaultEngine : config.getEngine();
-      final Map<String, Object> autoCompactionContext = newAutoCompactionContext(config.getTaskContext());
-      int slotsRequiredForCurrentTask;
-
-      if (compactionEngine == CompactionEngine.MSQ) {
-        if (autoCompactionContext.containsKey(ClientMSQContext.CTX_MAX_NUM_TASKS)) {
-          slotsRequiredForCurrentTask = (int) autoCompactionContext.get(ClientMSQContext.CTX_MAX_NUM_TASKS);
-        } else {
-          // Since MSQ needs all task slots for the calculated #tasks to be available upfront, allot all available
-          // compaction slots (upto a max of MAX_TASK_SLOTS_FOR_MSQ_COMPACTION) to current compaction task to avoid
-          // stalling. Setting "taskAssignment" to "auto" has the problem of not being able to determine the actual
-          // count, which is required for subsequent tasks.
-          slotsRequiredForCurrentTask = Math.min(
-              // Update the slots to 2 (min required for MSQ) if only 1 slot is available.
-              numAvailableCompactionTaskSlots == 1 ? 2 : numAvailableCompactionTaskSlots,
-              ClientMSQContext.MAX_TASK_SLOTS_FOR_MSQ_COMPACTION_TASK
-          );
-          autoCompactionContext.put(ClientMSQContext.CTX_MAX_NUM_TASKS, slotsRequiredForCurrentTask);
-        }
-      } else {
-        slotsRequiredForCurrentTask = findMaxNumTaskSlotsUsedByOneNativeCompactionTask(config.getTuningConfig());
-      }
-
-      if (entry.getCurrentStatus() != null) {
-        autoCompactionContext.put(COMPACTION_REASON_KEY, entry.getCurrentStatus().getReason());
-      }
-
-      final String taskId = compactSegments(
-          entry,
-          config.getTaskPriority(),
-          ClientCompactionTaskQueryTuningConfig.from(
-              config.getTuningConfig(),
-              config.getMaxRowsPerSegment(),
-              config.getMetricsSpec() != null
-          ),
-          granularitySpec,
-          dimensionsSpec,
-          config.getMetricsSpec(),
-          config.getTransformSpec(),
-          config.getProjections(),
-          dropExisting,
-          autoCompactionContext,
-          new ClientCompactionRunnerInfo(compactionEngine)
-      );
+      final String taskId = taskPayload.getId();
+      FutureUtils.getUnchecked(overlordClient.runTask(taskId, taskPayload), true);
+      statusTracker.onTaskSubmitted(taskPayload, entry);
 
       LOG.debug(
           "Submitted a compaction task[%s] for [%d] segments in datasource[%s], umbrella interval[%s].",
-          taskId, segmentsToCompact.size(), dataSourceName, entry.getUmbrellaInterval()
+          taskId, entry.numSegments(), dataSourceName, entry.getUmbrellaInterval()
       );
-      LOG.debugSegments(segmentsToCompact, "Compacting segments");
+      LOG.debugSegments(entry.getSegments(), "Compacting segments");
       numSubmittedTasks++;
-      totalTaskSlotsAssigned += slotsRequiredForCurrentTask;
+      totalTaskSlotsAssigned += computeSlotsRequiredForTask(
+          taskPayload,
+          config,
+          numAvailableCompactionTaskSlots
+      );
     }
 
     LOG.info("Submitted a total of [%d] compaction tasks.", numSubmittedTasks);
     return numSubmittedTasks;
   }
 
-  private Map<String, Object> newAutoCompactionContext(@Nullable Map<String, Object> configuredContext)
+  private static ClientCompactionTaskQuery createCompactionTask(
+      CompactionCandidate candidate,
+      DataSourceCompactionConfig config,
+      CompactionEngine defaultEngine
+  )
+  {
+    final List<DataSegment> segmentsToCompact = candidate.getSegments();
+
+    // Create granularitySpec to send to compaction task
+    Granularity segmentGranularityToUse = null;
+    if (config.getGranularitySpec() == null || config.getGranularitySpec().getSegmentGranularity() == null) {
+      // Determines segmentGranularity from the segmentsToCompact
+      // Each batch of segmentToCompact from CompactionSegmentIterator will contain the same interval as
+      // segmentGranularity is not set in the compaction config
+      Interval interval = segmentsToCompact.get(0).getInterval();
+      if (segmentsToCompact.stream().allMatch(segment -> interval.overlaps(segment.getInterval()))) {
+        try {
+          segmentGranularityToUse = GranularityType.fromPeriod(interval.toPeriod()).getDefaultGranularity();
+        }
+        catch (IllegalArgumentException iae) {
+          // This case can happen if the existing segment interval result in complicated periods.
+          // Fall back to setting segmentGranularity as null
+          LOG.warn("Cannot determine segmentGranularity from interval[%s].", interval);
+        }
+      } else {
+        LOG.warn(
+            "Not setting 'segmentGranularity' for auto-compaction task as"
+            + " the segments to compact do not have the same interval."
+        );
+      }
+    } else {
+      segmentGranularityToUse = config.getGranularitySpec().getSegmentGranularity();
+    }
+    final ClientCompactionTaskGranularitySpec granularitySpec = new ClientCompactionTaskGranularitySpec(
+        segmentGranularityToUse,
+        config.getGranularitySpec() != null ? config.getGranularitySpec().getQueryGranularity() : null,
+        config.getGranularitySpec() != null ? config.getGranularitySpec().isRollup() : null
+    );
+
+    // Create dimensionsSpec to send to compaction task
+    final ClientCompactionTaskDimensionsSpec dimensionsSpec;
+    if (config.getDimensionsSpec() != null) {
+      dimensionsSpec = new ClientCompactionTaskDimensionsSpec(
+          config.getDimensionsSpec().getDimensions()
+      );
+    } else {
+      dimensionsSpec = null;
+    }
+
+    Boolean dropExisting = null;
+    if (config.getIoConfig() != null) {
+      dropExisting = config.getIoConfig().isDropExisting();
+    }
+
+    // If all the segments found to be compacted are tombstones then dropExisting
+    // needs to be forced to true. This forcing needs to  happen in the case that
+    // the flag is null, or it is false. It is needed when it is null to avoid the
+    // possibility of the code deciding to default it to false later.
+    // Forcing the flag to true will enable the task ingestion code to generate new, compacted, tombstones to
+    // cover the tombstones found to be compacted as well as to mark them
+    // as compacted (update their lastCompactionState). If we don't force the
+    // flag then every time this compact duty runs it will find the same tombstones
+    // in the interval since their lastCompactionState
+    // was not set repeating this over and over and the duty will not make progress; it
+    // will become stuck on this set of tombstones.
+    // This forcing code should be revised
+    // when/if the autocompaction code policy to decide which segments to compact changes
+    if (dropExisting == null || !dropExisting) {
+      if (segmentsToCompact.stream().allMatch(DataSegment::isTombstone)) {
+        dropExisting = true;
+        LOG.info("Forcing dropExisting to true since all segments to compact are tombstones.");
+      }
+    }
+
+    final CompactionEngine compactionEngine = config.getEngine() == null ? defaultEngine : config.getEngine();
+    final Map<String, Object> autoCompactionContext = newAutoCompactionContext(config.getTaskContext());
+
+    if (candidate.getCurrentStatus() != null) {
+      autoCompactionContext.put(COMPACTION_REASON_KEY, candidate.getCurrentStatus().getReason());
+    }
+
+    return compactSegments(
+        candidate,
+        config.getTaskPriority(),
+        ClientCompactionTaskQueryTuningConfig.from(
+            config.getTuningConfig(),
+            config.getMaxRowsPerSegment(),
+            config.getMetricsSpec() != null
+        ),
+        granularitySpec,
+        dimensionsSpec,
+        config.getMetricsSpec(),
+        config.getTransformSpec(),
+        config.getProjections(),
+        dropExisting,
+        autoCompactionContext,
+        new ClientCompactionRunnerInfo(compactionEngine)
+    );
+  }
+
+  private int computeSlotsRequiredForTask(
+      ClientCompactionTaskQuery task,
+      DataSourceCompactionConfig config,
+      int numAvailableCompactionTaskSlots
+  )
+  {
+    int slotsRequiredForCurrentTask;
+    final Map<String, Object> autoCompactionContext = task.getContext();
+
+    if (task.getCompactionRunner().getType() == CompactionEngine.MSQ) {
+      if (autoCompactionContext.containsKey(ClientMSQContext.CTX_MAX_NUM_TASKS)) {
+        slotsRequiredForCurrentTask = (int) autoCompactionContext.get(ClientMSQContext.CTX_MAX_NUM_TASKS);
+      } else {
+        // Since MSQ needs all task slots for the calculated #tasks to be available upfront, allot all available
+        // compaction slots (upto a max of MAX_TASK_SLOTS_FOR_MSQ_COMPACTION) to current compaction task to avoid
+        // stalling. Setting "taskAssignment" to "auto" has the problem of not being able to determine the actual
+        // count, which is required for subsequent tasks.
+        slotsRequiredForCurrentTask = Math.min(
+            // Update the slots to 2 (min required for MSQ) if only 1 slot is available.
+            numAvailableCompactionTaskSlots == 1 ? 2 : numAvailableCompactionTaskSlots,
+            ClientMSQContext.MAX_TASK_SLOTS_FOR_MSQ_COMPACTION_TASK
+        );
+        autoCompactionContext.put(ClientMSQContext.CTX_MAX_NUM_TASKS, slotsRequiredForCurrentTask);
+      }
+    } else {
+      slotsRequiredForCurrentTask = findMaxNumTaskSlotsUsedByOneNativeCompactionTask(config.getTuningConfig());
+    }
+
+    return slotsRequiredForCurrentTask;
+  }
+
+  private static Map<String, Object> newAutoCompactionContext(@Nullable Map<String, Object> configuredContext)
   {
     final Map<String, Object> newContext = configuredContext == null
                                            ? new HashMap<>()
@@ -674,7 +702,7 @@ public class CompactSegments implements CoordinatorCustomDuty
     return autoCompactionSnapshotPerDataSource.get();
   }
 
-  private String compactSegments(
+  private static ClientCompactionTaskQuery compactSegments(
       CompactionCandidate entry,
       int compactionTaskPriority,
       ClientCompactionTaskQueryTuningConfig tuningConfig,
@@ -703,7 +731,7 @@ public class CompactSegments implements CoordinatorCustomDuty
     final String taskId = IdUtils.newTaskId(TASK_ID_PREFIX, ClientCompactionTaskQuery.TYPE, dataSource, null);
     final Granularity segmentGranularity = granularitySpec == null ? null : granularitySpec.getSegmentGranularity();
 
-    final ClientCompactionTaskQuery taskPayload = new ClientCompactionTaskQuery(
+    return new ClientCompactionTaskQuery(
         taskId,
         dataSource,
         new ClientCompactionIOConfig(
@@ -719,9 +747,5 @@ public class CompactSegments implements CoordinatorCustomDuty
         context,
         compactionRunner
     );
-    FutureUtils.getUnchecked(overlordClient.runTask(taskId, taskPayload), true);
-    statusTracker.onTaskSubmitted(taskPayload, entry);
-
-    return taskId;
   }
 }

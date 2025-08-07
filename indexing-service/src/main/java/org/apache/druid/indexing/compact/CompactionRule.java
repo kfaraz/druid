@@ -19,14 +19,33 @@
 
 package org.apache.druid.indexing.compact;
 
-import org.apache.druid.server.coordinator.DataSourceCompactionConfig;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import org.joda.time.Interval;
+import org.joda.time.Period;
 
-public abstract class CascadingCompactionSpec implements DataSourceCompactionConfig
+public class CompactionRule
 {
-  public static final String TYPE = "cascading";
+  private final Period period;
+  private final CatalogCompactionJobTemplate template;
 
-  // Have a list of rules
-  // Each rule has a period and a template
-  // Template shouldn't have datasource - just the stuff we want it to have
-  //  so, what exactly?
+  @JsonCreator
+  public CompactionRule(
+      @JsonProperty("interval") Period period,
+      @JsonProperty("template") CatalogCompactionJobTemplate template
+  )
+  {
+    this.period = period;
+    this.template = template;
+  }
+
+  public CatalogCompactionJobTemplate getTemplate()
+  {
+    return template;
+  }
+
+  public Period getPeriod()
+  {
+    return period;
+  }
 }

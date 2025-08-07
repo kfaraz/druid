@@ -20,20 +20,32 @@
 package org.apache.druid.indexing.compact;
 
 import org.apache.druid.indexing.overlord.supervisor.JobParams;
+import org.joda.time.DateTime;
 import org.joda.time.Interval;
 
+/**
+ * Parameters used while creating a {@link CompactionJob} using a {@link CompactionJobTemplate}.
+ */
 public class CompactionJobParams implements JobParams
 {
   private final Interval interval;
+  private final DateTime scheduleStartTime;
 
-  public CompactionJobParams(Interval interval)
+  public CompactionJobParams(Interval interval, DateTime scheduleStartTime)
   {
     this.interval = interval;
+    this.scheduleStartTime = scheduleStartTime;
   }
 
   @Override
   public Interval getInterval()
   {
     return interval;
+  }
+
+  @Override
+  public DateTime getScheduleStartTime()
+  {
+    return scheduleStartTime;
   }
 }

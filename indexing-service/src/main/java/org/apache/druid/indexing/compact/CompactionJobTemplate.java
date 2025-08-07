@@ -23,19 +23,7 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import org.apache.druid.indexing.overlord.supervisor.BatchIndexingJobTemplate;
 
-/**
- * TODO:
- *  - How is this different from datasource compaction config?
- *  - It hides all the details
- *  - So far it seems that we have identified a few things that we need
- *  - max input bytes - to accept or reject jobs (again, can be private)
- *  - segment granularity - to break up the timeline (again, can be private)
- *    - I give you the original timeline, what you do with it is up to you
- *    - See what the DatasourceCompactibleIterator expects and give it that stuff
- *    - No need to expose any of that to me.
- *  - I guess all other stuff can be private too then?
- */
-@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type", defaultImpl = InlineCompactionJobTemplate.class)
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type", defaultImpl = CompactionConfigBasedJobTemplate.class)
 @JsonSubTypes(value = {
     @JsonSubTypes.Type(name = "inline", value = InlineCompactionJobTemplate.class),
     @JsonSubTypes.Type(name = "catalog", value = CatalogCompactionJobTemplate.class)

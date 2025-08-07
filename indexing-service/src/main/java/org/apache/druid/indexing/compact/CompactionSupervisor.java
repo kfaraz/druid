@@ -30,7 +30,6 @@ import org.apache.druid.java.util.common.Intervals;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.server.coordinator.AutoCompactionSnapshot;
-import org.apache.druid.server.coordinator.DataSourceCompactionConfig;
 import org.joda.time.DateTime;
 
 import javax.annotation.Nullable;
@@ -128,7 +127,7 @@ public class CompactionSupervisor implements BatchIndexingSupervisor<CompactionJ
   @Override
   public boolean shouldCreateJobs(DateTime currentTime)
   {
-    return true;
+    return !supervisorSpec.isSuspended();
   }
 
   @Override
@@ -137,14 +136,18 @@ public class CompactionSupervisor implements BatchIndexingSupervisor<CompactionJ
     return supervisorSpec.getTemplate().createJobs(
         new DruidInputSource(dataSource, null, null, null, null, null, null, null, null, null),
         new DruidDatasourceDestination(dataSource),
-        new CompactionJobParams(Intervals.ETERNITY)
+        new CompactionJobParams(Intervals.ETERNITY, currentTime)
     ).iterator();
   }
 
   @Override
   public boolean canRunJob(CompactionJob job, DateTime currentTime)
   {
-    return false;
+    // TODO: check with the status tracker and tasks in progress to determine if task should be skipped due to
+    //  - locked intervals
+    //  - already running
+    //  - any other reason
+    return !supervisorSpec.isSuspended();
   }
 
   public enum State implements SupervisorStateManager.State

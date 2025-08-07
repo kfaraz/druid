@@ -26,7 +26,11 @@ import org.apache.druid.server.coordinator.CatalogDataSourceCompactionConfig;
 import java.util.List;
 
 /**
- * TODO: figure out if we can put more stuff in the catalog.
+ * TODO:
+ *  - For now, let's just start with a catalogTable type template
+ *  which simply refers to a table definition and we use it as is.
+ *  - Should the catalog contain only the table definition?
+ *    - If yes, then we
  */
 public class CatalogCompactionJobTemplate implements CompactionJobTemplate
 {

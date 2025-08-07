@@ -23,7 +23,6 @@ import com.fasterxml.jackson.annotation.JacksonInject;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.apache.druid.common.config.Configs;
-import org.apache.druid.indexing.overlord.supervisor.BatchIndexingJobTemplate;
 import org.apache.druid.indexing.overlord.supervisor.BatchIndexingSupervisorSpec;
 import org.apache.druid.server.coordinator.CompactionConfigValidationResult;
 import org.apache.druid.server.coordinator.DataSourceCompactionConfig;
@@ -95,9 +94,13 @@ public class CompactionSupervisorSpec implements BatchIndexingSupervisorSpec<Com
   }
 
   @Override
-  public BatchIndexingJobTemplate<CompactionJob, CompactionJobParams> getTemplate()
+  public CompactionJobTemplate getTemplate()
   {
-    return null;
+    if (spec instanceof CascadingCompactionTemplate) {
+      return (CascadingCompactionTemplate) spec;
+    } else {
+      return new CompactionConfigBasedJobTemplate(spec);
+    }
   }
 
   @Override

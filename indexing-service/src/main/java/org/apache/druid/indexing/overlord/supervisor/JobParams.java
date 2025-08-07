@@ -19,6 +19,7 @@
 
 package org.apache.druid.indexing.overlord.supervisor;
 
+import org.joda.time.DateTime;
 import org.joda.time.Interval;
 
 /**
@@ -27,4 +28,6 @@ import org.joda.time.Interval;
 public interface JobParams
 {
   Interval getInterval();
+
+  DateTime getScheduleStartTime();
 }
