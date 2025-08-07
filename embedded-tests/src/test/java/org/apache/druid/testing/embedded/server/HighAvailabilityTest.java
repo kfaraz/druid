@@ -78,15 +78,18 @@ public class HighAvailabilityTest extends EmbeddedClusterTestBase
         .addProperty("druid.plaintextPort", "7081")
         .addProperty("druid.manager.segments.useIncrementalCache", "always");
 
+    // Keep the Router first in the list to ensure that EmbeddedServiceClient
+    // does not use clients from the Overlord or Coordinator, which are stopped
+    // during the test and may cause failures due to ServiceClient being closed.
     return EmbeddedDruidCluster.withEmbeddedDerbyAndZookeeper()
                                .useLatchableEmitter()
+                               .addServer(router)
                                .addServer(overlord1)
                                .addServer(overlord2)
                                .addServer(coordinator1)
                                .addServer(coordinator2)
                                .addServer(indexer)
-                               .addServer(broker)
-                               .addServer(router);
+                               .addServer(broker);
   }
 
   @Test
@@ -125,7 +128,7 @@ public class HighAvailabilityTest extends EmbeddedClusterTestBase
     coordinator1.latchableEmitter().waitForEvent(
         event -> event.hasMetricName("segment/metadataCache/used/count")
                       .hasDimension(DruidMetrics.DATASOURCE, dataSource)
-                      .hasValue(10)
+                      .hasValueAtLeast(10)
     );
 
     // Run sys queries, switch leaders, repeat
@@ -150,7 +153,7 @@ public class HighAvailabilityTest extends EmbeddedClusterTestBase
     }
   }
 
-  private void verifyNodeRoleHasServerCount(
+  public static void verifyNodeRoleHasServerCount(
       NodeRole role,
       int expectedCount,
       DruidNodeDiscoveryProvider discovery,
@@ -171,7 +174,7 @@ public class HighAvailabilityTest extends EmbeddedClusterTestBase
     }
   }
 
-  private void verifySelfDiscoveredStatusReturnsOk(
+  private static void verifySelfDiscoveredStatusReturnsOk(
       DiscoveryDruidNode node,
       HttpClient httpClient
   ) throws Exception

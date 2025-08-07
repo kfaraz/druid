@@ -22,9 +22,9 @@ package org.apache.druid.testing.embedded;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListenableFuture;
+import org.apache.druid.client.broker.BrokerClient;
 import org.apache.druid.client.coordinator.CoordinatorClient;
 import org.apache.druid.client.indexing.TaskStatusResponse;
-import org.apache.druid.common.guava.FutureUtils;
 import org.apache.druid.common.utils.IdUtils;
 import org.apache.druid.indexer.TaskState;
 import org.apache.druid.indexer.TaskStatus;
@@ -43,6 +43,7 @@ import org.apache.druid.query.http.ClientSqlQuery;
 import org.apache.druid.rpc.indexing.OverlordClient;
 import org.apache.druid.segment.TestDataSource;
 import org.apache.druid.segment.TestHelper;
+import org.apache.druid.server.metrics.LatchableEmitter;
 import org.apache.druid.sql.http.ResultFormat;
 import org.apache.druid.timeline.DataSegment;
 import org.joda.time.Interval;
@@ -66,28 +67,60 @@ import java.util.function.Function;
  * @see #onLeaderOverlord(Function)
  * @see #runSql(String, Object...)
  */
-public class EmbeddedClusterApis
+public class EmbeddedClusterApis implements EmbeddedResource
 {
   private final EmbeddedDruidCluster cluster;
+  private EmbeddedServiceClient client;
 
   EmbeddedClusterApis(EmbeddedDruidCluster cluster)
   {
     this.cluster = cluster;
   }
 
+  @Override
+  public void start() throws Exception
+  {
+    this.client = EmbeddedServiceClient.create(cluster, null);
+  }
+
+  @Override
+  public void stop() throws Exception
+  {
+    if (client != null) {
+      client.stop();
+      client = null;
+    }
+  }
+
+  /**
+   * Client used for all the API calls made by this {@link EmbeddedClusterApis}.
+   */
+  public EmbeddedServiceClient serviceClient()
+  {
+    return Objects.requireNonNull(
+        client,
+        "Service clients are not initialized. Ensure that the cluster has started properly."
+    );
+  }
+
   public <T> T onLeaderCoordinator(Function<CoordinatorClient, ListenableFuture<T>> coordinatorApi)
   {
-    return getResult(coordinatorApi.apply(cluster.leaderCoordinator()));
+    return client.onLeaderCoordinator(coordinatorApi);
   }
 
   public <T> T onLeaderCoordinatorSync(Function<CoordinatorClient, T> coordinatorApi)
   {
-    return coordinatorApi.apply(cluster.leaderCoordinator());
+    return client.onLeaderCoordinatorSync(coordinatorApi);
   }
 
   public <T> T onLeaderOverlord(Function<OverlordClient, ListenableFuture<T>> overlordApi)
   {
-    return getResult(overlordApi.apply(cluster.leaderOverlord()));
+    return client.onLeaderOverlord(overlordApi);
+  }
+
+  public <T> T onAnyBroker(Function<BrokerClient, ListenableFuture<T>> brokerApi)
+  {
+    return client.onAnyBroker(brokerApi);
   }
 
   /**
@@ -99,8 +132,8 @@ public class EmbeddedClusterApis
   public String runSql(String sql, Object... args)
   {
     try {
-      return getResult(
-          cluster.anyBroker().submitSqlQuery(
+      return onAnyBroker(
+          b -> b.submitSqlQuery(
               new ClientSqlQuery(
                   StringUtils.format(sql, args),
                   ResultFormat.CSV.name(),
@@ -162,20 +195,35 @@ public class EmbeddedClusterApis
    */
   public void waitForTaskToSucceed(String taskId, EmbeddedOverlord overlord)
   {
+    TaskStatus taskStatus = waitForTaskToFinish(taskId, overlord.latchableEmitter());
     Assertions.assertEquals(
         TaskState.SUCCESS,
-        waitForTaskToFinish(taskId, overlord).getStatusCode()
+        taskStatus.getStatusCode(),
+        StringUtils.format("Task[%s] failed with error[%s]", taskId, taskStatus.getErrorMsg())
     );
   }
 
   /**
-   * Waits for the given task to finish (either successfully or unsuccessfully). If the given
-   * {@link EmbeddedOverlord} is not the leader, this method can only return by
-   * throwing an exception upon timeout.
+   * Waits for the given task to finish successfully.
+   * If the given {@link LatchableEmitter} does not receive the task completion
+   * event, this method can only return by throwing an exception upon timeout.
    */
-  public TaskStatus waitForTaskToFinish(String taskId, EmbeddedOverlord overlord)
+  public void waitForTaskToSucceed(String taskId, LatchableEmitter emitter)
   {
-    overlord.latchableEmitter().waitForEvent(
+    Assertions.assertEquals(
+        TaskState.SUCCESS,
+        waitForTaskToFinish(taskId, emitter).getStatusCode()
+    );
+  }
+
+  /**
+   * Waits for the given task to finish (either successfully or unsuccessfully).
+   * If the given {@link LatchableEmitter} does not receive the task completion
+   * event, this method can only return by throwing an exception upon timeout.
+   */
+  public TaskStatus waitForTaskToFinish(String taskId, LatchableEmitter emitter)
+  {
+    emitter.waitForEvent(
         event -> event.hasMetricName(TaskMetrics.RUN_DURATION)
                       .hasDimension(DruidMetrics.TASK_ID, taskId)
     );
@@ -215,7 +263,7 @@ public class EmbeddedClusterApis
    */
   public void verifyNumVisibleSegmentsIs(int numExpectedSegments, String dataSource, EmbeddedOverlord overlord)
   {
-    int segmentCount = cluster.callApi().getVisibleUsedSegments(dataSource, overlord).size();
+    int segmentCount = getVisibleUsedSegments(dataSource, overlord).size();
     Assertions.assertEquals(
         numExpectedSegments,
         segmentCount,
@@ -223,7 +271,7 @@ public class EmbeddedClusterApis
     );
     Assertions.assertEquals(
         String.valueOf(segmentCount),
-        cluster.runSql(
+        runSql(
             "SELECT COUNT(*) FROM sys.segments WHERE datasource='%s'"
             + " AND is_overshadowed = 0 AND is_available = 1",
             dataSource
@@ -378,11 +426,6 @@ public class EmbeddedClusterApis
     }
 
     return alignedIntervals;
-  }
-
-  private static <T> T getResult(ListenableFuture<T> future)
-  {
-    return FutureUtils.getUnchecked(future, true);
   }
 
   @FunctionalInterface

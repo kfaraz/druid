@@ -21,13 +21,10 @@ package org.apache.druid.testing.embedded;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
-import org.apache.druid.client.broker.BrokerClient;
-import org.apache.druid.client.coordinator.CoordinatorClient;
 import org.apache.druid.initialization.DruidModule;
 import org.apache.druid.java.util.common.ISE;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.logger.Logger;
-import org.apache.druid.rpc.indexing.OverlordClient;
 import org.apache.druid.server.metrics.LatchableEmitter;
 import org.apache.druid.testing.embedded.derby.InMemoryDerbyModule;
 import org.apache.druid.testing.embedded.derby.InMemoryDerbyResource;
@@ -71,7 +68,7 @@ import java.util.stream.Collectors;
  * cluster.stop();
  * </pre>
  */
-public class EmbeddedDruidCluster implements ClusterReferencesProvider, EmbeddedResource
+public class EmbeddedDruidCluster implements EmbeddedResource
 {
   private static final Logger log = new Logger(EmbeddedDruidCluster.class);
 
@@ -83,8 +80,8 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
   private final List<Class<? extends DruidModule>> extensionModules = new ArrayList<>();
   private final Properties commonProperties = new Properties();
 
+  private EmbeddedHostname embeddedHostname = EmbeddedHostname.localhost();
   private boolean startedFirstDruidServer = false;
-  private EmbeddedZookeeper zookeeper;
 
   private EmbeddedDruidCluster()
   {
@@ -101,9 +98,7 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
    */
   public static EmbeddedDruidCluster withZookeeper()
   {
-    final EmbeddedDruidCluster cluster = new EmbeddedDruidCluster();
-    cluster.addEmbeddedZookeeper();
-    return cluster;
+    return new EmbeddedDruidCluster().addResource(new EmbeddedZookeeper());
   }
 
   /**
@@ -130,12 +125,6 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
   public static EmbeddedDruidCluster empty()
   {
     return new EmbeddedDruidCluster();
-  }
-
-  private void addEmbeddedZookeeper()
-  {
-    this.zookeeper = new EmbeddedZookeeper();
-    resources.add(zookeeper);
   }
 
   /**
@@ -187,7 +176,6 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
    */
   public EmbeddedDruidCluster addServer(EmbeddedDruidServer<?> server)
   {
-    server.onAddedToCluster(commonProperties);
     servers.add(server);
     resources.add(server);
     if (startedFirstDruidServer) {
@@ -222,6 +210,11 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
     return this;
   }
 
+  public Properties getCommonProperties()
+  {
+    return commonProperties;
+  }
+
   /**
    * The test directory used by this cluster. Each Druid service creates a
    * sub-folder inside this directory to write out task logs or segments.
@@ -232,13 +225,21 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
   }
 
   /**
-   * The embedded Zookeeper server used by this cluster, if any.
-   *
-   * @throws NullPointerException if this cluster has no embedded zookeeper.
+   * Uses a container-friendly hostname for all embedded services, Druid as well
+   * as external.
    */
-  public EmbeddedZookeeper getZookeeper()
+  public EmbeddedDruidCluster useContainerFriendlyHostname()
   {
-    return Objects.requireNonNull(zookeeper, "No embedded zookeeper configured for this cluster");
+    this.embeddedHostname = EmbeddedHostname.containerFriendly();
+    return this;
+  }
+
+  /**
+   * Hostname to be used for embedded services (both Druid or external).
+   */
+  public EmbeddedHostname getEmbeddedHostname()
+  {
+    return embeddedHostname;
   }
 
   /**
@@ -249,6 +250,12 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
   public void start() throws Exception
   {
     Preconditions.checkArgument(!servers.isEmpty(), "Cluster must have at least one embedded Druid server");
+
+    // Add clusterApis as the last entry in the resources list, so that the
+    // EmbeddedServiceClient is initialized after mappers have been injected into the servers
+    if (!startedFirstDruidServer) {
+      resources.add(clusterApis);
+    }
 
     // Start the resources in order
     for (EmbeddedResource resource : resources) {
@@ -314,25 +321,12 @@ public class EmbeddedDruidCluster implements ClusterReferencesProvider, Embedded
     return clusterApis.runSql(sql, args);
   }
 
-  @Override
-  public CoordinatorClient leaderCoordinator()
+  EmbeddedDruidServer<?> anyServer()
   {
-    return findServerOfType(EmbeddedCoordinator.class).bindings().leaderCoordinator();
+    return servers.get(0);
   }
 
-  @Override
-  public OverlordClient leaderOverlord()
-  {
-    return findServerOfType(EmbeddedOverlord.class).bindings().leaderOverlord();
-  }
-
-  @Override
-  public BrokerClient anyBroker()
-  {
-    return findServerOfType(EmbeddedBroker.class).bindings().anyBroker();
-  }
-
-  private <S extends EmbeddedDruidServer<S>> EmbeddedDruidServer<S> findServerOfType(
+  <S extends EmbeddedDruidServer<S>> S findServerOfType(
       Class<S> serverType
   )
   {
