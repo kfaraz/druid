@@ -28,7 +28,7 @@ public interface BatchIndexingSupervisorSpec
     extends SupervisorSpec
 {
   @Override
-  BatchIndexingSupervisor<J> createSupervisor();
+  BatchIndexingSupervisor<J, P> createSupervisor();
 
   /**
    * Template used by the corresponding supervisor to create {@link BatchIndexingJob}s.

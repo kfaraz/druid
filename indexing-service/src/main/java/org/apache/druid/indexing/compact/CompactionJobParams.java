@@ -19,7 +19,10 @@
 
 package org.apache.druid.indexing.compact;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.druid.indexing.overlord.supervisor.JobParams;
+import org.apache.druid.server.compaction.CompactionStatusTracker;
+import org.apache.druid.timeline.SegmentTimeline;
 import org.joda.time.DateTime;
 import org.joda.time.Interval;
 
@@ -30,11 +33,25 @@ public class CompactionJobParams implements JobParams
 {
   private final Interval interval;
   private final DateTime scheduleStartTime;
+  private final ObjectMapper mapper;
+  private final TimelineProvider timelineProvider;
 
-  public CompactionJobParams(Interval interval, DateTime scheduleStartTime)
+  // TODO: this should be removed later
+  private final CompactionStatusTracker statusTracker;
+
+  public CompactionJobParams(
+      Interval interval,
+      DateTime scheduleStartTime,
+      ObjectMapper mapper,
+      TimelineProvider timelineProvider,
+      CompactionStatusTracker statusTracker
+  )
   {
+    this.mapper = mapper;
     this.interval = interval;
     this.scheduleStartTime = scheduleStartTime;
+    this.timelineProvider = timelineProvider;
+    this.statusTracker = statusTracker;
   }
 
   @Override
@@ -47,5 +64,26 @@ public class CompactionJobParams implements JobParams
   public DateTime getScheduleStartTime()
   {
     return scheduleStartTime;
+  }
+
+  public ObjectMapper getMapper()
+  {
+    return mapper;
+  }
+
+  public SegmentTimeline getTimeline(String dataSource)
+  {
+    return timelineProvider.getTimelineForDataSource(dataSource);
+  }
+
+  public CompactionStatusTracker getStatusTracker()
+  {
+    return statusTracker;
+  }
+
+  @FunctionalInterface
+  public interface TimelineProvider
+  {
+    SegmentTimeline getTimelineForDataSource(String dataSource);
   }
 }

@@ -21,20 +21,29 @@ package org.apache.druid.indexing.compact;
 
 import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.indexing.overlord.supervisor.BatchIndexingJob;
+import org.apache.druid.server.compaction.CompactionCandidate;
+
+import java.util.Objects;
 
 /**
- * TODO:
- *  - might need to contain the CompactionCandidate too to help with the priority and stuff.
  */
 public class CompactionJob extends BatchIndexingJob
 {
-  public static CompactionJob forTask(Task task)
-  {
-    return new CompactionJob(task);
-  }
+  private final CompactionCandidate candidate;
 
-  private CompactionJob(Task task)
+  public CompactionJob(Task task, CompactionCandidate candidate)
   {
     super(task, null);
+    this.candidate = candidate;
+  }
+
+  public String getDataSource()
+  {
+    return Objects.requireNonNull(getTask()).getDataSource();
+  }
+
+  public CompactionCandidate getCandidate()
+  {
+    return candidate;
   }
 }

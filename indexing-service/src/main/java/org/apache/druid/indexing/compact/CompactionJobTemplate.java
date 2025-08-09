@@ -21,13 +21,41 @@ package org.apache.druid.indexing.compact;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import org.apache.druid.data.input.InputSource;
+import org.apache.druid.data.output.OutputDestination;
+import org.apache.druid.error.InvalidInput;
+import org.apache.druid.indexing.input.DruidDatasourceDestination;
+import org.apache.druid.indexing.input.DruidInputSource;
 import org.apache.druid.indexing.overlord.supervisor.BatchIndexingJobTemplate;
 
-@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type", defaultImpl = CompactionConfigBasedJobTemplate.class)
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type", defaultImpl = InlineCompactionJobTemplate.class)
 @JsonSubTypes(value = {
     @JsonSubTypes.Type(name = "inline", value = InlineCompactionJobTemplate.class),
     @JsonSubTypes.Type(name = "catalog", value = CatalogCompactionJobTemplate.class)
 })
 public interface CompactionJobTemplate extends BatchIndexingJobTemplate<CompactionJob, CompactionJobParams>
 {
+  /**
+   * Verifies that the input source is of type {@link DruidInputSource}.
+   */
+  default DruidInputSource ensureDruidInputSource(InputSource inputSource)
+  {
+    if (inputSource instanceof DruidInputSource) {
+      return (DruidInputSource) inputSource;
+    } else {
+      throw InvalidInput.exception("Invalid input source[%s] for compaction", inputSource);
+    }
+  }
+
+  /**
+   * Verifies that the output destination is of type {@link DruidDatasourceDestination}.
+   */
+  default DruidDatasourceDestination ensureDruidDataSourceDestination(OutputDestination destination)
+  {
+    if (destination instanceof DruidDatasourceDestination) {
+      return (DruidDatasourceDestination) destination;
+    } else {
+      throw InvalidInput.exception("Invalid output destination[%s] for compaction", destination);
+    }
+  }
 }

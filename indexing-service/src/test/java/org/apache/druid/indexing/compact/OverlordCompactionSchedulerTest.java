@@ -304,13 +304,7 @@ public class OverlordCompactionSchedulerTest
     wikiSegments.forEach(segmentsMetadataManager::addSegment);
 
     scheduler.becomeLeader();
-    scheduler.startCompaction(
-        TestDataSource.WIKI,
-        InlineSchemaDataSourceCompactionConfig.builder()
-                                              .forDataSource(TestDataSource.WIKI)
-                                              .withSkipOffsetFromLatest(Period.seconds(0))
-                                              .build()
-    );
+    scheduler.startCompaction(TestDataSource.WIKI, createSupervisor());
 
     executor.finishNextPendingTask();
 
@@ -351,10 +345,7 @@ public class OverlordCompactionSchedulerTest
     scheduler.becomeLeader();
     scheduler.startCompaction(
         TestDataSource.WIKI,
-        InlineSchemaDataSourceCompactionConfig.builder()
-                                              .forDataSource(TestDataSource.WIKI)
-                                              .withSkipOffsetFromLatest(Period.seconds(0))
-                                              .build()
+        createSupervisor()
     );
     scheduler.stopCompaction(TestDataSource.WIKI);
 
@@ -390,13 +381,7 @@ public class OverlordCompactionSchedulerTest
     scheduler.becomeLeader();
     runScheduledJob();
 
-    scheduler.startCompaction(
-        TestDataSource.WIKI,
-        InlineSchemaDataSourceCompactionConfig.builder()
-                                              .forDataSource(TestDataSource.WIKI)
-                                              .withSkipOffsetFromLatest(Period.seconds(0))
-                                              .build()
-    );
+    scheduler.startCompaction(TestDataSource.WIKI, createSupervisor());
 
     final CompactionSimulateResult simulateResult = scheduler.simulateRunWithConfigUpdate(
         new ClusterCompactionConfig(null, null, null, null, null)
@@ -446,4 +431,16 @@ public class OverlordCompactionSchedulerTest
     executor.finishNextPendingTask();
   }
 
+  private CompactionSupervisor createSupervisor()
+  {
+    return new CompactionSupervisorSpec(
+        InlineSchemaDataSourceCompactionConfig
+            .builder()
+            .forDataSource(TestDataSource.WIKI)
+            .withSkipOffsetFromLatest(Period.seconds(0))
+            .build(),
+        false,
+        scheduler
+    ).createSupervisor();
+  }
 }

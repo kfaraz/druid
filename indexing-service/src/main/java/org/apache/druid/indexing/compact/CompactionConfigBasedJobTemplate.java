@@ -19,7 +19,6 @@
 
 package org.apache.druid.indexing.compact;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.druid.client.indexing.ClientCompactionTaskQuery;
 import org.apache.druid.data.input.InputSource;
 import org.apache.druid.data.output.OutputDestination;
@@ -57,44 +56,53 @@ public class CompactionConfigBasedJobTemplate implements CompactionJobTemplate
       CompactionJobParams params
   )
   {
-    if (!(source instanceof DruidInputSource)) {
-      throw InvalidInput.exception("Invalid input source[%s] for compaction", source);
-    }
+    validateInput(source);
+    validateOutput(destination);
 
-    final DruidInputSource druidInputSource = (DruidInputSource) source;
-    if (!druidInputSource.getDataSource().equals(config.getDataSource())) {
-      throw InvalidInput.exception(
-          "Datasource[%s] in compaction config does not match datasource[%s] in input source",
-          config.getDataSource(), druidInputSource.getDataSource()
-      );
-    }
-
-    if (!(destination instanceof DruidDatasourceDestination)) {
-      throw InvalidInput.exception("Invalid output destination[%s] for compaction", destination);
-    }
-
-    final SegmentTimeline timeline = null;
+    final SegmentTimeline timeline = params.getTimeline(config.getDataSource());
     final DataSourceCompactibleSegmentIterator segmentIterator = new DataSourceCompactibleSegmentIterator(
         config,
         timeline,
         List.of(),
         new NewestSegmentFirstPolicy(null),
-        null
+        params.getStatusTracker()
     );
 
-    final ObjectMapper mapper = null;
-
     final List<CompactionJob> jobs = new ArrayList<>();
+
+    // Create a job for each CompactionCandidate
     while (segmentIterator.hasNext()) {
       final CompactionCandidate candidate = segmentIterator.next();
 
       ClientCompactionTaskQuery taskPayload
           = CompactSegments.createCompactionTask(candidate, config, null);
       jobs.add(
-          CompactionJob.forTask(mapper.convertValue(taskPayload, CompactionTask.class))
+          CompactionJob.forTask(params.getMapper().convertValue(taskPayload, CompactionTask.class))
       );
     }
 
     return jobs;
+  }
+
+  private void validateInput(InputSource source)
+  {
+    final DruidInputSource druidInputSource = ensureDruidInputSource(source);
+    if (!druidInputSource.getDataSource().equals(config.getDataSource())) {
+      throw InvalidInput.exception(
+          "Datasource[%s] in compaction config does not match datasource[%s] in input source",
+          config.getDataSource(), druidInputSource.getDataSource()
+      );
+    }
+  }
+
+  private void validateOutput(OutputDestination destination)
+  {
+    final DruidDatasourceDestination druidDestination = ensureDruidDataSourceDestination(destination);
+    if (!druidDestination.getDataSource().equals(config.getDataSource())) {
+      throw InvalidInput.exception(
+          "Datasource[%s] in compaction config does not match datasource[%s] in output destination",
+          config.getDataSource(), druidDestination.getDataSource()
+      );
+    }
   }
 }

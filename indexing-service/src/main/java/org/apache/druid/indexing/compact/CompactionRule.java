@@ -21,25 +21,24 @@ package org.apache.druid.indexing.compact;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import org.joda.time.Interval;
 import org.joda.time.Period;
 
 public class CompactionRule
 {
   private final Period period;
-  private final CatalogCompactionJobTemplate template;
+  private final CompactionJobTemplate template;
 
   @JsonCreator
   public CompactionRule(
-      @JsonProperty("interval") Period period,
-      @JsonProperty("template") CatalogCompactionJobTemplate template
+      @JsonProperty("period") Period period,
+      @JsonProperty("template") CompactionJobTemplate template
   )
   {
     this.period = period;
     this.template = template;
   }
 
-  public CatalogCompactionJobTemplate getTemplate()
+  public CompactionJobTemplate getTemplate()
   {
     return template;
   }

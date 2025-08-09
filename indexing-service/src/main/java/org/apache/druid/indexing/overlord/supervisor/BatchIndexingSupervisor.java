@@ -19,9 +19,7 @@
 
 package org.apache.druid.indexing.overlord.supervisor;
 
-import org.joda.time.DateTime;
-
-import java.util.Iterator;
+import java.util.List;
 
 /**
  * TODO: Motivation:
@@ -36,18 +34,13 @@ import java.util.Iterator;
  *  - Wire up scheduled batch
  *  - Write embedded tests for all
  * <p>
- * TODO:
- *  - Supervisor probably needs to contain stuff that the scheduler is going to ask for
- *  - Is there going to be a lot of retro-fitting? Are we fighting against stuff?
- *  - It should all come and fit naturally.
- * <p>
  * TODO: OVERALL FLOW:
  *  - Scheduler runs every 5 s (or triggered?)
  *  - Get target datasource of supervisor
  *  - Get the timeline
  *  - Ask supervisor to create jobs
  *    - For compaction:
- *    - Pass period, timeline and CompactionJobTemplate? to compactible iterator
+ *    - Pass period, timeline and other stuff to compactible iterator
  *    - CompactionJobTemplate knows how to create a compaction job
  *    - For each candidate, create a job
  *  - Ask the supervisor which jobs can be run now
@@ -57,24 +50,29 @@ import java.util.Iterator;
  *  - Run them
  *  - If skipped, track reason somewhere
  */
-public interface BatchIndexingSupervisor<J extends BatchIndexingJob> extends Supervisor
+public interface BatchIndexingSupervisor
+    <J extends BatchIndexingJob, P extends JobParams> extends Supervisor
 {
   /**
-   * Checks if this supervisor is ready to create jobs at the current time.
+   * Checks if this supervisor is ready to create jobs in the current run.
+   *
+   * @param jobParams Parameters for the current run of the scheduler.
    */
-  boolean shouldCreateJobs(DateTime currentTime);
+  boolean shouldCreateJobs(P jobParams);
 
   /**
    * Creates jobs to be launched in the current run of the scheduler.
    *
-   * @param currentTime Time when the current run of the scheduler started
+   * @param jobParams Parameters for the current run of the scheduler.
    * @return Empty iterator if no tasks are to be submitted in the current run
    * of the scheduler.
    */
-  Iterator<J> createJobs(DateTime currentTime);
+  List<J> createJobs(P jobParams);
 
   /**
    * Checks if a given job is valid and can be run right now.
+   *
+   * @param jobParams Parameters for the current run of the scheduler.
    */
-  boolean canRunJob(J job, DateTime currentTime);
+  boolean canRunJob(J job, P jobParams);
 }

@@ -25,6 +25,7 @@ import org.apache.druid.data.input.InputSource;
 import org.apache.druid.data.input.impl.AggregateProjectionSpec;
 import org.apache.druid.data.output.OutputDestination;
 import org.apache.druid.indexer.CompactionEngine;
+import org.apache.druid.indexing.input.DruidInputSource;
 import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.common.granularity.Granularity;
 import org.apache.druid.query.aggregation.AggregatorFactory;
@@ -87,19 +88,22 @@ public class CascadingCompactionTemplate implements DataSourceCompactionConfig, 
   {
     final List<CompactionJob> allJobs = new ArrayList<>();
 
+    final DruidInputSource druidInputSource = ensureDruidInputSource(source);
+
     // Include future dates in the first rule
     final DateTime currentTime = jobParams.getScheduleStartTime();
     DateTime previousRuleStartTime = DateTimes.MAX;
     for (int i = 0; i < rules.size() - 1; ++i) {
       final CompactionRule rule = rules.get(i);
       final DateTime ruleStartTime = currentTime.minus(rule.getPeriod());
+      final Interval ruleInterval = new Interval(new Interval(ruleStartTime, previousRuleStartTime));
 
-      final CompactionJobParams paramsForRule = new CompactionJobParams(
-          new Interval(ruleStartTime, previousRuleStartTime),
-          currentTime
-      );
       allJobs.addAll(
-          rule.getTemplate().createJobs(source, destination, paramsForRule)
+          rule.getTemplate().createJobs(
+              druidInputSource.withInterval(ruleInterval),
+              destination,
+              jobParams
+          )
       );
 
       previousRuleStartTime = ruleStartTime;
@@ -107,12 +111,13 @@ public class CascadingCompactionTemplate implements DataSourceCompactionConfig, 
 
     // Include past dates in the last rule
     final CompactionRule lastRule = rules.get(rules.size() - 1);
-    final CompactionJobParams paramsForRule = new CompactionJobParams(
-        new Interval(DateTimes.MIN, previousRuleStartTime),
-        currentTime
-    );
+    final Interval lastRuleInterval = new Interval(DateTimes.MIN, previousRuleStartTime);
     allJobs.addAll(
-        lastRule.getTemplate().createJobs(source, destination, paramsForRule)
+        lastRule.getTemplate().createJobs(
+            druidInputSource.withInterval(lastRuleInterval),
+            destination,
+            jobParams
+        )
     );
 
     return allJobs;

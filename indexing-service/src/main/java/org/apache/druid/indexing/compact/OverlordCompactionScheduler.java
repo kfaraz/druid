@@ -27,10 +27,12 @@ import org.apache.druid.client.DataSourcesSnapshot;
 import org.apache.druid.client.indexing.ClientCompactionRunnerInfo;
 import org.apache.druid.indexer.TaskLocation;
 import org.apache.druid.indexer.TaskStatus;
+import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.indexing.overlord.TaskMaster;
 import org.apache.druid.indexing.overlord.TaskQueryTool;
 import org.apache.druid.indexing.overlord.TaskRunner;
 import org.apache.druid.indexing.overlord.TaskRunnerListener;
+import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.common.Stopwatch;
 import org.apache.druid.java.util.common.concurrent.Execs;
 import org.apache.druid.java.util.common.concurrent.ScheduledExecutorFactory;
@@ -56,13 +58,16 @@ import org.apache.druid.server.coordinator.stats.Dimension;
 import org.apache.druid.server.coordinator.stats.Stats;
 import org.joda.time.Duration;
 
-import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 /**
  * Implementation of {@link CompactionScheduler}.
@@ -87,10 +92,11 @@ public class OverlordCompactionScheduler implements CompactionScheduler
   private final SegmentsMetadataManager segmentManager;
   private final LocalOverlordClient overlordClient;
   private final ServiceEmitter emitter;
+  private final ObjectMapper objectMapper;
   private final TaskMaster taskMaster;
 
   private final Supplier<DruidCompactionConfig> compactionConfigSupplier;
-  private final ConcurrentHashMap<String, DataSourceCompactionConfig> activeDatasourceConfigs;
+  private final ConcurrentHashMap<String, CompactionSupervisor> activeSupervisors;
 
   /**
    * Single-threaded executor to process the compaction queue.
@@ -133,6 +139,7 @@ public class OverlordCompactionScheduler implements CompactionScheduler
   {
     this.segmentManager = segmentManager;
     this.emitter = emitter;
+    this.objectMapper = objectMapper;
     this.taskMaster = taskMaster;
     this.compactionConfigSupplier = compactionConfigSupplier;
 
@@ -142,7 +149,7 @@ public class OverlordCompactionScheduler implements CompactionScheduler
                               && !coordinatorOverlordServiceConfig.isEnabled();
     this.overlordClient = new LocalOverlordClient(taskMaster, taskQueryTool, objectMapper);
     this.duty = new CompactSegments(this.statusTracker, overlordClient);
-    this.activeDatasourceConfigs = new ConcurrentHashMap<>();
+    this.activeSupervisors = new ConcurrentHashMap<>();
 
     this.taskRunnerListener = new TaskRunnerListener()
     {
@@ -214,19 +221,19 @@ public class OverlordCompactionScheduler implements CompactionScheduler
   }
 
   @Override
-  public void startCompaction(String dataSourceName, DataSourceCompactionConfig config)
+  public void startCompaction(String dataSourceName, CompactionSupervisor supervisor)
   {
     // Track active datasources even if scheduler has not started yet because
     // SupervisorManager is started before the scheduler
     if (isEnabled()) {
-      activeDatasourceConfigs.put(dataSourceName, config);
+      activeSupervisors.put(dataSourceName, supervisor);
     }
   }
 
   @Override
   public void stopCompaction(String dataSourceName)
   {
-    activeDatasourceConfigs.remove(dataSourceName);
+    activeSupervisors.remove(dataSourceName);
     statusTracker.removeDatasource(dataSourceName);
   }
 
@@ -264,7 +271,7 @@ public class OverlordCompactionScheduler implements CompactionScheduler
       taskRunnerOptional.get().unregisterListener(taskRunnerListener.getListenerId());
     }
     statusTracker.stop();
-    activeDatasourceConfigs.clear();
+    activeSupervisors.clear();
 
     if (shouldPollSegments) {
       segmentManager.stopPollingDatabasePeriodically();
@@ -303,6 +310,33 @@ public class OverlordCompactionScheduler implements CompactionScheduler
     }
   }
 
+  private synchronized void runCompactionWithTemplates()
+  {
+    final DataSourcesSnapshot snapshot = getDatasourceSnapshot();
+    final CompactionJobParams params = new CompactionJobParams(
+        null,
+        DateTimes.nowUtc(),
+        objectMapper,
+        snapshot.getUsedSegmentsTimelinesPerDataSource()::get,
+        statusTracker
+    );
+
+    final Iterator<CompactionJob> jobIterator = PriorityBasedCompactionJobIterator.create(
+        getLatestConfig().getCompactionPolicy(),
+        Map.copyOf(activeSupervisors),
+        params
+    );
+
+    while (jobIterator.hasNext()) {
+      final CompactionJob job = jobIterator.next();
+      final Task task = Objects.requireNonNull(job.getTask());
+      overlordClient.runTask(task.getId(), task);
+    }
+
+    // TODO: Collect some stats similar to CompactSegments duty
+    //  it can be done by the job iterator too.
+  }
+
   /**
    * Runs the compaction duty and emits stats if {@link #METRIC_EMISSION_PERIOD}
    * has elapsed.
@@ -332,7 +366,7 @@ public class OverlordCompactionScheduler implements CompactionScheduler
   @Override
   public AutoCompactionSnapshot getCompactionSnapshot(String dataSource)
   {
-    if (!activeDatasourceConfigs.containsKey(dataSource)) {
+    if (!activeSupervisors.containsKey(dataSource)) {
       return AutoCompactionSnapshot.builder(dataSource)
                                    .withStatus(AutoCompactionSnapshot.ScheduleStatus.NOT_ENABLED)
                                    .build();
@@ -381,10 +415,15 @@ public class OverlordCompactionScheduler implements CompactionScheduler
 
   private DruidCompactionConfig getLatestConfig()
   {
+    final List<DataSourceCompactionConfig> configs = activeSupervisors
+        .values()
+        .stream()
+        .map(s -> s.getSpec().getSpec())
+        .collect(Collectors.toList());
     return DruidCompactionConfig
         .empty()
         .withClusterConfig(compactionConfigSupplier.get().clusterConfig())
-        .withDatasourceConfigs(new ArrayList<>(activeDatasourceConfigs.values()));
+        .withDatasourceConfigs(configs);
   }
 
   private DataSourcesSnapshot getDatasourceSnapshot()

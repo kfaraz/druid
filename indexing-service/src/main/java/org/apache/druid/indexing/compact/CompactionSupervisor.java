@@ -30,15 +30,15 @@ import org.apache.druid.java.util.common.Intervals;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.server.coordinator.AutoCompactionSnapshot;
-import org.joda.time.DateTime;
+import org.joda.time.Interval;
 
 import javax.annotation.Nullable;
-import java.util.Iterator;
+import java.util.List;
 
 /**
  * Supervisor for compaction of a single datasource.
  */
-public class CompactionSupervisor implements BatchIndexingSupervisor<CompactionJob>
+public class CompactionSupervisor implements BatchIndexingSupervisor<CompactionJob, CompactionJobParams>
 {
   private static final Logger log = new Logger(CompactionSupervisor.class);
 
@@ -56,6 +56,11 @@ public class CompactionSupervisor implements BatchIndexingSupervisor<CompactionJ
     this.dataSource = supervisorSpec.getSpec().getDataSource();
   }
 
+  public CompactionSupervisorSpec getSpec()
+  {
+    return supervisorSpec;
+  }
+
   @Override
   public void start()
   {
@@ -71,7 +76,7 @@ public class CompactionSupervisor implements BatchIndexingSupervisor<CompactionJ
       );
     } else {
       log.info("Starting compaction for dataSource[%s].", dataSource);
-      scheduler.startCompaction(dataSource, supervisorSpec.getSpec());
+      scheduler.startCompaction(dataSource, this);
     }
   }
 
@@ -125,23 +130,24 @@ public class CompactionSupervisor implements BatchIndexingSupervisor<CompactionJ
   }
 
   @Override
-  public boolean shouldCreateJobs(DateTime currentTime)
+  public boolean shouldCreateJobs(CompactionJobParams jobParams)
   {
     return !supervisorSpec.isSuspended();
   }
 
   @Override
-  public Iterator<CompactionJob> createJobs(DateTime currentTime)
+  public List<CompactionJob> createJobs(CompactionJobParams jobParams)
   {
+    final Interval interval = Intervals.ETERNITY;
     return supervisorSpec.getTemplate().createJobs(
-        new DruidInputSource(dataSource, null, null, null, null, null, null, null, null, null),
+        new DruidInputSource(dataSource, interval, null, null, null, null, null, null, null, null),
         new DruidDatasourceDestination(dataSource),
-        new CompactionJobParams(Intervals.ETERNITY, currentTime)
-    ).iterator();
+        jobParams
+    );
   }
 
   @Override
-  public boolean canRunJob(CompactionJob job, DateTime currentTime)
+  public boolean canRunJob(CompactionJob job, CompactionJobParams jobParams)
   {
     // TODO: check with the status tracker and tasks in progress to determine if task should be skipped due to
     //  - locked intervals
