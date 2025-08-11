@@ -27,23 +27,16 @@ import org.apache.druid.server.compaction.CompactionStatus;
 import org.apache.druid.server.compaction.CompactionStatusTracker;
 
 /**
- * There is still quite a bit of logic in CompactSegments.
- * When should we cancel a task?
- *
- * When a supervisor is updated, we should just check all the compaction tasks
- * and see if anything needs to be canceled?
- *
- *  Option 1:
- *  - Override computeCompactionStatus() to account for locked intervals too.
- *  - It should also account for task slots
- *  - Continue passing the status tracker into the flow
- *  - Coordinator duty remains unchanged
- *
- *  Option 2:
- *  - Create all jobs.
- *  - Pass in a dummy status tracker which just says OK to everything.
- *  - Then filter out jobs based on actual compaction status.
- *  - Coordinator duty remains unchanged.
+ * TODO: Remaining items:
+ *  - status tracker cleanup
+ *  - task slot logic in canRunJob
+ *  - compute multi rule skip intervals correctly
+ *  - maybe use searchInterval instead of skipIntervals
+ *  - supervisors: cancel a task (on supervisor update or when new jobs are computed)
+ *  - supervisors: complete the flow
+ *  - how does this whole thing affect queuedIntervals
+ *    - for duty, it doesn't matter
+ *    - for supervisors, intervals will always be mutually exclusive
  *
  *  Option 3:
  *  - Similar to option 2 but update the Coordinator duty too.
@@ -83,6 +76,7 @@ public class CompactionSupervisorStatusTracker extends CompactionStatusTracker
   {
     // track the task slot counts somehow
     // this should be probably be governed by the compaction task slots thing
+    return false;
   }
 
   private CompactionStatus computeCompactionStatus(CompactionJob job)
@@ -91,10 +85,8 @@ public class CompactionSupervisorStatusTracker extends CompactionStatusTracker
     //  - locked intervals
     //  - already running
     //  - any other reason
-    final CompactionStatus compactionStatus = super.computeCompactionStatus(
-
-    );
-    final CompactionCandidate candidatesWithStatus = job.getCandidate().withCurrentStatus(compactionStatus);
-    onCompactionStatusComputed(candidatesWithStatus, config);
+    final CompactionCandidate candidatesWithStatus = job.getCandidate().withCurrentStatus(null);
+    onCompactionStatusComputed(candidatesWithStatus, null);
+    return null;
   }
 }

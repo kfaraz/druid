@@ -49,6 +49,7 @@ import org.apache.druid.java.util.common.granularity.PeriodGranularity;
 import org.apache.druid.java.util.common.guava.Comparators;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.java.util.common.parsers.CloseableIterator;
+import org.apache.druid.query.DruidMetrics;
 import org.apache.druid.query.aggregation.AggregatorFactory;
 import org.apache.druid.query.aggregation.CountAggregatorFactory;
 import org.apache.druid.query.aggregation.DoubleSumAggregatorFactory;
@@ -1475,7 +1476,7 @@ public class AutoCompactionTest extends CompactionTestBase
     }
   }
 
-  @ValueSource(booleans = {false})
+  @ValueSource(booleans = {true, false})
   @ParameterizedTest(name = "useSupervisors={0}")
   public void testAutoCompactionDutyWithFilter(boolean useSupervisors) throws Exception
   {
@@ -1504,7 +1505,7 @@ public class AutoCompactionTest extends CompactionTestBase
           false,
           CompactionEngine.NATIVE
       );
-      forceTriggerAutoCompaction(intervalsBeforeCompaction, useSupervisors, 2);
+      forceTriggerAutoCompaction(intervalsBeforeCompaction, useSupervisors, 2, 2);
 
       // For dim "page", result should only contain value "Striker Eureka"
       verifyScanResult("added", "459.0");
@@ -1513,13 +1514,13 @@ public class AutoCompactionTest extends CompactionTestBase
 
       List<TaskStatusPlus> compactTasksBefore = getCompleteTasksForDataSource(fullDatasourceName);
       // Verify compacted segments does not get compacted again
-      forceTriggerAutoCompaction(intervalsBeforeCompaction, useSupervisors, 2);
+      forceTriggerAutoCompaction(intervalsBeforeCompaction, useSupervisors, 2, 2);
       List<TaskStatusPlus> compactTasksAfter = getCompleteTasksForDataSource(fullDatasourceName);
       Assertions.assertEquals(compactTasksAfter.size(), compactTasksBefore.size());
     }
   }
 
-  @ValueSource(booleans = {false})
+  @ValueSource(booleans = {true, false})
   @ParameterizedTest(name = "useSupervisors={0}")
   public void testAutoCompationDutyWithMetricsSpec(boolean useSupervisors) throws Exception
   {
@@ -1547,7 +1548,7 @@ public class AutoCompactionTest extends CompactionTestBase
           false,
           CompactionEngine.NATIVE
       );
-      forceTriggerAutoCompaction(intervalsBeforeCompaction, useSupervisors, 2);
+      forceTriggerAutoCompaction(intervalsBeforeCompaction, useSupervisors, 2, 2);
 
       // Result should be the same with the addition of new metrics, "double_sum_added" and "long_sum_added".
       // These new metrics should have the same value as the input field "added"
@@ -1558,7 +1559,7 @@ public class AutoCompactionTest extends CompactionTestBase
 
       List<TaskStatusPlus> compactTasksBefore = getCompleteTasksForDataSource(fullDatasourceName);
       // Verify compacted segments does not get compacted again
-      forceTriggerAutoCompaction(intervalsBeforeCompaction, useSupervisors, 2);
+      forceTriggerAutoCompaction(intervalsBeforeCompaction, useSupervisors, 2, 2);
       List<TaskStatusPlus> compactTasksAfter = getCompleteTasksForDataSource(fullDatasourceName);
       Assertions.assertEquals(compactTasksAfter.size(), compactTasksBefore.size());
     }
@@ -1814,8 +1815,9 @@ public class AutoCompactionTest extends CompactionTestBase
   private void forceTriggerAutoCompaction(
       List<Interval> intervals,
       boolean useSupervisors,
-      int numExpectedSegmentsAfterCompaction
-  ) throws Exception
+      int numExpectedSegmentsAfterCompaction,
+      int expectedTotalCompactionTasks
+  )
   {
     if (useSupervisors) {
       // Enable compaction for the requested intervals
@@ -1829,8 +1831,12 @@ public class AutoCompactionTest extends CompactionTestBase
       );
 
       // Wait for scheduler to pick up the compaction job
-      // Instead of sleep, we can latch on a relevant metric later
-      Thread.sleep(30_000);
+      overlord.latchableEmitter().waitForEventAggregate(
+          event -> event.hasMetricName("task/run/time")
+                        .hasDimension(DruidMetrics.DATASOURCE, dataSource)
+                        .hasDimension(DruidMetrics.TASK_TYPE, "compact"),
+          agg -> agg.hasCountAtLeast(expectedTotalCompactionTasks)
+      );
       waitForCompactionToFinish(numExpectedSegmentsAfterCompaction);
 
       // Disable all compaction

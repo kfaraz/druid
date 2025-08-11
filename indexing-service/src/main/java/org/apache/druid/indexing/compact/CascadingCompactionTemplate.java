@@ -96,7 +96,7 @@ public class CascadingCompactionTemplate implements DataSourceCompactionConfig, 
     for (int i = 0; i < rules.size() - 1; ++i) {
       final CompactionRule rule = rules.get(i);
       final DateTime ruleStartTime = currentTime.minus(rule.getPeriod());
-      final Interval ruleInterval = new Interval(new Interval(ruleStartTime, previousRuleStartTime));
+      final Interval ruleInterval = new Interval(ruleStartTime, previousRuleStartTime);
 
       allJobs.addAll(
           rule.getTemplate().createJobs(
