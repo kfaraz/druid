@@ -92,18 +92,9 @@ public class CompactionStatusTracker
       CompactionCandidateSearchPolicy searchPolicy
   )
   {
-    final CompactionStatus compactionStatus = CompactionStatus.compute(candidate, config, objectMapper);
+    final CompactionStatus compactionStatus = CompactionStatus.compute(candidate, config);
     if (compactionStatus.isComplete()) {
       return compactionStatus;
-    }
-
-    // Skip intervals that violate max allowed input segment size
-    final long inputSegmentSize = config.getInputSegmentSizeBytes();
-    if (candidate.getTotalBytes() > inputSegmentSize) {
-      return CompactionStatus.skipped(
-          "'inputSegmentSize' exceeded: Total segment size[%d] is larger than allowed inputSegmentSize[%d]",
-          candidate.getTotalBytes(), inputSegmentSize
-      );
     }
 
     // Skip intervals that already have a running task

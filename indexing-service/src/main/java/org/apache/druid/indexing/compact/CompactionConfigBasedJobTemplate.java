@@ -65,8 +65,7 @@ public class CompactionConfigBasedJobTemplate implements CompactionJobTemplate
         config,
         timeline,
         List.of(),
-        new NewestSegmentFirstPolicy(null),
-        params.getStatusTracker()
+        new NewestSegmentFirstPolicy(null)
     );
 
     final List<CompactionJob> jobs = new ArrayList<>();

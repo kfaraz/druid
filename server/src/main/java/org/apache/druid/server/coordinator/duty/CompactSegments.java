@@ -53,6 +53,7 @@ import org.apache.druid.server.compaction.CompactionCandidate;
 import org.apache.druid.server.compaction.CompactionCandidateSearchPolicy;
 import org.apache.druid.server.compaction.CompactionSegmentIterator;
 import org.apache.druid.server.compaction.CompactionSnapshotBuilder;
+import org.apache.druid.server.compaction.CompactionStatus;
 import org.apache.druid.server.compaction.CompactionStatusTracker;
 import org.apache.druid.server.compaction.PriorityBasedCompactionSegmentIterator;
 import org.apache.druid.server.coordinator.AutoCompactionSnapshot;
@@ -227,8 +228,7 @@ public class CompactSegments implements CoordinatorCustomDuty
         policy,
         compactionConfigs,
         dataSources.getUsedSegmentsTimelinesPerDataSource(),
-        intervalsToSkipCompaction,
-        statusTracker
+        intervalsToSkipCompaction
     );
 
     final int compactionTaskCapacity = getCompactionTaskCapacity(dynamicConfig);
@@ -241,13 +241,14 @@ public class CompactSegments implements CoordinatorCustomDuty
         compactionSnapshotBuilder,
         availableCompactionTaskSlots,
         iterator,
+        policy,
         defaultEngine
     );
 
     stats.add(Stats.Compaction.MAX_SLOTS, compactionTaskCapacity);
     stats.add(Stats.Compaction.AVAILABLE_SLOTS, availableCompactionTaskSlots);
     stats.add(Stats.Compaction.SUBMITTED_TASKS, numSubmittedCompactionTasks);
-    updateCompactionSnapshotStats(compactionSnapshotBuilder, iterator);
+    updateCompactionSnapshotStats(compactionSnapshotBuilder, iterator, compactionConfigs);
     compactionSnapshotBuilder.getStats().forEachStat(stats::add);
   }
 
@@ -451,6 +452,7 @@ public class CompactSegments implements CoordinatorCustomDuty
       CompactionSnapshotBuilder snapshotBuilder,
       int numAvailableCompactionTaskSlots,
       CompactionSegmentIterator iterator,
+      CompactionCandidateSearchPolicy policy,
       CompactionEngine defaultEngine
   )
   {
@@ -464,11 +466,22 @@ public class CompactSegments implements CoordinatorCustomDuty
     while (iterator.hasNext() && totalTaskSlotsAssigned < numAvailableCompactionTaskSlots) {
       final CompactionCandidate entry = iterator.next();
       final String dataSourceName = entry.getDataSource();
-
-      // As these segments will be compacted, we will aggregate the statistic to the Compacted statistics
-      snapshotBuilder.addToComplete(entry);
-
       final DataSourceCompactionConfig config = compactionConfigs.get(dataSourceName);
+
+      final CompactionStatus compactionStatus =
+          statusTracker.computeCompactionStatus(entry, config, policy);
+      final CompactionCandidate candidatesWithStatus = entry.withCurrentStatus(compactionStatus);
+      statusTracker.onCompactionStatusComputed(candidatesWithStatus, config);
+
+      if (compactionStatus.isComplete()) {
+        snapshotBuilder.addToComplete(candidatesWithStatus);
+      } else if (compactionStatus.isSkipped()) {
+        snapshotBuilder.addToSkipped(candidatesWithStatus);
+      } else {
+        // As these segments will be compacted, we will aggregate the statistic to the Compacted statistics
+        snapshotBuilder.addToComplete(entry);
+      }
+
       final ClientCompactionTaskQuery taskPayload = createCompactionTask(entry, config, defaultEngine);
 
       final String taskId = taskPayload.getId();
@@ -638,19 +651,19 @@ public class CompactSegments implements CoordinatorCustomDuty
 
   private void updateCompactionSnapshotStats(
       CompactionSnapshotBuilder snapshotBuilder,
-      CompactionSegmentIterator iterator
+      CompactionSegmentIterator iterator,
+      Map<String, DataSourceCompactionConfig> datasourceToConfig
   )
   {
     // Mark all the segments remaining in the iterator as "awaiting compaction"
     while (iterator.hasNext()) {
       snapshotBuilder.addToPending(iterator.next());
     }
-
-    // Statistics of all segments considered compacted after this run
     iterator.getCompactedSegments().forEach(snapshotBuilder::addToComplete);
-
-    // Statistics of all segments considered skipped after this run
-    iterator.getSkippedSegments().forEach(snapshotBuilder::addToSkipped);
+    iterator.getSkippedSegments().forEach(entry -> {
+      statusTracker.onCompactionStatusComputed(entry, datasourceToConfig.get(entry.getDataSource()));
+      snapshotBuilder.addToSkipped(entry);
+    });
 
     // Atomic update of autoCompactionSnapshotPerDataSource with the latest from this coordinator run
     autoCompactionSnapshotPerDataSource.set(snapshotBuilder.build());
