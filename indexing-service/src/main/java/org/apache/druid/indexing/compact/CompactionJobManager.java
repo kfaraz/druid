@@ -19,34 +19,11 @@
 
 package org.apache.druid.indexing.compact;
 
-import org.apache.druid.indexing.common.task.Task;
-import org.apache.druid.indexing.overlord.supervisor.BatchIndexingJob;
-import org.apache.druid.server.compaction.CompactionCandidate;
-
-import java.util.Objects;
-
 /**
- * TODO:
- *  this should probably also contain the number of task slots, so that we can
- *  decide if there are available slots or not.
+ * Creates compaction jobs and submits them to the Overlord client if there are
+ * available task slots and the jobs do not clash with any existing Task in
+ * progress.
  */
-public class CompactionJob extends BatchIndexingJob
+public class CompactionJobManager
 {
-  private final CompactionCandidate candidate;
-
-  public CompactionJob(Task task, CompactionCandidate candidate)
-  {
-    super(task, null);
-    this.candidate = candidate;
-  }
-
-  public String getDataSource()
-  {
-    return Objects.requireNonNull(getTask()).getDataSource();
-  }
-
-  public CompactionCandidate getCandidate()
-  {
-    return candidate;
-  }
 }

@@ -24,10 +24,21 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import org.apache.druid.data.input.InputSource;
 import org.apache.druid.data.output.OutputDestination;
 import org.apache.druid.java.util.common.granularity.Granularity;
+import org.apache.druid.server.coordinator.InlineSchemaDataSourceCompactionConfig;
+import org.apache.druid.server.coordinator.UserCompactionTaskGranularityConfig;
 import org.apache.druid.server.coordinator.UserCompactionTaskQueryTuningConfig;
 
 import java.util.List;
 
+/**
+ * Template to create compaction jobs using inline specifications. This template
+ * does not fetch any information from the Druid catalog while creating jobs.
+ * <p>
+ * This template does not contain all the fields supported by
+ * {@link InlineSchemaDataSourceCompactionConfig} since some of those fields may
+ * change the data itself (and not just its layout) and are thus not considered
+ * compaction-compatible.
+ */
 public class InlineCompactionJobTemplate implements CompactionJobTemplate
 {
   private final UserCompactionTaskQueryTuningConfig tuningConfig;
@@ -62,6 +73,14 @@ public class InlineCompactionJobTemplate implements CompactionJobTemplate
       CompactionJobParams jobParams
   )
   {
-    return List.of();
+    final String dataSource = ensureDruidInputSource(source).getDataSource();
+    return new CompactionConfigBasedJobTemplate(
+        InlineSchemaDataSourceCompactionConfig
+            .builder()
+            .forDataSource(dataSource)
+            .withTuningConfig(tuningConfig)
+            .withGranularitySpec(new UserCompactionTaskGranularityConfig(segmentGranularity, null, null))
+            .build()
+    ).createJobs(source, destination, jobParams);
   }
 }

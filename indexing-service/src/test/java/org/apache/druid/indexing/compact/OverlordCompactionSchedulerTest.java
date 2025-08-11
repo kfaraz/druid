@@ -145,7 +145,7 @@ public class OverlordCompactionSchedulerTest
         new TaskQueryTool(taskStorage, taskLockbox, taskMaster, null, () -> defaultWorkerConfig),
         segmentsMetadataManager,
         () -> DruidCompactionConfig.empty().withClusterConfig(compactionConfig.get()),
-        new CompactionStatusTracker(OBJECT_MAPPER),
+        new CompactionSupervisorStatusTracker(OBJECT_MAPPER),
         coordinatorOverlordServiceConfig,
         (nameFormat, numThreads) -> new WrappingScheduledExecutorService("test", executor, false),
         serviceEmitter,

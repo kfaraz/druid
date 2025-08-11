@@ -37,8 +37,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * This template never needs to be deserialized as a {@code BatchIndexingJobTemplate},
- * and simply uses a {@link DataSourceCompactionConfig} to create compaction jobs.
+ * This template never needs to be deserialized as a {@code BatchIndexingJobTemplate}.
+ * It is just a delegating template that uses a {@link DataSourceCompactionConfig}
+ * to create compaction jobs.
  */
 public class CompactionConfigBasedJobTemplate implements CompactionJobTemplate
 {
@@ -77,7 +78,10 @@ public class CompactionConfigBasedJobTemplate implements CompactionJobTemplate
       ClientCompactionTaskQuery taskPayload
           = CompactSegments.createCompactionTask(candidate, config, null);
       jobs.add(
-          CompactionJob.forTask(params.getMapper().convertValue(taskPayload, CompactionTask.class))
+          new CompactionJob(
+              params.getMapper().convertValue(taskPayload, CompactionTask.class),
+              candidate
+          )
       );
     }
 

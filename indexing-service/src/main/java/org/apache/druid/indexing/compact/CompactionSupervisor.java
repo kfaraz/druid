@@ -149,10 +149,6 @@ public class CompactionSupervisor implements BatchIndexingSupervisor<CompactionJ
   @Override
   public boolean canRunJob(CompactionJob job, CompactionJobParams jobParams)
   {
-    // TODO: check with the status tracker and tasks in progress to determine if task should be skipped due to
-    //  - locked intervals
-    //  - already running
-    //  - any other reason
     return !supervisorSpec.isSuspended();
   }
 

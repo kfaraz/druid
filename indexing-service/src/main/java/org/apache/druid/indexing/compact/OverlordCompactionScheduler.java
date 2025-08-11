@@ -44,7 +44,7 @@ import org.apache.druid.java.util.emitter.service.ServiceMetricEvent;
 import org.apache.druid.metadata.SegmentsMetadataManager;
 import org.apache.druid.server.compaction.CompactionRunSimulator;
 import org.apache.druid.server.compaction.CompactionSimulateResult;
-import org.apache.druid.server.compaction.CompactionStatusTracker;
+import org.apache.druid.server.compaction.CompactionSnapshotBuilder;
 import org.apache.druid.server.coordinator.AutoCompactionSnapshot;
 import org.apache.druid.server.coordinator.ClusterCompactionConfig;
 import org.apache.druid.server.coordinator.CompactionConfigValidationResult;
@@ -59,7 +59,6 @@ import org.apache.druid.server.coordinator.stats.Stats;
 import org.joda.time.Duration;
 
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -103,7 +102,7 @@ public class OverlordCompactionScheduler implements CompactionScheduler
    */
   private final ScheduledExecutorService executor;
 
-  private final CompactionStatusTracker statusTracker;
+  private final CompactionSupervisorStatusTracker statusTracker;
 
   /**
    * Listener to watch task completion events and update CompactionStatusTracker.
@@ -130,7 +129,7 @@ public class OverlordCompactionScheduler implements CompactionScheduler
       TaskQueryTool taskQueryTool,
       SegmentsMetadataManager segmentManager,
       Supplier<DruidCompactionConfig> compactionConfigSupplier,
-      CompactionStatusTracker statusTracker,
+      CompactionSupervisorStatusTracker statusTracker,
       CoordinatorOverlordServiceConfig coordinatorOverlordServiceConfig,
       ScheduledExecutorFactory executorFactory,
       ServiceEmitter emitter,
@@ -215,7 +214,7 @@ public class OverlordCompactionScheduler implements CompactionScheduler
     } else {
       return ClientCompactionRunnerInfo.validateCompactionConfig(
           compactionConfig,
-          getLatestConfig().getEngine()
+          getLatestClusterConfig().getEngine()
       );
     }
   }
@@ -321,20 +320,44 @@ public class OverlordCompactionScheduler implements CompactionScheduler
         statusTracker
     );
 
-    final Iterator<CompactionJob> jobIterator = PriorityBasedCompactionJobIterator.create(
-        getLatestConfig().getCompactionPolicy(),
-        Map.copyOf(activeSupervisors),
-        params
-    );
+    final CompactionJobQueue queue = new CompactionJobQueue(getLatestClusterConfig().getCompactionPolicy());
+    activeSupervisors.forEach((datasource, supervisor) -> createAndEnqueueJobs(supervisor, queue, params));
 
-    while (jobIterator.hasNext()) {
-      final CompactionJob job = jobIterator.next();
+    final CompactionSnapshotBuilder snapshotBuilder = new CompactionSnapshotBuilder();
+    while (queue.hasNext()) {
+      final CompactionJob job = queue.next();
       final Task task = Objects.requireNonNull(job.getTask());
-      overlordClient.runTask(task.getId(), task);
+
+      if (statusTracker.canRunJob(job)) {
+        overlordClient.runTask(task.getId(), task);
+        emitStat(Stats.Compaction.SUBMITTED_TASKS, Map.of(Dimension.DATASOURCE, task.getDataSource()), 1);
+      } else {
+        snapshotBuilder.addToPending(job.getCandidate());
+      }
     }
 
-    // TODO: Collect some stats similar to CompactSegments duty
-    //  it can be done by the job iterator too.
+    queue.getPendingJobs().forEach(job -> statusTracker.addPendingJobToSnapshot(job, snapshotBuilder));
+    snapshotBuilder.build();
+    emitStatsIfPeriodHasElapsed(snapshotBuilder.getStats());
+  }
+
+  private void createAndEnqueueJobs(
+      CompactionSupervisor supervisor,
+      CompactionJobQueue queue,
+      CompactionJobParams params
+  )
+  {
+    final String supervisorId = supervisor.getSpec().getId();
+    try {
+      if (supervisor.shouldCreateJobs(params)) {
+        supervisor.createJobs(params).forEach(queue::add);
+      } else {
+        log.debug("Skipping job creation for supervisor[%s]", supervisorId);
+      }
+    }
+    catch (Exception e) {
+      log.error("Error while creating jobs for supervisor[%s]", supervisor);
+    }
   }
 
   /**
@@ -344,8 +367,13 @@ public class OverlordCompactionScheduler implements CompactionScheduler
   private synchronized void runCompactionDuty()
   {
     final CoordinatorRunStats stats = new CoordinatorRunStats();
-    duty.run(getLatestConfig(), getDatasourceSnapshot(), getLatestConfig().getEngine(), stats);
+    final DruidCompactionConfig config = getLatestConfig();
+    duty.run(config, getDatasourceSnapshot(), config.getEngine(), stats);
+    emitStatsIfPeriodHasElapsed(stats);
+  }
 
+  private void emitStatsIfPeriodHasElapsed(CoordinatorRunStats stats)
+  {
     // Emit stats only if emission period has elapsed
     if (!sinceStatsEmitted.isRunning() || sinceStatsEmitted.hasElapsed(METRIC_EMISSION_PERIOD)) {
       stats.forEachStat(
@@ -397,7 +425,7 @@ public class OverlordCompactionScheduler implements CompactionScheduler
       return new CompactionRunSimulator(statusTracker, overlordClient).simulateRunWithConfig(
           getLatestConfig().withClusterConfig(updateRequest),
           getDatasourceSnapshot(),
-          getLatestConfig().getEngine()
+          updateRequest.getEngine()
       );
     } else {
       return new CompactionSimulateResult(Collections.emptyMap());
@@ -422,8 +450,13 @@ public class OverlordCompactionScheduler implements CompactionScheduler
         .collect(Collectors.toList());
     return DruidCompactionConfig
         .empty()
-        .withClusterConfig(compactionConfigSupplier.get().clusterConfig())
+        .withClusterConfig(getLatestClusterConfig())
         .withDatasourceConfigs(configs);
+  }
+
+  private ClusterCompactionConfig getLatestClusterConfig()
+  {
+    return compactionConfigSupplier.get().clusterConfig();
   }
 
   private DataSourcesSnapshot getDatasourceSnapshot()
