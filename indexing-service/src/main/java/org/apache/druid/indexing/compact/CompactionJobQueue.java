@@ -47,12 +47,15 @@ import java.util.PriorityQueue;
  * Iterates over all eligible compaction jobs in order of their priority.
  * TODO: Remaining items:
  *  - task slot logic in canRunJob
+ *  - write up more test cases
+ *  - better catalog template
+ *  - fill gaps
+ *
  *  - if the granularity of this rule leaves gaps in the timeline, should they be filled be a prior rule
- *  - because there can always be gaps depending on the current date
- *  - maybe we can realign intervals if needed
- *  - compute multi rule skip intervals correctly
- *  - maybe use searchInterval instead of skipIntervals
+ *    - because there can always be gaps depending on the current date
+ *    - maybe we can realign intervals if needed
  *  - supervisors: cancel a task (on supervisor update or when new jobs are computed)
+ *  - maybe use searchInterval instead of skipIntervals
  *  - how does this whole thing affect queuedIntervals
  *    - for duty, it doesn't matter
  *    - for supervisors, intervals will always be mutually exclusive
@@ -158,7 +161,7 @@ public class CompactionJobQueue
 
   private boolean canStartJob(CompactionJob job, CompactionCandidateSearchPolicy policy)
   {
-    if (!areCompactionTaskSlotsAvailable(job) || isTaskReady(job)) {
+    if (!areCompactionTaskSlotsAvailable(job)) {
       return false;
     }
 
@@ -173,7 +176,7 @@ public class CompactionJobQueue
       snapshotBuilder.addToPending(candidate);
     }
 
-    return compactionStatus.getState() == CompactionStatus.State.PENDING;
+    return compactionStatus.getState() == CompactionStatus.State.PENDING && isTaskReady(job);
   }
 
   private boolean areCompactionTaskSlotsAvailable(CompactionJob job)
@@ -191,6 +194,7 @@ public class CompactionJobQueue
     }
 
     final Task task = job.getNonNullTask();
+    log.info("Checking readiness of task[%s] with interval[%s]", task.getId(), job.getCompactionInterval());
     try {
       taskLockbox.add(task);
       if (task.isReady(taskActionClientFactory.create(task))) {

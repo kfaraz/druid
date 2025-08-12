@@ -151,12 +151,6 @@ public class CompactionSupervisor implements BatchIndexingSupervisor<CompactionJ
     );
   }
 
-  @Override
-  public boolean canRunJob(CompactionJob job, CompactionJobParams jobParams)
-  {
-    return !supervisorSpec.isSuspended();
-  }
-
   public enum State implements SupervisorStateManager.State
   {
     SCHEDULER_STOPPED(true),

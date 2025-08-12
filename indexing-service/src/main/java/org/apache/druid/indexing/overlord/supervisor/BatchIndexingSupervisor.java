@@ -22,33 +22,7 @@ package org.apache.druid.indexing.overlord.supervisor;
 import java.util.List;
 
 /**
- * TODO: Motivation:
- *  - batch supervisor as an analog of streaming supervisor
- *  - ties in to the indexing template
- *  - remove duplicate code
- * <p>
- * TODO: tasks:
- *  - Wire up CompactionSupervisor
- *  - Wire up Multi Rule
- *  - Run tests for both
- *  - Wire up scheduled batch
- *  - Write embedded tests for all
- * <p>
- * TODO: OVERALL FLOW:
- *  - Scheduler runs every 5 s (or triggered?)
- *  - Get target datasource of supervisor
- *  - Get the timeline
- *  - Ask supervisor to create jobs
- *    - For compaction:
- *    - Pass period, timeline and other stuff to compactible iterator
- *    - CompactionJobTemplate knows how to create a compaction job
- *    - For each candidate, create a job
- *  - Ask the supervisor which jobs can be run now
- *    - If current job requires more slots than available, should we check later jobs?
- *      - I guess so 🤷🏻
- *    - Filter out intervals that are locked, already running or recently done or something
- *  - Run them
- *  - If skipped, track reason somewhere
+ * Supervisor to perform batch ingestion using {@link BatchIndexingJob}.
  */
 public interface BatchIndexingSupervisor
     <J extends BatchIndexingJob, P extends JobParams> extends Supervisor
@@ -68,11 +42,4 @@ public interface BatchIndexingSupervisor
    * of the scheduler.
    */
   List<J> createJobs(P jobParams);
-
-  /**
-   * Checks if a given job is valid and can be run right now.
-   *
-   * @param jobParams Parameters for the current run of the scheduler.
-   */
-  boolean canRunJob(J job, P jobParams);
 }

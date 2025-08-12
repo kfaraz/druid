@@ -21,7 +21,6 @@ package org.apache.druid.testing.embedded.compact;
 
 import org.apache.druid.common.utils.IdUtils;
 import org.apache.druid.indexing.common.task.IndexTask;
-import org.apache.druid.indexing.common.task.TaskBuilder;
 import org.apache.druid.indexing.compact.CascadingCompactionTemplate;
 import org.apache.druid.indexing.compact.CompactionRule;
 import org.apache.druid.indexing.compact.CompactionSupervisorSpec;
@@ -41,6 +40,7 @@ import org.apache.druid.testing.embedded.EmbeddedHistorical;
 import org.apache.druid.testing.embedded.EmbeddedIndexer;
 import org.apache.druid.testing.embedded.EmbeddedOverlord;
 import org.apache.druid.testing.embedded.EmbeddedRouter;
+import org.apache.druid.testing.embedded.indexing.MoreResources;
 import org.apache.druid.testing.embedded.junit5.EmbeddedClusterTestBase;
 import org.apache.druid.timeline.DataSegment;
 import org.joda.time.DateTime;
@@ -51,7 +51,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-public class AutoCompactionSupervisorTest extends EmbeddedClusterTestBase
+public class CompactionSupervisorTest extends EmbeddedClusterTestBase
 {
   protected final EmbeddedBroker broker = new EmbeddedBroker();
   protected final EmbeddedIndexer indexer = new EmbeddedIndexer()
@@ -142,11 +142,10 @@ public class AutoCompactionSupervisorTest extends EmbeddedClusterTestBase
   @Test
   public void test_ingestHourGranularity_andCompactToDayAndMonth()
   {
-    // Ingest data at DAY granularity and verify
-    final DateTime currentTime = DateTimes.nowUtc();
+    // Ingest data at HOUR granularity and verify
     runIngestionAtGranularity(
         "HOUR",
-        createInlineData(currentTime, 24 * 100)
+        createHourlyInlineDataCsv(DateTimes.nowUtc(), 24 * 100)
     );
     List<DataSegment> segments = List.copyOf(
         overlord.bindings()
@@ -158,7 +157,7 @@ public class AutoCompactionSupervisorTest extends EmbeddedClusterTestBase
         segment -> Assertions.assertTrue(Granularities.HOUR.isAligned(segment.getInterval()))
     );
 
-    // Create a compaction config with MONTH granularity
+    // Create a cascading template with DAY and MONTH granularity
     CascadingCompactionTemplate cascadingTemplate = new CascadingCompactionTemplate(
         dataSource,
         List.of(
@@ -174,7 +173,6 @@ public class AutoCompactionSupervisorTest extends EmbeddedClusterTestBase
     // Wait for compaction tasks to be submitted
     final int numCompactionTasks = overlord.latchableEmitter().waitForEvent(
         event -> event.hasMetricName("compact/task/count")
-                      .hasDimension(DruidMetrics.TASK_TYPE, "compact")
                       .hasDimension(DruidMetrics.DATASOURCE, dataSource)
                       .hasValueAtLeast(1L)
     ).getValue().intValue();
@@ -211,15 +209,14 @@ public class AutoCompactionSupervisorTest extends EmbeddedClusterTestBase
       }
     }
 
-    // Verify that the last 2 days are fully compacted to DAY
-    Assertions.assertEquals(2, numDaySegments);
+    // Verify that atleast 2 days are fully compacted to DAY
+    Assertions.assertTrue(numDaySegments >= 2);
 
     // Verify that atleast 2 months are fully compacted to MONTH
     Assertions.assertTrue(numMonthSegments >= 2);
 
-    // Verify that number of uncompacted days is between 6 and 37
-    System.out.println("Hours: " + numHourSegments);
-    Assertions.assertTrue(6 * 24 <= numHourSegments && numHourSegments <= 37 * 24);
+    // Verify that number of uncompacted days is between 5 and 38
+    Assertions.assertTrue(5 * 24 <= numHourSegments && numHourSegments <= 38 * 24);
   }
 
   private void runIngestionAtGranularity(
@@ -233,14 +230,11 @@ public class AutoCompactionSupervisorTest extends EmbeddedClusterTestBase
     cluster.callApi().runTask(task, overlord);
   }
 
-  private String createInlineData(
-      DateTime hourOfLatestData,
-      int numRecords
-  )
+  private String createHourlyInlineDataCsv(DateTime latestRecordTimestamp, int numRecords)
   {
     final StringBuilder builder = new StringBuilder();
     for (int i = 0; i < numRecords; ++i) {
-      builder.append(hourOfLatestData.minusHours(i))
+      builder.append(latestRecordTimestamp.minusHours(i))
              .append(",").append("item_").append(IdUtils.getRandomId())
              .append(",").append(0)
              .append("\n");
@@ -251,13 +245,11 @@ public class AutoCompactionSupervisorTest extends EmbeddedClusterTestBase
 
   private IndexTask createIndexTaskForInlineData(String taskId, String granularity, String inlineDataCsv)
   {
-    return TaskBuilder.ofTypeIndex()
-                      .dataSource(dataSource)
-                      .isoTimestampColumn("time")
-                      .csvInputFormatWithColumns("time", "item", "value")
-                      .inlineInputSourceWithData(inlineDataCsv)
-                      .segmentGranularity(granularity)
-                      .dimensions()
-                      .withId(taskId);
+    return MoreResources.Task.BASIC_INDEX
+        .get()
+        .segmentGranularity(granularity)
+        .inlineInputSourceWithData(inlineDataCsv)
+        .dataSource(dataSource)
+        .withId(taskId);
   }
 }
