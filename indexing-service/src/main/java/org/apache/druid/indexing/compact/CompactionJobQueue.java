@@ -47,9 +47,10 @@ import java.util.PriorityQueue;
  * Iterates over all eligible compaction jobs in order of their priority.
  * TODO: Remaining items:
  *  - task slot logic in canRunJob
+ *  - track status of completed tasks?
  *  - write up more test cases
  *  - better catalog template
- *  - fill gaps
+ *  - fill timeline gaps, support realiging intervals
  *
  *  - if the granularity of this rule leaves gaps in the timeline, should they be filled be a prior rule
  *    - because there can always be gaps depending on the current date
