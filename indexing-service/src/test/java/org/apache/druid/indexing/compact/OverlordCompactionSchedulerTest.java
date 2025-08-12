@@ -143,6 +143,7 @@ public class OverlordCompactionSchedulerTest
         = new DefaultWorkerBehaviorConfig(WorkerBehaviorConfig.DEFAULT_STRATEGY, null);
     scheduler = new OverlordCompactionScheduler(
         taskMaster,
+        taskLockbox,
         new TaskQueryTool(taskStorage, taskLockbox, taskMaster, null, () -> defaultWorkerConfig),
         segmentsMetadataManager,
         () -> DruidCompactionConfig.empty().withClusterConfig(compactionConfig.get()),

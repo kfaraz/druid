@@ -28,6 +28,8 @@ import org.apache.druid.client.indexing.ClientCompactionRunnerInfo;
 import org.apache.druid.indexer.TaskLocation;
 import org.apache.druid.indexer.TaskStatus;
 import org.apache.druid.indexing.common.actions.TaskActionClientFactory;
+import org.apache.druid.indexing.overlord.GlobalTaskLockbox;
+import org.apache.druid.indexing.overlord.TaskLockbox;
 import org.apache.druid.indexing.overlord.TaskMaster;
 import org.apache.druid.indexing.overlord.TaskQueryTool;
 import org.apache.druid.indexing.overlord.TaskRunner;
@@ -104,6 +106,7 @@ public class OverlordCompactionScheduler implements CompactionScheduler
 
   private final CompactionSupervisorStatusTracker statusTracker;
   private final TaskActionClientFactory taskActionClientFactory;
+  private final GlobalTaskLockbox taskLockbox;
 
   /**
    * Listener to watch task completion events and update CompactionStatusTracker.
@@ -126,6 +129,7 @@ public class OverlordCompactionScheduler implements CompactionScheduler
   @Inject
   public OverlordCompactionScheduler(
       TaskMaster taskMaster,
+      GlobalTaskLockbox taskLockbox,
       TaskQueryTool taskQueryTool,
       SegmentsMetadataManager segmentManager,
       Supplier<DruidCompactionConfig> compactionConfigSupplier,
@@ -141,6 +145,7 @@ public class OverlordCompactionScheduler implements CompactionScheduler
     this.emitter = emitter;
     this.objectMapper = objectMapper;
     this.taskMaster = taskMaster;
+    this.taskLockbox = taskLockbox;
     this.compactionConfigSupplier = compactionConfigSupplier;
 
     this.executor = executorFactory.create(1, "CompactionScheduler-%s");
@@ -321,6 +326,7 @@ public class OverlordCompactionScheduler implements CompactionScheduler
         getLatestClusterConfig().getCompactionPolicy(),
         statusTracker,
         taskActionClientFactory,
+        taskLockbox,
         overlordClient,
         objectMapper
     );

@@ -24,6 +24,7 @@ import org.apache.druid.client.DataSourcesSnapshot;
 import org.apache.druid.common.guava.FutureUtils;
 import org.apache.druid.indexing.common.actions.TaskActionClientFactory;
 import org.apache.druid.indexing.common.task.Task;
+import org.apache.druid.indexing.overlord.GlobalTaskLockbox;
 import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.rpc.indexing.OverlordClient;
@@ -67,6 +68,7 @@ public class CompactionJobQueue
   private final CompactionStatusTracker statusTracker;
   private final TaskActionClientFactory taskActionClientFactory;
   private final OverlordClient overlordClient;
+  private final GlobalTaskLockbox taskLockbox;
 
   private final CompactionSnapshotBuilder snapshotBuilder;
   private final PriorityQueue<CompactionJob> queue;
@@ -77,6 +79,7 @@ public class CompactionJobQueue
       CompactionCandidateSearchPolicy searchPolicy,
       CompactionStatusTracker statusTracker,
       TaskActionClientFactory taskActionClientFactory,
+      GlobalTaskLockbox taskLockbox,
       OverlordClient overlordClient,
       ObjectMapper objectMapper
   )
@@ -96,6 +99,7 @@ public class CompactionJobQueue
     this.taskActionClientFactory = taskActionClientFactory;
     this.overlordClient = overlordClient;
     this.statusTracker = statusTracker;
+    this.taskLockbox = taskLockbox;
   }
 
   public void add(CompactionJob job)
@@ -188,10 +192,18 @@ public class CompactionJobQueue
 
     final Task task = job.getNonNullTask();
     try {
-      return task.isReady(taskActionClientFactory.create(task));
+      taskLockbox.add(task);
+      if (task.isReady(taskActionClientFactory.create(task))) {
+        // Hold the locks acquired by task.isReady() as we will reacquire them anyway
+        return true;
+      } else {
+        taskLockbox.unlockAll(task);
+        return false;
+      }
     }
     catch (Exception e) {
       log.error(e, "Error while checking readiness of task[%s]", task.getId());
+      taskLockbox.unlockAll(task);
       return false;
     }
   }
