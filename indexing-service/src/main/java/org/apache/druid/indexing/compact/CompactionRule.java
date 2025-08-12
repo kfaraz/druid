@@ -38,11 +38,13 @@ public class CompactionRule
     this.template = template;
   }
 
+  @JsonProperty
   public CompactionJobTemplate getTemplate()
   {
     return template;
   }
 
+  @JsonProperty
   public Period getPeriod()
   {
     return period;

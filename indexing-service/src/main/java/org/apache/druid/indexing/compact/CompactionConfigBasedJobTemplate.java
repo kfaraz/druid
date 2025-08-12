@@ -23,18 +23,22 @@ import org.apache.druid.client.indexing.ClientCompactionTaskQuery;
 import org.apache.druid.data.input.InputSource;
 import org.apache.druid.data.output.OutputDestination;
 import org.apache.druid.error.InvalidInput;
+import org.apache.druid.indexer.CompactionEngine;
 import org.apache.druid.indexing.common.task.CompactionTask;
 import org.apache.druid.indexing.input.DruidDatasourceDestination;
 import org.apache.druid.indexing.input.DruidInputSource;
+import org.apache.druid.java.util.common.Intervals;
 import org.apache.druid.server.compaction.CompactionCandidate;
 import org.apache.druid.server.compaction.DataSourceCompactibleSegmentIterator;
 import org.apache.druid.server.compaction.NewestSegmentFirstPolicy;
 import org.apache.druid.server.coordinator.DataSourceCompactionConfig;
 import org.apache.druid.server.coordinator.duty.CompactSegments;
 import org.apache.druid.timeline.SegmentTimeline;
+import org.joda.time.Interval;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * This template never needs to be deserialized as a {@code BatchIndexingJobTemplate}.
@@ -60,11 +64,13 @@ public class CompactionConfigBasedJobTemplate implements CompactionJobTemplate
     validateInput(source);
     validateOutput(destination);
 
+    final Interval searchInterval = Objects.requireNonNull(ensureDruidInputSource(source).getInterval());
+
     final SegmentTimeline timeline = params.getTimeline(config.getDataSource());
     final DataSourceCompactibleSegmentIterator segmentIterator = new DataSourceCompactibleSegmentIterator(
         config,
         timeline,
-        List.of(),
+        Intervals.complementOf(searchInterval),
         new NewestSegmentFirstPolicy(null)
     );
 
@@ -74,12 +80,18 @@ public class CompactionConfigBasedJobTemplate implements CompactionJobTemplate
     while (segmentIterator.hasNext()) {
       final CompactionCandidate candidate = segmentIterator.next();
 
+      // TODO: might need to pull out the input interval here since
+      //  the candidate doesn't have that info
+      //  or alternatively we could include that info in the candidate
+      //  same difference
       ClientCompactionTaskQuery taskPayload
-          = CompactSegments.createCompactionTask(candidate, config, null);
+          = CompactSegments.createCompactionTask(candidate, config, CompactionEngine.NATIVE);
+      final Interval compactionInterval = taskPayload.getIoConfig().getInputSpec().getInterval();
       jobs.add(
           new CompactionJob(
               params.getMapper().convertValue(taskPayload, CompactionTask.class),
-              candidate
+              candidate,
+              compactionInterval
           )
       );
     }

@@ -34,8 +34,13 @@ import java.util.Map;
  */
 public class CompactionSnapshotBuilder
 {
-  private final CoordinatorRunStats stats = new CoordinatorRunStats();
+  private final CoordinatorRunStats stats;
   private final Map<String, AutoCompactionSnapshot.Builder> datasourceToBuilder = new HashMap<>();
+
+  public CompactionSnapshotBuilder(CoordinatorRunStats runStats)
+  {
+    this.stats = runStats;
+  }
 
   public void addToComplete(CompactionCandidate candidate)
   {
@@ -65,11 +70,6 @@ public class CompactionSnapshotBuilder
     });
 
     return datasourceToSnapshot;
-  }
-
-  public CoordinatorRunStats getStats()
-  {
-    return stats;
   }
 
   private AutoCompactionSnapshot.Builder getBuilderForDatasource(String dataSource)

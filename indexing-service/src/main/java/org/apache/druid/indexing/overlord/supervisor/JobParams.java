@@ -20,14 +20,11 @@
 package org.apache.druid.indexing.overlord.supervisor;
 
 import org.joda.time.DateTime;
-import org.joda.time.Interval;
 
 /**
  * Provides parameters required to create a {@link BatchIndexingJob}.
  */
 public interface JobParams
 {
-  Interval getInterval();
-
   DateTime getScheduleStartTime();
 }

@@ -19,10 +19,12 @@
 
 package org.apache.druid.indexing.overlord.supervisor;
 
+import org.apache.druid.error.InvalidInput;
 import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.query.http.ClientSqlQuery;
 
 import javax.annotation.Nullable;
+import java.util.Objects;
 
 /**
  * A batch indexing job that can be launched by the Overlord as a {@link Task}.
@@ -35,16 +37,6 @@ public class BatchIndexingJob
   private final ClientSqlQuery msqQuery;
   private final Task task;
 
-  public static BatchIndexingJob forTask(Task task)
-  {
-    return new BatchIndexingJob(task, null);
-  }
-
-  public static BatchIndexingJob msq(ClientSqlQuery msqQuery)
-  {
-    return new BatchIndexingJob(null, msqQuery);
-  }
-
   protected BatchIndexingJob(
       @Nullable Task task,
       @Nullable ClientSqlQuery msqQuery
@@ -53,24 +45,29 @@ public class BatchIndexingJob
     this.isMsq = task == null;
     this.msqQuery = msqQuery;
     this.task = task;
+
+    InvalidInput.conditionalException(
+        (task == null || msqQuery == null) && (task != null || msqQuery != null),
+        "Exactly one of 'task' or 'msqQuery' must be non-null"
+    );
   }
 
   /**
-   * @return null if this is not an MSQ job.
+   * @return MSQ query to be run in this job, if any.
+   * @throws NullPointerException if this not an MSQ job.
    */
-  @Nullable
-  public ClientSqlQuery getMsqQuery()
+  public ClientSqlQuery getNonNullMsqQuery()
   {
-    return msqQuery;
+    return Objects.requireNonNull(msqQuery);
   }
 
   /**
-   * @return null if this is an MSQ job.
+   * @return Task to be run in this job, if any.
+   * @throws NullPointerException if this is an MSQ job.
    */
-  @Nullable
-  public Task getTask()
+  public Task getNonNullTask()
   {
-    return task;
+    return Objects.requireNonNull(task);
   }
 
   /**

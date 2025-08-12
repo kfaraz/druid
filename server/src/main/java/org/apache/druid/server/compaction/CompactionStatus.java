@@ -116,7 +116,7 @@ public class CompactionStatus
            '}';
   }
 
-  private static CompactionStatus incomplete(String reasonFormat, Object... args)
+  public static CompactionStatus pending(String reasonFormat, Object... args)
   {
     return new CompactionStatus(State.PENDING, StringUtils.format(reasonFormat, args));
   }
@@ -142,7 +142,7 @@ public class CompactionStatus
       Function<T, String> stringFunction
   )
   {
-    return CompactionStatus.incomplete(
+    return CompactionStatus.pending(
         "'%s' mismatch: required[%s], current[%s]",
         field,
         target == null ? null : stringFunction.apply(target),
@@ -295,7 +295,7 @@ public class CompactionStatus
     private CompactionStatus segmentsHaveBeenCompactedAtLeastOnce()
     {
       if (lastCompactionState == null) {
-        return CompactionStatus.incomplete("not compacted yet");
+        return CompactionStatus.pending("not compacted yet");
       } else {
         return COMPLETE;
       }
@@ -309,7 +309,7 @@ public class CompactionStatus
       if (allHaveSameCompactionState) {
         return COMPLETE;
       } else {
-        return CompactionStatus.incomplete("segments have different last compaction states");
+        return CompactionStatus.pending("segments have different last compaction states");
       }
     }
 
@@ -380,7 +380,7 @@ public class CompactionStatus
             segment -> !configuredSegmentGranularity.isAligned(segment.getInterval())
         );
         if (needsCompaction) {
-          return CompactionStatus.incomplete(
+          return CompactionStatus.pending(
               "segmentGranularity: segments do not align with target[%s]",
               asString(configuredSegmentGranularity)
           );

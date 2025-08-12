@@ -226,7 +226,7 @@ public class CompactSegmentsTest
       }
     }
     dataSources = DataSourcesSnapshot.fromUsedSegments(allSegments);
-    statusTracker = new CompactionStatusTracker(JSON_MAPPER);
+    statusTracker = new CompactionStatusTracker();
     policy = new NewestSegmentFirstPolicy(null);
   }
 

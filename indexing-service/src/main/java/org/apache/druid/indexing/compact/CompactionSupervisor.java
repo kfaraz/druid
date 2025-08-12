@@ -34,6 +34,7 @@ import org.joda.time.Interval;
 
 import javax.annotation.Nullable;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Supervisor for compaction of a single datasource.
@@ -140,7 +141,11 @@ public class CompactionSupervisor implements BatchIndexingSupervisor<CompactionJ
   {
     final Interval interval = Intervals.ETERNITY;
     return supervisorSpec.getTemplate().createJobs(
-        new DruidInputSource(dataSource, interval, null, null, null, null, null, null, null, null),
+        // Create a DruidInputSource for this datasource
+        jobParams.getMapper().convertValue(
+            Map.of("type", "druid", "dataSource", dataSource, "interval", interval),
+            DruidInputSource.class
+        ),
         new DruidDatasourceDestination(dataSource),
         jobParams
     );

@@ -27,6 +27,7 @@ import org.apache.druid.java.util.common.granularity.Granularity;
 import org.apache.druid.server.coordinator.InlineSchemaDataSourceCompactionConfig;
 import org.apache.druid.server.coordinator.UserCompactionTaskGranularityConfig;
 import org.apache.druid.server.coordinator.UserCompactionTaskQueryTuningConfig;
+import org.joda.time.Period;
 
 import java.util.List;
 
@@ -78,6 +79,7 @@ public class InlineCompactionJobTemplate implements CompactionJobTemplate
         InlineSchemaDataSourceCompactionConfig
             .builder()
             .forDataSource(dataSource)
+            .withSkipOffsetFromLatest(Period.ZERO)
             .withTuningConfig(tuningConfig)
             .withGranularitySpec(new UserCompactionTaskGranularityConfig(segmentGranularity, null, null))
             .build()

@@ -25,6 +25,7 @@ import org.apache.druid.client.indexing.ClientMSQContext;
 import org.apache.druid.guice.IndexingServiceTuningConfigModule;
 import org.apache.druid.indexer.CompactionEngine;
 import org.apache.druid.indexing.common.SegmentCacheManagerFactory;
+import org.apache.druid.indexing.common.actions.TaskActionClientFactory;
 import org.apache.druid.indexing.common.config.TaskStorageConfig;
 import org.apache.druid.indexing.common.task.CompactionTask;
 import org.apache.druid.indexing.common.task.Task;
@@ -95,6 +96,7 @@ public class OverlordCompactionSchedulerTest
 
   private TaskMaster taskMaster;
   private TaskQueue taskQueue;
+  private TaskActionClientFactory taskActionClientFactory;
   private BlockingExecutorService executor;
 
   private HeapMemoryTaskStorage taskStorage;
@@ -144,8 +146,9 @@ public class OverlordCompactionSchedulerTest
         new TaskQueryTool(taskStorage, taskLockbox, taskMaster, null, () -> defaultWorkerConfig),
         segmentsMetadataManager,
         () -> DruidCompactionConfig.empty().withClusterConfig(compactionConfig.get()),
-        new CompactionSupervisorStatusTracker(OBJECT_MAPPER),
+        new CompactionSupervisorStatusTracker(),
         coordinatorOverlordServiceConfig,
+        taskActionClientFactory,
         (nameFormat, numThreads) -> new WrappingScheduledExecutorService("test", executor, false),
         serviceEmitter,
         OBJECT_MAPPER

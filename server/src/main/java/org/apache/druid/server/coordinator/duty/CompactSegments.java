@@ -235,7 +235,7 @@ public class CompactSegments implements CoordinatorCustomDuty
     final int availableCompactionTaskSlots
         = getAvailableCompactionTaskSlots(compactionTaskCapacity, busyCompactionTaskSlots);
 
-    final CompactionSnapshotBuilder compactionSnapshotBuilder = new CompactionSnapshotBuilder();
+    final CompactionSnapshotBuilder compactionSnapshotBuilder = new CompactionSnapshotBuilder(stats);
     final int numSubmittedCompactionTasks = submitCompactionTasks(
         compactionConfigs,
         compactionSnapshotBuilder,
@@ -249,7 +249,6 @@ public class CompactSegments implements CoordinatorCustomDuty
     stats.add(Stats.Compaction.AVAILABLE_SLOTS, availableCompactionTaskSlots);
     stats.add(Stats.Compaction.SUBMITTED_TASKS, numSubmittedCompactionTasks);
     updateCompactionSnapshotStats(compactionSnapshotBuilder, iterator, compactionConfigs);
-    compactionSnapshotBuilder.getStats().forEachStat(stats::add);
   }
 
   private void resetCompactionSnapshot()
@@ -469,7 +468,7 @@ public class CompactSegments implements CoordinatorCustomDuty
       final DataSourceCompactionConfig config = compactionConfigs.get(dataSourceName);
 
       final CompactionStatus compactionStatus =
-          statusTracker.computeCompactionStatus(entry, config, policy);
+          statusTracker.computeCompactionStatus(entry, policy);
       final CompactionCandidate candidatesWithStatus = entry.withCurrentStatus(compactionStatus);
       statusTracker.onCompactionStatusComputed(candidatesWithStatus, config);
 
@@ -486,7 +485,7 @@ public class CompactSegments implements CoordinatorCustomDuty
 
       final String taskId = taskPayload.getId();
       FutureUtils.getUnchecked(overlordClient.runTask(taskId, taskPayload), true);
-      statusTracker.onTaskSubmitted(taskPayload, entry);
+      statusTracker.onTaskSubmitted(taskId, entry);
 
       LOG.debug(
           "Submitted a compaction task[%s] for [%d] segments in datasource[%s], umbrella interval[%s].",

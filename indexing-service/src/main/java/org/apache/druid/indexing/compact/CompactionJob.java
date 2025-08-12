@@ -22,8 +22,7 @@ package org.apache.druid.indexing.compact;
 import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.indexing.overlord.supervisor.BatchIndexingJob;
 import org.apache.druid.server.compaction.CompactionCandidate;
-
-import java.util.Objects;
+import org.joda.time.Interval;
 
 /**
  * TODO:
@@ -33,20 +32,27 @@ import java.util.Objects;
 public class CompactionJob extends BatchIndexingJob
 {
   private final CompactionCandidate candidate;
+  private final Interval compactionInterval;
 
-  public CompactionJob(Task task, CompactionCandidate candidate)
+  public CompactionJob(Task task, CompactionCandidate candidate, Interval compactionInterval)
   {
     super(task, null);
     this.candidate = candidate;
+    this.compactionInterval = compactionInterval;
   }
 
   public String getDataSource()
   {
-    return Objects.requireNonNull(getTask()).getDataSource();
+    return candidate.getDataSource();
   }
 
   public CompactionCandidate getCandidate()
   {
     return candidate;
+  }
+
+  public Interval getCompactionInterval()
+  {
+    return compactionInterval;
   }
 }
