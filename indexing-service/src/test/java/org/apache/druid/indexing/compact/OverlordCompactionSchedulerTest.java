@@ -47,6 +47,7 @@ import org.apache.druid.segment.TestIndex;
 import org.apache.druid.server.compaction.CompactionSimulateResult;
 import org.apache.druid.server.compaction.CompactionStatistics;
 import org.apache.druid.server.compaction.CompactionStatus;
+import org.apache.druid.server.compaction.CompactionStatusTracker;
 import org.apache.druid.server.compaction.Table;
 import org.apache.druid.server.coordinator.AutoCompactionSnapshot;
 import org.apache.druid.server.coordinator.ClusterCompactionConfig;
@@ -147,7 +148,7 @@ public class OverlordCompactionSchedulerTest
         new TaskQueryTool(taskStorage, taskLockbox, taskMaster, null, () -> defaultWorkerConfig),
         segmentsMetadataManager,
         () -> DruidCompactionConfig.empty().withClusterConfig(compactionConfig.get()),
-        new CompactionSupervisorStatusTracker(),
+        new CompactionStatusTracker(),
         coordinatorOverlordServiceConfig,
         taskActionClientFactory,
         (nameFormat, numThreads) -> new WrappingScheduledExecutorService("test", executor, false),

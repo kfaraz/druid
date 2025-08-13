@@ -21,11 +21,17 @@ package org.apache.druid.indexing.compact;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.druid.client.DataSourcesSnapshot;
+import org.apache.druid.client.indexing.ClientCompactionTaskQuery;
+import org.apache.druid.client.indexing.TaskPayloadResponse;
 import org.apache.druid.common.guava.FutureUtils;
+import org.apache.druid.indexer.CompactionEngine;
+import org.apache.druid.indexer.TaskStatusPlus;
 import org.apache.druid.indexing.common.actions.TaskActionClientFactory;
+import org.apache.druid.indexing.common.task.CompactionTask;
 import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.indexing.overlord.GlobalTaskLockbox;
 import org.apache.druid.java.util.common.DateTimes;
+import org.apache.druid.java.util.common.ISE;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.rpc.indexing.OverlordClient;
 import org.apache.druid.server.compaction.CompactionCandidate;
@@ -34,33 +40,51 @@ import org.apache.druid.server.compaction.CompactionSnapshotBuilder;
 import org.apache.druid.server.compaction.CompactionStatus;
 import org.apache.druid.server.compaction.CompactionStatusTracker;
 import org.apache.druid.server.coordinator.AutoCompactionSnapshot;
+import org.apache.druid.server.coordinator.ClusterCompactionConfig;
+import org.apache.druid.server.coordinator.DataSourceCompactionConfig;
+import org.apache.druid.server.coordinator.DruidCompactionConfig;
+import org.apache.druid.server.coordinator.duty.CompactSegments;
+import org.apache.druid.server.coordinator.duty.CoordinatorDutyUtils;
 import org.apache.druid.server.coordinator.stats.CoordinatorRunStats;
 import org.apache.druid.server.coordinator.stats.Dimension;
 import org.apache.druid.server.coordinator.stats.RowKey;
 import org.apache.druid.server.coordinator.stats.Stats;
+import org.joda.time.Interval;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.PriorityQueue;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Iterates over all eligible compaction jobs in order of their priority.
+ * A fresh instance of this class must be used in every run of the
+ * {@link CompactionScheduler}.
+ *
  * TODO: Remaining items:
  *  - task slot logic in canRunJob
  *  - track status of completed tasks?
- *  - write up more test cases
  *  - better catalog template
  *  - fill timeline gaps, support realiging intervals
- *
- *  - if the granularity of this rule leaves gaps in the timeline, should they be filled be a prior rule
- *    - because there can always be gaps depending on the current date
- *    - maybe we can realign intervals if needed
- *  - supervisors: cancel a task (on supervisor update or when new jobs are computed)
- *  - maybe use searchInterval instead of skipIntervals
- *  - how does this whole thing affect queuedIntervals
- *    - for duty, it doesn't matter
- *    - for supervisors, intervals will always be mutually exclusive
- *  - CATALOG changes
+ *  - write up more test cases
+ *  - cancel mismatching task
+ *  - pass in the engine to the template
+ *  - invoke onTimelineUpdated - timeline will now get updated very frequently,
+ *    - we don't want to recompact intervals, try to find the right thing to do.
+ *    - we might have to do it via the policy
+ * <p>
+ * - if the granularity of this rule leaves gaps in the timeline, should they be filled be a prior rule
+ * - because there can always be gaps depending on the current date
+ * - maybe we can realign intervals if needed
+ * - supervisors: cancel a task (on supervisor update or when new jobs are computed)
+ * - maybe use searchInterval instead of skipIntervals
+ * - how does this whole thing affect queuedIntervals
+ * - for duty, it doesn't matter
+ * - for supervisors, intervals will always be mutually exclusive
+ * - CATALOG changes
  */
 public class CompactionJobQueue
 {
@@ -78,9 +102,11 @@ public class CompactionJobQueue
   private final PriorityQueue<CompactionJob> queue;
   private final CoordinatorRunStats runStats;
 
+  private int numAvailableTaskSlots;
+
   public CompactionJobQueue(
       DataSourcesSnapshot dataSourcesSnapshot,
-      CompactionCandidateSearchPolicy searchPolicy,
+      ClusterCompactionConfig clusterCompactionConfig,
       CompactionStatusTracker statusTracker,
       TaskActionClientFactory taskActionClientFactory,
       GlobalTaskLockbox taskLockbox,
@@ -88,7 +114,7 @@ public class CompactionJobQueue
       ObjectMapper objectMapper
   )
   {
-    this.searchPolicy = searchPolicy;
+    this.searchPolicy = clusterCompactionConfig.getCompactionPolicy();
     this.queue = new PriorityQueue<>(
         (o1, o2) -> searchPolicy.compareCandidates(o1.getCandidate(), o2.getCandidate())
     );
@@ -104,8 +130,13 @@ public class CompactionJobQueue
     this.overlordClient = overlordClient;
     this.statusTracker = statusTracker;
     this.taskLockbox = taskLockbox;
+
+    this.numAvailableTaskSlots = computeAvailableTaskSlots();
   }
 
+  /**
+   * Adds a job to this queue.
+   */
   public void add(CompactionJob job)
   {
     queue.add(job);
@@ -140,16 +171,20 @@ public class CompactionJobQueue
       final CompactionJob job = queue.poll();
       final Task task = Objects.requireNonNull(job.getNonNullTask());
 
-      if (canStartJob(job, searchPolicy)) {
+      if (startJobIfPendingAndReady(job, searchPolicy)) {
         statusTracker.onTaskSubmitted(task.getId(), job.getCandidate());
-        FutureUtils.getUnchecked(overlordClient.runTask(task.getId(), task), true);
         runStats.add(Stats.Compaction.SUBMITTED_TASKS, RowKey.of(Dimension.DATASOURCE, task.getDataSource()), 1);
       }
     }
 
-    // TODO: Handle the skipped and the already compacted stuff
+    // TODO: Add the skipped and the already compacted stuff determined by the DatasourceCompactibleSegmentIterator
+    //  to the stats
   }
 
+  /**
+   * Builds and returns the compaction snapshots for all the datasources being
+   * tracked in this queue. Must be called after {@link #runReadyJobs()}.
+   */
   public Map<String, AutoCompactionSnapshot> getCompactionSnapshots()
   {
     return snapshotBuilder.build();
@@ -160,12 +195,105 @@ public class CompactionJobQueue
     return runStats;
   }
 
-  private boolean canStartJob(CompactionJob job, CompactionCandidateSearchPolicy policy)
+  private int computeAvailableTaskSlots(ClusterCompactionConfig clusterCompactionConfig)
   {
-    if (!areCompactionTaskSlotsAvailable(job)) {
+    // Fetch currently running compaction tasks
+    int busyCompactionTaskSlots = 0;
+    final List<TaskStatusPlus> compactionTasks = CoordinatorDutyUtils.getStatusOfActiveTasks(
+        overlordClient,
+        status -> null != status && CompactionTask.TYPE.equals(status.getType())
+    );
+
+    final Set<String> activeTaskIds
+        = compactionTasks.stream().map(TaskStatusPlus::getId).collect(Collectors.toSet());
+    trackStatusOfCompletedTasks(activeTaskIds);
+
+    for (TaskStatusPlus status : compactionTasks) {
+      final TaskPayloadResponse response =
+          FutureUtils.getUnchecked(overlordClient.taskPayload(status.getId()), true);
+      if (response == null) {
+        throw new ISE("Could not find payload for active compaction task[%s]", status.getId());
+      } else if (!CompactionTask.TYPE.equals(response.getPayload().getType())) {
+        throw new ISE(
+            "Payload of active compaction task[%s] is of invalid type[%s]",
+            status.getId(), response.getPayload().getType()
+        );
+      }
+
+      final ClientCompactionTaskQuery compactionTaskQuery = (ClientCompactionTaskQuery) response.getPayload();
+      DataSourceCompactionConfig dataSourceCompactionConfig = compactionConfigs.get(status.getDataSource());
+      if (cancelTaskIfGranularityChanged(compactionTaskQuery, dataSourceCompactionConfig)) {
+        continue;
+      }
+
+      // Skip this interval as the current active compaction task is good
+      final Interval interval = compactionTaskQuery.getIoConfig().getInputSpec().getInterval();
+      intervalsToSkipCompaction.computeIfAbsent(status.getDataSource(), k -> new ArrayList<>())
+                               .add(interval);
+      // Note: The default compactionRunnerType used here should match the default runner used in CompactionTask when
+      // no runner is provided there.
+      CompactionEngine compactionRunnerType = compactionTaskQuery.getCompactionRunner() == null
+                                              ? CompactionEngine.NATIVE
+                                              : compactionTaskQuery.getCompactionRunner().getType();
+      if (compactionRunnerType == CompactionEngine.NATIVE) {
+        busyCompactionTaskSlots +=
+            CompactSegments.findMaxNumTaskSlotsUsedByOneNativeCompactionTask(compactionTaskQuery.getTuningConfig());
+      } else {
+        busyCompactionTaskSlots +=
+            CompactSegments.findMaxNumTaskSlotsUsedByOneMsqCompactionTask(compactionTaskQuery.getContext());
+      }
+    }
+
+    return getAvailableCompactionTaskSlots(
+        getCompactionTaskCapacity(clusterCompactionConfig),
+        busyCompactionTaskSlots
+    );
+  }
+
+  private int getAvailableCompactionTaskSlots(int compactionTaskCapacity, int busyCompactionTaskSlots)
+  {
+    final int availableCompactionTaskSlots;
+    if (busyCompactionTaskSlots > 0) {
+      availableCompactionTaskSlots = Math.max(0, compactionTaskCapacity - busyCompactionTaskSlots);
+    } else {
+      // compactionTaskCapacity might be 0 if totalWorkerCapacity is low.
+      // This guarantees that at least one slot is available if
+      // compaction is enabled and estimatedIncompleteCompactionTasks is 0.
+      availableCompactionTaskSlots = Math.max(1, compactionTaskCapacity);
+    }
+    log.debug(
+        "Found [%d] available task slots for compaction out of max compaction task capacity [%d]",
+        availableCompactionTaskSlots, compactionTaskCapacity
+    );
+
+    return availableCompactionTaskSlots;
+  }
+
+  private int getCompactionTaskCapacity(ClusterCompactionConfig clusterConfig)
+  {
+    int totalWorkerCapacity = CoordinatorDutyUtils.getTotalWorkerCapacity(overlordClient);
+
+    return Math.min(
+        (int) (totalWorkerCapacity * clusterConfig.getCompactionTaskSlotRatio()),
+        clusterConfig.getMaxCompactionTaskSlots()
+    );
+  }
+
+  /**
+   * Starts a job if it is ready and is not already in progress.
+   *
+   * @return true if the job was submitted successfully for execution
+   */
+  private boolean startJobIfPendingAndReady(CompactionJob job, CompactionCandidateSearchPolicy policy)
+  {
+    // Check if enough compaction task slots are available
+    if (job.getMaxRequiredTaskSlots() <= numAvailableTaskSlots) {
+      numAvailableTaskSlots -= job.getMaxRequiredTaskSlots();
+    } else {
       return false;
     }
 
+    // Check the current status of the job to determine if it can be run
     final CompactionCandidate candidate = job.getCandidate();
     final CompactionStatus compactionStatus = getCurrentStatusForJob(job, policy);
 
@@ -177,17 +305,20 @@ public class CompactionJobQueue
       snapshotBuilder.addToPending(candidate);
     }
 
-    return compactionStatus.getState() == CompactionStatus.State.PENDING && isTaskReady(job);
+    // Job is already running, completed or skipped
+    if (compactionStatus.getState() != CompactionStatus.State.PENDING) {
+      return false;
+    }
+
+    return startTaskIfReady(job);
   }
 
-  private boolean areCompactionTaskSlotsAvailable(CompactionJob job)
-  {
-    // track the task slot counts somehow
-    // this should be probably be governed by the compaction task slots thing
-    return true;
-  }
-
-  private boolean isTaskReady(CompactionJob job)
+  /**
+   * Starts the given job if the underlying Task is able to acquire locks.
+   *
+   * @return true if the Task was submitted successfully.
+   */
+  private boolean startTaskIfReady(CompactionJob job)
   {
     // Assume MSQ jobs to be always ready
     if (job.isMsq()) {
@@ -200,6 +331,7 @@ public class CompactionJobQueue
       taskLockbox.add(task);
       if (task.isReady(taskActionClientFactory.create(task))) {
         // Hold the locks acquired by task.isReady() as we will reacquire them anyway
+        FutureUtils.getUnchecked(overlordClient.runTask(task.getId(), task), true);
         return true;
       } else {
         taskLockbox.unlockAll(task);

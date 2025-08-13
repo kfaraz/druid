@@ -152,16 +152,17 @@ public class CompactSegments implements CoordinatorCustomDuty
     }
 
     statusTracker.onSegmentTimelineUpdated(dataSources.getSnapshotTime());
-    statusTracker.onCompactionConfigUpdated(dynamicConfig);
     List<DataSourceCompactionConfig> compactionConfigList = dynamicConfig.getCompactionConfigs();
     if (compactionConfigList == null || compactionConfigList.isEmpty()) {
       resetCompactionSnapshot();
+      statusTracker.resetActiveDatasources(Set.of());
       return;
     }
 
     Map<String, DataSourceCompactionConfig> compactionConfigs = compactionConfigList
         .stream()
         .collect(Collectors.toMap(DataSourceCompactionConfig::getDataSource, Function.identity()));
+    statusTracker.resetActiveDatasources(compactionConfigs.keySet());
 
     // Map from dataSource to list of intervals for which compaction will be skipped in this run
     final Map<String, List<Interval>> intervalsToSkipCompaction = new HashMap<>();
@@ -384,7 +385,7 @@ public class CompactSegments implements CoordinatorCustomDuty
    * Returns the maximum number of task slots used by one MSQ compaction task at any time when the task is
    * issued with the given context.
    */
-  static int findMaxNumTaskSlotsUsedByOneMsqCompactionTask(@Nullable Map<String, Object> context)
+  public static int findMaxNumTaskSlotsUsedByOneMsqCompactionTask(@Nullable Map<String, Object> context)
   {
     return context == null
            ? ClientMSQContext.DEFAULT_MAX_NUM_TASKS

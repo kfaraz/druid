@@ -44,6 +44,7 @@ import org.apache.druid.java.util.emitter.service.ServiceMetricEvent;
 import org.apache.druid.metadata.SegmentsMetadataManager;
 import org.apache.druid.server.compaction.CompactionRunSimulator;
 import org.apache.druid.server.compaction.CompactionSimulateResult;
+import org.apache.druid.server.compaction.CompactionStatusTracker;
 import org.apache.druid.server.coordinator.AutoCompactionSnapshot;
 import org.apache.druid.server.coordinator.ClusterCompactionConfig;
 import org.apache.druid.server.coordinator.CompactionConfigValidationResult;
@@ -103,7 +104,7 @@ public class OverlordCompactionScheduler implements CompactionScheduler
    */
   private final ScheduledExecutorService executor;
 
-  private final CompactionSupervisorStatusTracker statusTracker;
+  private final CompactionStatusTracker statusTracker;
   private final TaskActionClientFactory taskActionClientFactory;
   private final GlobalTaskLockbox taskLockbox;
 
@@ -132,7 +133,7 @@ public class OverlordCompactionScheduler implements CompactionScheduler
       TaskQueryTool taskQueryTool,
       SegmentsMetadataManager segmentManager,
       Supplier<DruidCompactionConfig> compactionConfigSupplier,
-      CompactionSupervisorStatusTracker statusTracker,
+      CompactionStatusTracker statusTracker,
       CoordinatorOverlordServiceConfig coordinatorOverlordServiceConfig,
       TaskActionClientFactory taskActionClientFactory,
       ScheduledExecutorFactory executorFactory,
@@ -322,13 +323,14 @@ public class OverlordCompactionScheduler implements CompactionScheduler
   {
     final CompactionJobQueue queue = new CompactionJobQueue(
         getDatasourceSnapshot(),
-        getLatestClusterConfig().getCompactionPolicy(),
+        getLatestClusterConfig(),
         statusTracker,
         taskActionClientFactory,
         taskLockbox,
         overlordClient,
         objectMapper
     );
+    statusTracker.resetActiveDatasources(activeSupervisors.keySet());
     activeSupervisors.forEach((datasource, supervisor) -> queue.createAndEnqueueJobs(supervisor));
     queue.runReadyJobs();
 

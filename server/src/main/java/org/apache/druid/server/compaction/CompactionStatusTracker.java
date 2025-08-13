@@ -23,7 +23,6 @@ import org.apache.druid.indexer.TaskState;
 import org.apache.druid.indexer.TaskStatus;
 import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.server.coordinator.DataSourceCompactionConfig;
-import org.apache.druid.server.coordinator.DruidCompactionConfig;
 import org.joda.time.DateTime;
 import org.joda.time.Duration;
 import org.joda.time.Interval;
@@ -98,10 +97,6 @@ public class CompactionStatusTracker
       return CompactionStatus.skipped("Task for interval is already running");
     }
 
-    if (lastTaskStatus != null) {
-      System.out.println("Last task status is: " + lastTaskStatus.getState());
-    }
-
     // Skip intervals that have been recently compacted if segment timeline is not updated yet
     final DateTime snapshotTime = segmentSnapshotTime.get();
     if (lastTaskStatus != null
@@ -133,17 +128,15 @@ public class CompactionStatusTracker
     this.segmentSnapshotTime.set(snapshotTime);
   }
 
-  public void onCompactionConfigUpdated(DruidCompactionConfig compactionConfig)
+  /**
+   * Updates the set of datasources that have compaction enabled and cleans up
+   * stale task statuses.
+   */
+  public void resetActiveDatasources(Set<String> compactionEnabledDatasources)
   {
-    final Set<String> compactionEnabledDatasources = new HashSet<>();
-    if (compactionConfig.getCompactionConfigs() != null) {
-      compactionConfig.getCompactionConfigs().forEach(config -> {
-        getOrComputeDatasourceStatus(config.getDataSource())
-            .cleanupStaleTaskStatuses();
-
-        compactionEnabledDatasources.add(config.getDataSource());
-      });
-    }
+    compactionEnabledDatasources.forEach(
+        dataSource -> getOrComputeDatasourceStatus(dataSource).cleanupStaleTaskStatuses()
+    );
 
     // Clean up state for datasources where compaction has been disabled
     final Set<String> allDatasources = new HashSet<>(datasourceStatuses.keySet());

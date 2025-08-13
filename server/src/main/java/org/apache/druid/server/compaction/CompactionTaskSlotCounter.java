@@ -17,16 +17,18 @@
  * under the License.
  */
 
-package org.apache.druid.indexing.compact;
+package org.apache.druid.server.compaction;
 
-import com.google.inject.Inject;
-import org.apache.druid.server.compaction.CompactionStatusTracker;
+import org.apache.druid.rpc.indexing.OverlordClient;
 
-public class CompactionSupervisorStatusTracker extends CompactionStatusTracker
+public class CompactionTaskSlotCounter
 {
-  @Inject
-  public CompactionSupervisorStatusTracker()
+  private final OverlordClient overlordClient;
+
+  public CompactionTaskSlotCounter(
+      OverlordClient overlordClient
+  )
   {
-    super();
+    this.overlordClient = overlordClient;
   }
 }

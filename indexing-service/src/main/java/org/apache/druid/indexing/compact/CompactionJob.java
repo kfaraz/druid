@@ -25,20 +25,25 @@ import org.apache.druid.server.compaction.CompactionCandidate;
 import org.joda.time.Interval;
 
 /**
- * TODO:
- *  this should probably also contain the number of task slots, so that we can
- *  decide if there are available slots or not.
+ * {@link BatchIndexingJob} to compact an interval of a datasource.
  */
 public class CompactionJob extends BatchIndexingJob
 {
   private final CompactionCandidate candidate;
   private final Interval compactionInterval;
+  private final int maxRequiredTaskSlots;
 
-  public CompactionJob(Task task, CompactionCandidate candidate, Interval compactionInterval)
+  public CompactionJob(
+      Task task,
+      CompactionCandidate candidate,
+      Interval compactionInterval,
+      int maxRequiredTaskSlots
+  )
   {
     super(task, null);
     this.candidate = candidate;
     this.compactionInterval = compactionInterval;
+    this.maxRequiredTaskSlots = maxRequiredTaskSlots;
   }
 
   public String getDataSource()
@@ -54,5 +59,10 @@ public class CompactionJob extends BatchIndexingJob
   public Interval getCompactionInterval()
   {
     return compactionInterval;
+  }
+
+  public int getMaxRequiredTaskSlots()
+  {
+    return maxRequiredTaskSlots;
   }
 }
