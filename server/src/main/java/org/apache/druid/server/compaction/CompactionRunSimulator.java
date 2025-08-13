@@ -172,7 +172,7 @@ public class CompactionRunSimulator
     row.add(candidate.getUmbrellaInterval());
     row.add(candidate.numSegments());
     row.add(candidate.getTotalBytes());
-    row.add(CompactSegments.findMaxNumTaskSlotsUsedByOneNativeCompactionTask(tuningConfig));
+    row.add(CompactionSlotManager.getMaxTaskSlotsForNativeCompactionTask(tuningConfig));
     if (reason != null) {
       row.add(reason);
     }

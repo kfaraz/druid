@@ -29,6 +29,7 @@ import org.apache.druid.indexing.input.DruidDatasourceDestination;
 import org.apache.druid.indexing.input.DruidInputSource;
 import org.apache.druid.java.util.common.Intervals;
 import org.apache.druid.server.compaction.CompactionCandidate;
+import org.apache.druid.server.compaction.CompactionSlotManager;
 import org.apache.druid.server.compaction.DataSourceCompactibleSegmentIterator;
 import org.apache.druid.server.compaction.NewestSegmentFirstPolicy;
 import org.apache.druid.server.coordinator.DataSourceCompactionConfig;
@@ -89,7 +90,7 @@ public class CompactionConfigBasedJobTemplate implements CompactionJobTemplate
               params.getMapper().convertValue(taskPayload, CompactionTask.class),
               candidate,
               compactionInterval,
-              CompactSegments.findMaxNumTaskSlotsUsedByOneNativeCompactionTask(taskPayload.getTuningConfig())
+              CompactionSlotManager.getMaxTaskSlotsForNativeCompactionTask(taskPayload.getTuningConfig())
           )
       );
     }
