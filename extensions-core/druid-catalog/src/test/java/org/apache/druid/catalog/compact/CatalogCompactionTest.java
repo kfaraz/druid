@@ -21,21 +21,18 @@ package org.apache.druid.catalog.compact;
 
 import org.apache.druid.catalog.guice.CatalogClientModule;
 import org.apache.druid.catalog.guice.CatalogCoordinatorModule;
-import org.apache.druid.catalog.model.ResolvedTable;
 import org.apache.druid.catalog.model.TableId;
 import org.apache.druid.catalog.model.TableMetadata;
-import org.apache.druid.catalog.model.TableSpec;
-import org.apache.druid.catalog.model.table.IndexingTemplateDefn;
 import org.apache.druid.catalog.model.table.TableBuilder;
 import org.apache.druid.catalog.sync.CatalogClient;
 import org.apache.druid.common.utils.IdUtils;
 import org.apache.druid.indexing.common.task.IndexTask;
 import org.apache.druid.indexing.common.task.TaskBuilder;
 import org.apache.druid.indexing.compact.CompactionSupervisorSpec;
-import org.apache.druid.indexing.compact.InlineCompactionJobTemplate;
 import org.apache.druid.indexing.overlord.Segments;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.granularity.Granularities;
+import org.apache.druid.query.DruidMetrics;
 import org.apache.druid.rpc.UpdateResponse;
 import org.apache.druid.server.coordinator.CatalogDataSourceCompactionConfig;
 import org.apache.druid.server.coordinator.ClusterCompactionConfig;
@@ -52,7 +49,6 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Map;
 
 public class CatalogCompactionTest extends EmbeddedClusterTestBase
 {
@@ -124,7 +120,8 @@ public class CatalogCompactionTest extends EmbeddedClusterTestBase
     // Wait for compaction to finish
     overlord.latchableEmitter().waitForEvent(
         event -> event.hasMetricName("task/run/time")
-                      .hasDimension("taskType", "compact")
+                      .hasDimension(DruidMetrics.TASK_TYPE, "compact")
+                      .hasDimension(DruidMetrics.DATASOURCE, dataSource)
     );
 
     // Verify that segments are now compacted to MONTH granularity
@@ -137,12 +134,6 @@ public class CatalogCompactionTest extends EmbeddedClusterTestBase
     Assertions.assertTrue(
         Granularities.MONTH.isAligned(segments.get(0).getInterval())
     );
-  }
-
-  @Test
-  public void test_ingestHourGranularity_andCompactToDayAndMonth_withInlineTemplates()
-  {
-
   }
 
   private void runIngestionAtDayGranularity()

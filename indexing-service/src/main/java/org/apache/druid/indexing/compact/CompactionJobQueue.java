@@ -56,22 +56,16 @@ import java.util.PriorityQueue;
  *
  * TODO: Remaining items:
  *  - fill timeline gaps, support realiging intervals
- *  - write up more test cases
  *  - cancel mismatching task
  *  - pass in the engine to the template
+ *  - MSQ template
  *  - invoke onTimelineUpdated - timeline will now get updated very frequently,
  *    - we don't want to recompact intervals, try to find the right thing to do.
  *    - we might have to do it via the policy
- * <p>
- * - if the granularity of this rule leaves gaps in the timeline, should they be filled be a prior rule
- * - because there can always be gaps depending on the current date
- * - maybe we can realign intervals if needed
- * - supervisors: cancel a task (on supervisor update or when new jobs are computed)
- * - maybe use searchInterval instead of skipIntervals
- * - how does this whole thing affect queuedIntervals
- * - for duty, it doesn't matter
- * - for supervisors, intervals will always be mutually exclusive
- * - CATALOG changes
+ *  - maybe use searchInterval instead of skipIntervals
+ *  - how does this whole thing affect queuedIntervals
+ *    - for duty, it doesn't matter
+ *    - for supervisors, intervals will always be mutually exclusive
  */
 public class CompactionJobQueue
 {
@@ -151,7 +145,7 @@ public class CompactionJobQueue
       }
     }
     catch (Exception e) {
-      log.error(e, "Error while creating jobs for supervisor[%s]", supervisor);
+      log.error(e, "Error while creating jobs for supervisor[%s]", supervisorId);
     }
   }
 
@@ -206,37 +200,41 @@ public class CompactionJobQueue
   private boolean startJobIfPendingAndReady(CompactionJob job, CompactionCandidateSearchPolicy policy)
   {
     // Check if the job is a valid compaction job
+    final CompactionCandidate candidate = job.getCandidate();
     final CompactionConfigValidationResult validationResult = validateCompactionJob(job);
     if (!validationResult.isValid()) {
       log.error("Compaction job[%s] is invalid due to reason[%s].", job, validationResult.getReason());
+      snapshotBuilder.addToSkipped(candidate);
       return false;
+    }
+
+    // Check if the job is already running, completed or skipped
+    final CompactionStatus compactionStatus = getCurrentStatusForJob(job, policy);
+    switch (compactionStatus.getState()) {
+      case RUNNING:
+      case COMPLETE:
+        snapshotBuilder.addToComplete(candidate);
+        return false;
+      case SKIPPED:
+        snapshotBuilder.addToSkipped(candidate);
+        return false;
     }
 
     // Check if enough compaction task slots are available
-    if (job.getMaxRequiredTaskSlots() <= slotManager.getNumAvailableTaskSlots()) {
-      slotManager.reserveTaskSlots(job.getMaxRequiredTaskSlots());
-    } else {
+    if (job.getMaxRequiredTaskSlots() > slotManager.getNumAvailableTaskSlots()) {
+      snapshotBuilder.addToPending(candidate);
       return false;
     }
 
-    // Check the current status of the job to determine if it can be run
-    final CompactionCandidate candidate = job.getCandidate();
-    final CompactionStatus compactionStatus = getCurrentStatusForJob(job, policy);
-
-    if (compactionStatus.isComplete()) {
+    // Reserve task slots and try to start the task
+    slotManager.reserveTaskSlots(job.getMaxRequiredTaskSlots());
+    if(startTaskIfReady(job)) {
       snapshotBuilder.addToComplete(candidate);
-    } else if (compactionStatus.isSkipped()) {
-      snapshotBuilder.addToSkipped(candidate);
+      return true;
     } else {
       snapshotBuilder.addToPending(candidate);
-    }
-
-    // Job is already running, completed or skipped
-    if (compactionStatus.getState() != CompactionStatus.State.PENDING) {
       return false;
     }
-
-    return startTaskIfReady(job);
   }
 
   /**
@@ -248,6 +246,7 @@ public class CompactionJobQueue
   {
     // Assume MSQ jobs to be always ready
     if (job.isMsq()) {
+      // TODO: submit the MSQ job to Broker here
       return true;
     }
 

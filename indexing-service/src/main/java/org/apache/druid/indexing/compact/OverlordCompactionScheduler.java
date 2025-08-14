@@ -334,8 +334,8 @@ public class OverlordCompactionScheduler implements CompactionScheduler
     activeSupervisors.forEach((datasource, supervisor) -> queue.createAndEnqueueJobs(supervisor));
     queue.runReadyJobs();
 
-    emitStatsIfPeriodHasElapsed(queue.getRunStats());
     datasourceToCompactionSnapshot.set(queue.getCompactionSnapshots());
+    emitStatsIfPeriodHasElapsed(queue.getRunStats());
   }
 
   /**

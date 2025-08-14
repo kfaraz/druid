@@ -21,11 +21,20 @@ package org.apache.druid.indexing.compact;
 
 import com.fasterxml.jackson.databind.InjectableValues;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.druid.client.coordinator.CoordinatorClient;
+import org.apache.druid.client.coordinator.NoopCoordinatorClient;
 import org.apache.druid.client.indexing.ClientMSQContext;
+import org.apache.druid.guice.IndexingServiceInputSourceModule;
 import org.apache.druid.guice.IndexingServiceTuningConfigModule;
 import org.apache.druid.indexer.CompactionEngine;
 import org.apache.druid.indexing.common.SegmentCacheManagerFactory;
+import org.apache.druid.indexing.common.TimeChunkLock;
+import org.apache.druid.indexing.common.actions.RetrieveUsedSegmentsAction;
+import org.apache.druid.indexing.common.actions.TaskAction;
+import org.apache.druid.indexing.common.actions.TaskActionClient;
 import org.apache.druid.indexing.common.actions.TaskActionClientFactory;
+import org.apache.druid.indexing.common.actions.TimeChunkLockTryAcquireAction;
+import org.apache.druid.indexing.common.config.TaskConfig;
 import org.apache.druid.indexing.common.config.TaskStorageConfig;
 import org.apache.druid.indexing.common.task.CompactionTask;
 import org.apache.druid.indexing.common.task.Task;
@@ -39,9 +48,11 @@ import org.apache.druid.indexing.overlord.setup.DefaultWorkerBehaviorConfig;
 import org.apache.druid.indexing.overlord.setup.WorkerBehaviorConfig;
 import org.apache.druid.indexing.test.TestIndexerMetadataStorageCoordinator;
 import org.apache.druid.jackson.DefaultObjectMapper;
+import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.common.Intervals;
 import org.apache.druid.java.util.common.granularity.Granularities;
 import org.apache.druid.java.util.metrics.StubServiceEmitter;
+import org.apache.druid.segment.IndexIO;
 import org.apache.druid.segment.TestDataSource;
 import org.apache.druid.segment.TestIndex;
 import org.apache.druid.server.compaction.CompactionSimulateResult;
@@ -82,9 +93,13 @@ public class OverlordCompactionSchedulerTest
   static {
     OBJECT_MAPPER = new DefaultObjectMapper();
     OBJECT_MAPPER.registerModules(new IndexingServiceTuningConfigModule().getJacksonModules());
+    OBJECT_MAPPER.registerModules(new IndexingServiceInputSourceModule().getJacksonModules());
     OBJECT_MAPPER.setInjectableValues(
         new InjectableValues
             .Std()
+            .addValue(IndexIO.class, TestIndex.INDEX_IO)
+            .addValue(TaskConfig.class, Mockito.mock(TaskConfig.class))
+            .addValue(CoordinatorClient.class, new NoopCoordinatorClient())
             .addValue(
                 SegmentCacheManagerFactory.class,
                 new SegmentCacheManagerFactory(TestIndex.INDEX_IO, OBJECT_MAPPER)
@@ -132,6 +147,30 @@ public class OverlordCompactionSchedulerTest
 
     compactionConfig = new AtomicReference<>(new ClusterCompactionConfig(null, null, null, true, null));
     coordinatorOverlordServiceConfig = new CoordinatorOverlordServiceConfig(false, null);
+
+    taskActionClientFactory = task -> new TaskActionClient()
+    {
+      @Override
+      @SuppressWarnings("unchecked")
+      public <RetType> RetType submit(TaskAction<RetType> taskAction)
+      {
+        if (taskAction instanceof RetrieveUsedSegmentsAction) {
+          return (RetType) segmentsMetadataManager.getAllSegments();
+        } else if (taskAction instanceof TimeChunkLockTryAcquireAction) {
+          final TimeChunkLockTryAcquireAction lockAcquireAction = (TimeChunkLockTryAcquireAction) taskAction;
+          return (RetType) new TimeChunkLock(
+              null,
+              task.getGroupId(),
+              task.getDataSource(),
+              lockAcquireAction.getInterval(),
+              DateTimes.nowUtc().toString(),
+              1
+          );
+        } else {
+          return null;
+        }
+      }
+    };
 
     initScheduler();
   }

@@ -116,7 +116,6 @@ public class DataSourceCompactibleSegmentIterator implements CompactionSegmentIt
                 CompactionStatus.skipped("Segments have partial-eternity intervals")
             );
             skippedSegments.add(candidatesWithStatus);
-            // statusTracker.onCompactionStatusComputed(candidatesWithStatus, config);
             return;
           }
 
