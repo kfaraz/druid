@@ -19,26 +19,52 @@
 
 package org.apache.druid.indexing.compact;
 
-import com.fasterxml.jackson.annotation.JsonSubTypes;
-import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import org.apache.druid.data.input.InputSource;
 import org.apache.druid.data.output.OutputDestination;
 import org.apache.druid.error.InvalidInput;
 import org.apache.druid.indexing.input.DruidDatasourceDestination;
 import org.apache.druid.indexing.input.DruidInputSource;
-import org.apache.druid.indexing.overlord.supervisor.BatchIndexingJobTemplate;
+import org.apache.druid.indexing.template.BatchIndexingJob;
+import org.apache.druid.indexing.template.BatchIndexingJobTemplate;
+import org.apache.druid.indexing.template.JobParams;
 
-@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type", defaultImpl = InlineCompactionJobTemplate.class)
-@JsonSubTypes(value = {
-    @JsonSubTypes.Type(name = "inline", value = InlineCompactionJobTemplate.class),
-    @JsonSubTypes.Type(name = "catalog", value = CatalogCompactionJobTemplate.class)
-})
-public interface CompactionJobTemplate extends BatchIndexingJobTemplate<CompactionJob, CompactionJobParams>
+import java.util.List;
+import java.util.stream.Collectors;
+
+/**
+ * Base indexing template for creating {@link CompactionJob}.
+ */
+public abstract class CompactionJobTemplate implements BatchIndexingJobTemplate
 {
+  abstract List<CompactionJob> createCompactionJobs(
+      InputSource source,
+      OutputDestination destination,
+      CompactionJobParams jobParams
+  );
+
+  @Override
+  public final List<BatchIndexingJob> createJobs(
+      InputSource source,
+      OutputDestination destination,
+      JobParams jobParams
+  )
+  {
+    if (!(jobParams instanceof CompactionJobParams)) {
+      throw InvalidInput.exception(
+          "Job params[%s] for compaction template must be of type CompactionJobParams.",
+          jobParams
+      );
+    }
+    return createCompactionJobs(source, destination, (CompactionJobParams) jobParams)
+        .stream()
+        .map(job -> (BatchIndexingJob) job)
+        .collect(Collectors.toList());
+  }
+
   /**
    * Verifies that the input source is of type {@link DruidInputSource}.
    */
-  default DruidInputSource ensureDruidInputSource(InputSource inputSource)
+  public final DruidInputSource ensureDruidInputSource(InputSource inputSource)
   {
     if (inputSource instanceof DruidInputSource) {
       return (DruidInputSource) inputSource;
@@ -50,7 +76,7 @@ public interface CompactionJobTemplate extends BatchIndexingJobTemplate<Compacti
   /**
    * Verifies that the output destination is of type {@link DruidDatasourceDestination}.
    */
-  default DruidDatasourceDestination ensureDruidDataSourceDestination(OutputDestination destination)
+  public final DruidDatasourceDestination ensureDruidDataSourceDestination(OutputDestination destination)
   {
     if (destination instanceof DruidDatasourceDestination) {
       return (DruidDatasourceDestination) destination;

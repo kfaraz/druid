@@ -24,7 +24,6 @@ import org.apache.druid.data.input.InputSource;
 import org.apache.druid.data.output.OutputDestination;
 import org.apache.druid.error.InvalidInput;
 import org.apache.druid.indexer.CompactionEngine;
-import org.apache.druid.indexing.common.task.CompactionTask;
 import org.apache.druid.indexing.input.DruidDatasourceDestination;
 import org.apache.druid.indexing.input.DruidInputSource;
 import org.apache.druid.java.util.common.Intervals;
@@ -46,7 +45,7 @@ import java.util.Objects;
  * It is just a delegating template that uses a {@link DataSourceCompactionConfig}
  * to create compaction jobs.
  */
-public class CompactionConfigBasedJobTemplate implements CompactionJobTemplate
+public class CompactionConfigBasedJobTemplate extends CompactionJobTemplate
 {
   private final DataSourceCompactionConfig config;
 
@@ -56,7 +55,7 @@ public class CompactionConfigBasedJobTemplate implements CompactionJobTemplate
   }
 
   @Override
-  public List<CompactionJob> createJobs(
+  public List<CompactionJob> createCompactionJobs(
       InputSource source,
       OutputDestination destination,
       CompactionJobParams params
@@ -87,7 +86,7 @@ public class CompactionConfigBasedJobTemplate implements CompactionJobTemplate
       final Interval compactionInterval = taskPayload.getIoConfig().getInputSpec().getInterval();
       jobs.add(
           new CompactionJob(
-              params.getMapper().convertValue(taskPayload, CompactionTask.class),
+              taskPayload,
               candidate,
               compactionInterval,
               CompactionSlotManager.getMaxTaskSlotsForNativeCompactionTask(taskPayload.getTuningConfig())
@@ -96,6 +95,12 @@ public class CompactionConfigBasedJobTemplate implements CompactionJobTemplate
     }
 
     return jobs;
+  }
+
+  @Override
+  public String getType()
+  {
+    throw new UnsupportedOperationException("This template type cannot be serialized");
   }
 
   private void validateInput(InputSource source)

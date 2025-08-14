@@ -19,35 +19,78 @@
 
 package org.apache.druid.indexing.compact;
 
+import com.fasterxml.jackson.annotation.JacksonInject;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import org.apache.druid.catalog.MetadataCatalog;
+import org.apache.druid.catalog.model.ResolvedTable;
+import org.apache.druid.catalog.model.TableId;
+import org.apache.druid.catalog.model.table.IndexingTemplateDefn;
 import org.apache.druid.data.input.InputSource;
 import org.apache.druid.data.output.OutputDestination;
-import org.apache.druid.server.coordinator.CatalogDataSourceCompactionConfig;
+import org.apache.druid.error.InvalidInput;
+import org.apache.druid.indexing.template.BatchIndexingJobTemplate;
 
 import java.util.List;
 
 /**
- * TODO:
- *  - For now, let's just start with a catalogTable type template
- *  which simply refers to a table definition and we use it as is.
- *  - Should the catalog contain only the table definition?
- *    - If yes, then we
+ * Compaction template that delegates job creation to a template stored in the
+ * Druid catalog.
  */
-public class CatalogCompactionJobTemplate implements CompactionJobTemplate
+public class CatalogCompactionJobTemplate extends CompactionJobTemplate
 {
-  private final CatalogDataSourceCompactionConfig config;
+  public static final String TYPE = "compactCatalog";
 
-  public CatalogCompactionJobTemplate(CatalogDataSourceCompactionConfig config)
+  private final String templateId;
+
+  private final TableId tableId;
+  private final MetadataCatalog catalog;
+
+  @JsonCreator
+  public CatalogCompactionJobTemplate(
+      @JsonProperty("templateId") String templateId,
+      @JacksonInject MetadataCatalog catalog
+  )
   {
-    this.config = config;
+    this.templateId = templateId;
+    this.catalog = catalog;
+    this.tableId = TableId.of(TableId.INDEXING_TEMPLATE_SCHEMA, templateId);
+  }
+
+  @JsonProperty
+  public String getTemplateId()
+  {
+    return templateId;
   }
 
   @Override
-  public List<CompactionJob> createJobs(
+  public List<CompactionJob> createCompactionJobs(
       InputSource source,
       OutputDestination target,
       CompactionJobParams params
   )
   {
-    return null;
+    final ResolvedTable resolvedTable = catalog.resolveTable(tableId);
+    if (resolvedTable == null) {
+      return List.of();
+    }
+
+    // Create jobs using the catalog template
+    final BatchIndexingJobTemplate delegate
+        = resolvedTable.decodeProperty(IndexingTemplateDefn.PROPERTY_PAYLOAD);
+    if (delegate instanceof CompactionJobTemplate) {
+      return ((CompactionJobTemplate) delegate).createCompactionJobs(source, target, params);
+    } else {
+      throw InvalidInput.exception(
+          "Template[%s] of type[%s] cannot be used for creating compaction tasks",
+          templateId, delegate == null ? null : delegate.getType()
+      );
+    }
+  }
+
+  @Override
+  public String getType()
+  {
+    return TYPE;
   }
 }

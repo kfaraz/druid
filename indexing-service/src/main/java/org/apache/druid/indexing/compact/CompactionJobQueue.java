@@ -22,10 +22,12 @@ package org.apache.druid.indexing.compact;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.druid.client.DataSourcesSnapshot;
 import org.apache.druid.client.indexing.ClientCompactionTaskQuery;
+import org.apache.druid.client.indexing.ClientTaskQuery;
 import org.apache.druid.common.guava.FutureUtils;
 import org.apache.druid.indexing.common.actions.TaskActionClientFactory;
 import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.indexing.overlord.GlobalTaskLockbox;
+import org.apache.druid.indexing.template.BatchIndexingJob;
 import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.rpc.indexing.OverlordClient;
@@ -37,6 +39,7 @@ import org.apache.druid.server.compaction.CompactionStatus;
 import org.apache.druid.server.compaction.CompactionStatusTracker;
 import org.apache.druid.server.coordinator.AutoCompactionSnapshot;
 import org.apache.druid.server.coordinator.ClusterCompactionConfig;
+import org.apache.druid.server.coordinator.CompactionConfigValidationResult;
 import org.apache.druid.server.coordinator.stats.CoordinatorRunStats;
 import org.apache.druid.server.coordinator.stats.Dimension;
 import org.apache.druid.server.coordinator.stats.RowKey;
@@ -52,7 +55,6 @@ import java.util.PriorityQueue;
  * {@link CompactionScheduler}.
  *
  * TODO: Remaining items:
- *  - better catalog template
  *  - fill timeline gaps, support realiging intervals
  *  - write up more test cases
  *  - cancel mismatching task
@@ -78,6 +80,7 @@ public class CompactionJobQueue
   private final CompactionJobParams jobParams;
   private final CompactionCandidateSearchPolicy searchPolicy;
 
+  private final ObjectMapper objectMapper;
   private final CompactionStatusTracker statusTracker;
   private final TaskActionClientFactory taskActionClientFactory;
   private final OverlordClient overlordClient;
@@ -119,6 +122,7 @@ public class CompactionJobQueue
     this.taskActionClientFactory = taskActionClientFactory;
     this.overlordClient = overlordClient;
     this.statusTracker = statusTracker;
+    this.objectMapper = objectMapper;
     this.taskLockbox = taskLockbox;
 
     computeAvailableTaskSlots();
@@ -159,7 +163,7 @@ public class CompactionJobQueue
   {
     while (!queue.isEmpty()) {
       final CompactionJob job = queue.poll();
-      final Task task = Objects.requireNonNull(job.getNonNullTask());
+      final ClientTaskQuery task = Objects.requireNonNull(job.getNonNullTask());
 
       if (startJobIfPendingAndReady(job, searchPolicy)) {
         statusTracker.onTaskSubmitted(task.getId(), job.getCandidate());
@@ -201,6 +205,13 @@ public class CompactionJobQueue
    */
   private boolean startJobIfPendingAndReady(CompactionJob job, CompactionCandidateSearchPolicy policy)
   {
+    // Check if the job is a valid compaction job
+    final CompactionConfigValidationResult validationResult = validateCompactionJob(job);
+    if (!validationResult.isValid()) {
+      log.error("Compaction job[%s] is invalid due to reason[%s].", job, validationResult.getReason());
+      return false;
+    }
+
     // Check if enough compaction task slots are available
     if (job.getMaxRequiredTaskSlots() <= slotManager.getNumAvailableTaskSlots()) {
       slotManager.reserveTaskSlots(job.getMaxRequiredTaskSlots());
@@ -240,7 +251,9 @@ public class CompactionJobQueue
       return true;
     }
 
-    final Task task = job.getNonNullTask();
+    final ClientTaskQuery taskQuery = job.getNonNullTask();
+    final Task task = objectMapper.convertValue(taskQuery, Task.class);
+
     log.info("Checking readiness of task[%s] with interval[%s]", task.getId(), job.getCompactionInterval());
     try {
       taskLockbox.add(task);
@@ -266,5 +279,20 @@ public class CompactionJobQueue
     final CompactionCandidate candidatesWithStatus = job.getCandidate().withCurrentStatus(null);
     statusTracker.onCompactionStatusComputed(candidatesWithStatus, null);
     return compactionStatus;
+  }
+
+  public static CompactionConfigValidationResult validateCompactionJob(BatchIndexingJob job)
+  {
+    // For MSQ jobs, do not perform any validation
+    if (job.isMsq()) {
+      return CompactionConfigValidationResult.success();
+    }
+
+    final ClientTaskQuery task = job.getNonNullTask();
+    if (!(task instanceof ClientCompactionTaskQuery)) {
+      return CompactionConfigValidationResult.failure("Invalid task type[%s]", task.getType());
+    }
+
+    return CompactionConfigValidationResult.success();
   }
 }

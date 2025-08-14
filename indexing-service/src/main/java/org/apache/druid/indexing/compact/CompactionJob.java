@@ -19,8 +19,9 @@
 
 package org.apache.druid.indexing.compact;
 
-import org.apache.druid.indexing.common.task.Task;
-import org.apache.druid.indexing.overlord.supervisor.BatchIndexingJob;
+import org.apache.druid.client.indexing.ClientCompactionTaskQuery;
+import org.apache.druid.indexing.template.BatchIndexingJob;
+import org.apache.druid.query.http.ClientSqlQuery;
 import org.apache.druid.server.compaction.CompactionCandidate;
 import org.joda.time.Interval;
 
@@ -34,13 +35,26 @@ public class CompactionJob extends BatchIndexingJob
   private final int maxRequiredTaskSlots;
 
   public CompactionJob(
-      Task task,
+      ClientCompactionTaskQuery task,
       CompactionCandidate candidate,
       Interval compactionInterval,
       int maxRequiredTaskSlots
   )
   {
     super(task, null);
+    this.candidate = candidate;
+    this.compactionInterval = compactionInterval;
+    this.maxRequiredTaskSlots = maxRequiredTaskSlots;
+  }
+
+  public CompactionJob(
+      ClientSqlQuery msqQuery,
+      CompactionCandidate candidate,
+      Interval compactionInterval,
+      int maxRequiredTaskSlots
+  )
+  {
+    super(null, msqQuery);
     this.candidate = candidate;
     this.compactionInterval = compactionInterval;
     this.maxRequiredTaskSlots = maxRequiredTaskSlots;
@@ -64,5 +78,16 @@ public class CompactionJob extends BatchIndexingJob
   public int getMaxRequiredTaskSlots()
   {
     return maxRequiredTaskSlots;
+  }
+
+  @Override
+  public String toString()
+  {
+    return "CompactionJob{" +
+           super.toString() +
+           ", candidate=" + candidate +
+           ", compactionInterval=" + compactionInterval +
+           ", maxRequiredTaskSlots=" + maxRequiredTaskSlots +
+           '}';
   }
 }

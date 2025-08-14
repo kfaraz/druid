@@ -17,25 +17,34 @@
  * under the License.
  */
 
-package org.apache.druid.indexing.overlord.supervisor;
+package org.apache.druid.indexing.template;
 
-import org.apache.druid.indexing.template.BatchIndexingJob;
-import org.apache.druid.indexing.template.BatchIndexingJobTemplate;
-import org.apache.druid.indexing.template.JobParams;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import org.apache.druid.data.input.InputSource;
+import org.apache.druid.data.output.OutputDestination;
+
+import java.util.List;
 
 /**
- * Spec for {@link BatchIndexingSupervisor}. Provides a template to create
- * {@link BatchIndexingJob}.
+ * ETL template to create a {@link BatchIndexingJob} that indexes data from an
+ * {@link InputSource} into an {@link OutputDestination}.
  */
-public interface BatchIndexingSupervisorSpec
-    <J extends BatchIndexingJob, P extends JobParams>
-    extends SupervisorSpec
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+public interface BatchIndexingJobTemplate
 {
-  @Override
-  BatchIndexingSupervisor<J, P> createSupervisor();
+  /**
+   * Creates jobs with this template for the given input and output.
+   */
+  List<BatchIndexingJob> createJobs(
+      InputSource source,
+      OutputDestination destination,
+      JobParams jobParams
+  );
 
   /**
-   * Template used by the corresponding supervisor to create {@link BatchIndexingJob}s.
+   * Unique type name of this template used for JSON serialization.
    */
-  BatchIndexingJobTemplate getTemplate();
+  @JsonProperty
+  String getType();
 }

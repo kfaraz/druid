@@ -20,7 +20,7 @@
 package org.apache.druid.indexing.compact;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.druid.indexing.overlord.supervisor.JobParams;
+import org.apache.druid.indexing.template.JobParams;
 import org.apache.druid.timeline.SegmentTimeline;
 import org.joda.time.DateTime;
 

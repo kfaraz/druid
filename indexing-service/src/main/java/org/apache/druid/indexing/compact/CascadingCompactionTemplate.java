@@ -50,9 +50,9 @@ import java.util.stream.Collectors;
  * This template never needs to be deserialized as a {@code BatchIndexingJobTemplate},
  * only as a {@link DataSourceCompactionConfig} in {@link CompactionSupervisorSpec}.
  */
-public class CascadingCompactionTemplate implements DataSourceCompactionConfig, CompactionJobTemplate
+public class CascadingCompactionTemplate extends CompactionJobTemplate implements DataSourceCompactionConfig
 {
-  public static final String TYPE = "cascading";
+  public static final String TYPE = "compactCascade";
 
   private final String dataSource;
   private final List<CompactionRule> rules;
@@ -81,7 +81,7 @@ public class CascadingCompactionTemplate implements DataSourceCompactionConfig, 
   }
 
   @Override
-  public List<CompactionJob> createJobs(
+  public List<CompactionJob> createCompactionJobs(
       InputSource source,
       OutputDestination destination,
       CompactionJobParams jobParams
@@ -127,10 +127,16 @@ public class CascadingCompactionTemplate implements DataSourceCompactionConfig, 
     // Skip jobs if they exceed the upper bound of the search interval as the
     // corresponding candidate segments fall in the purview of a prior rule
     return template
-        .createJobs(inputSource.withInterval(searchInterval), destination, jobParams)
+        .createCompactionJobs(inputSource.withInterval(searchInterval), destination, jobParams)
         .stream()
         .filter(job -> !job.getCompactionInterval().getEnd().isAfter(searchInterval.getEnd()))
         .collect(Collectors.toList());
+  }
+
+  @Override
+  public String getType()
+  {
+    return TYPE;
   }
 
   // Legacy fields from DataSourceCompactionConfig that are not used by this template

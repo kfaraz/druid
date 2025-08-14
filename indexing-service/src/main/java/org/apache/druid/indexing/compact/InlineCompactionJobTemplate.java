@@ -30,6 +30,7 @@ import org.apache.druid.server.coordinator.UserCompactionTaskQueryTuningConfig;
 import org.joda.time.Period;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Template to create compaction jobs using inline specifications. This template
@@ -40,8 +41,10 @@ import java.util.List;
  * change the data itself (and not just its layout) and are thus not considered
  * compaction-compatible.
  */
-public class InlineCompactionJobTemplate implements CompactionJobTemplate
+public class InlineCompactionJobTemplate extends CompactionJobTemplate
 {
+  public static final String TYPE = "compactInline";
+
   private final UserCompactionTaskQueryTuningConfig tuningConfig;
   private final Granularity segmentGranularity;
 
@@ -68,7 +71,7 @@ public class InlineCompactionJobTemplate implements CompactionJobTemplate
   }
 
   @Override
-  public List<CompactionJob> createJobs(
+  public List<CompactionJob> createCompactionJobs(
       InputSource source,
       OutputDestination destination,
       CompactionJobParams jobParams
@@ -83,6 +86,32 @@ public class InlineCompactionJobTemplate implements CompactionJobTemplate
             .withTuningConfig(tuningConfig)
             .withGranularitySpec(new UserCompactionTaskGranularityConfig(segmentGranularity, null, null))
             .build()
-    ).createJobs(source, destination, jobParams);
+    ).createCompactionJobs(source, destination, jobParams);
+  }
+
+  @Override
+  public boolean equals(Object object)
+  {
+    if (this == object) {
+      return true;
+    }
+    if (object == null || getClass() != object.getClass()) {
+      return false;
+    }
+    InlineCompactionJobTemplate that = (InlineCompactionJobTemplate) object;
+    return Objects.equals(this.tuningConfig, that.tuningConfig)
+           && Objects.equals(this.segmentGranularity, that.segmentGranularity);
+  }
+
+  @Override
+  public int hashCode()
+  {
+    return Objects.hash(tuningConfig, segmentGranularity);
+  }
+
+  @Override
+  public String getType()
+  {
+    return TYPE;
   }
 }

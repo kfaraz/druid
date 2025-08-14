@@ -19,6 +19,9 @@
 
 package org.apache.druid.indexing.overlord.supervisor;
 
+import org.apache.druid.indexing.template.BatchIndexingJob;
+import org.apache.druid.indexing.template.JobParams;
+
 import java.util.List;
 
 /**

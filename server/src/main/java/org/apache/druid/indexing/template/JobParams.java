@@ -17,25 +17,14 @@
  * under the License.
  */
 
-package org.apache.druid.indexing.overlord.supervisor;
+package org.apache.druid.indexing.template;
 
-import org.apache.druid.data.input.InputSource;
-import org.apache.druid.data.output.OutputDestination;
-
-import java.util.List;
+import org.joda.time.DateTime;
 
 /**
- * ETL template to create a {@link BatchIndexingJob} that indexes data from an
- * {@link InputSource} into an {@link OutputDestination}.
+ * Provides parameters required to create a {@link BatchIndexingJob}.
  */
-public interface BatchIndexingJobTemplate<J extends BatchIndexingJob, P extends JobParams>
+public interface JobParams
 {
-  /**
-   * Creates jobs with this template for the given interval.
-   */
-  List<J> createJobs(
-      InputSource source,
-      OutputDestination destination,
-      P jobParams
-  );
+  DateTime getScheduleStartTime();
 }

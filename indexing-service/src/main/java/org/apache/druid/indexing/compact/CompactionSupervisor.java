@@ -140,7 +140,7 @@ public class CompactionSupervisor implements BatchIndexingSupervisor<CompactionJ
   public List<CompactionJob> createJobs(CompactionJobParams jobParams)
   {
     final Interval interval = Intervals.ETERNITY;
-    return supervisorSpec.getTemplate().createJobs(
+    return supervisorSpec.getTemplate().createCompactionJobs(
         // Create a DruidInputSource for this datasource
         jobParams.getMapper().convertValue(
             Map.of("type", "druid", "dataSource", dataSource, "interval", interval),

@@ -17,28 +17,28 @@
  * under the License.
  */
 
-package org.apache.druid.indexing.overlord.supervisor;
+package org.apache.druid.indexing.template;
 
+import org.apache.druid.client.indexing.ClientTaskQuery;
 import org.apache.druid.error.InvalidInput;
-import org.apache.druid.indexing.common.task.Task;
 import org.apache.druid.query.http.ClientSqlQuery;
 
 import javax.annotation.Nullable;
 import java.util.Objects;
 
 /**
- * A batch indexing job that can be launched by the Overlord as a {@link Task}.
- * A job may contain the {@link Task} itself or an MSQ query that gets converted
+ * A batch indexing job that can be launched by the Overlord as a task.
+ * A job may contain the {@link ClientTaskQuery} itself or an MSQ query that gets converted
  * by the Broker to a {@code ControllerTask} and is then submitted to the Overlord.
  */
 public class BatchIndexingJob
 {
   private final boolean isMsq;
   private final ClientSqlQuery msqQuery;
-  private final Task task;
+  private final ClientTaskQuery task;
 
   protected BatchIndexingJob(
-      @Nullable Task task,
+      @Nullable ClientTaskQuery task,
       @Nullable ClientSqlQuery msqQuery
   )
   {
@@ -65,7 +65,7 @@ public class BatchIndexingJob
    * @return Task to be run in this job, if any.
    * @throws NullPointerException if this is an MSQ job.
    */
-  public Task getNonNullTask()
+  public ClientTaskQuery getNonNullTask()
   {
     return Objects.requireNonNull(task);
   }
@@ -76,5 +76,15 @@ public class BatchIndexingJob
   public boolean isMsq()
   {
     return isMsq;
+  }
+
+  @Override
+  public String toString()
+  {
+    return "BatchIndexingJob{" +
+           "isMsq=" + isMsq +
+           ", msqQuery=" + msqQuery +
+           ", task=" + task +
+           '}';
   }
 }

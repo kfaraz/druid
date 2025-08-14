@@ -19,6 +19,11 @@
 
 package org.apache.druid.testing.embedded.compact;
 
+import org.apache.druid.catalog.model.ResolvedTable;
+import org.apache.druid.catalog.model.TableId;
+import org.apache.druid.catalog.model.TableMetadata;
+import org.apache.druid.catalog.model.TableSpec;
+import org.apache.druid.catalog.model.table.IndexingTemplateDefn;
 import org.apache.druid.common.utils.IdUtils;
 import org.apache.druid.indexing.common.task.IndexTask;
 import org.apache.druid.indexing.compact.CascadingCompactionTemplate;
@@ -27,6 +32,7 @@ import org.apache.druid.indexing.compact.CompactionSupervisorSpec;
 import org.apache.druid.indexing.compact.InlineCompactionJobTemplate;
 import org.apache.druid.indexing.overlord.Segments;
 import org.apache.druid.java.util.common.DateTimes;
+import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.granularity.Granularities;
 import org.apache.druid.query.DruidMetrics;
 import org.apache.druid.rpc.UpdateResponse;
@@ -50,12 +56,13 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 public class CompactionSupervisorTest extends EmbeddedClusterTestBase
 {
   protected final EmbeddedBroker broker = new EmbeddedBroker();
   protected final EmbeddedIndexer indexer = new EmbeddedIndexer()
-      .addProperty("druid.worker.capacity", "4");
+      .addProperty("druid.worker.capacity", "8");
   protected final EmbeddedOverlord overlord = new EmbeddedOverlord()
       .addProperty("druid.manager.segments.pollDuration", "PT1s")
       .addProperty("druid.manager.segments.useIncrementalCache", "always");
@@ -140,7 +147,7 @@ public class CompactionSupervisorTest extends EmbeddedClusterTestBase
   }
 
   @Test
-  public void test_ingestHourGranularity_andCompactToDayAndMonth()
+  public void test_ingestHourGranularity_andCompactToDayAndMonth_withInlineTemplates()
   {
     // Ingest data at HOUR granularity and verify
     runIngestionAtGranularity(
