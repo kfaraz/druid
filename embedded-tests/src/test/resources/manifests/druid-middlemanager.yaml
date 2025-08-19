@@ -1,27 +1,27 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: druid-broker
+  name: druid-middlemanager
   namespace: druid
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: druid-broker
+      app: druid-middlemanager
   template:
     metadata:
       labels:
-        app: druid-broker
+        app: druid-middlemanager
     spec:
       containers:
-        - name: druid-broker
+        - name: druid-middlemanager
           image: apache/druid:33.0.0
-          args: ["broker"]
+          args: ["middleManager"]
           ports:
-            - containerPort: 8082
+            - containerPort: 8091
           env:
             - name: DRUID_HOST_NAME
-              value: druid-broker
+              value: druid-middlemanager
             - name: DRUID_SET_HOST_IP
               value: "0"
             - name: DRUID_SET_HOST
@@ -33,10 +33,10 @@ spec:
           volumeMounts:
             - name: druid-common
               mountPath: /opt/druid/conf/druid/cluster/_common/common.runtime.properties
-              subPath: commmon.runtime.properties
+              subPath: common.runtime.properties
             - name: druid-common
-              mountPath: /opt/druid/conf/druid/cluster/query/broker/runtime.properties
-              subPath: broker.runtime.properties
+              mountPath: /opt/druid/conf/druid/cluster/data/middleManager/runtime.properties
+              subPath: middlemanager.runtime.properties
       volumes:
         - name: druid-common
           configMap:
@@ -45,10 +45,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: druid-broker
+  name: druid-middlemanager
   namespace: druid
 spec:
   selector:
-    app: druid-broker
+    app: druid-middlemanager
   ports:
-    - port: 8082
+    - port: 8091

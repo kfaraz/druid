@@ -19,15 +19,20 @@
 
 package org.apache.druid.testing.embedded.k8s;
 
+import org.apache.druid.java.util.common.FileUtils;
 import org.apache.druid.testing.embedded.indexing.Resources;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.k3s.K3sContainer;
 import org.testcontainers.utility.DockerImageName;
 
+import java.io.File;
+import java.io.IOException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -36,6 +41,7 @@ public class DruidOnK3sIT
   @Test
   void runDruidOnK3s() throws Exception
   {
+    final List<Process> portForwards = new ArrayList<>();
     try (K3sContainer k3s = new K3sContainer(DockerImageName.parse("rancher/k3s:v1.30.4-k3s1"))) {
       k3s.start();
 
@@ -52,28 +58,33 @@ public class DruidOnK3sIT
       applyManifest(kubeConfigFile, "manifests/druid-coordinator-overlord.yaml");
       applyManifest(kubeConfigFile, "manifests/druid-broker.yaml");
       applyManifest(kubeConfigFile, "manifests/druid-historical.yaml");
+      applyManifest(kubeConfigFile, "manifests/druid-middlemanager.yaml");
       applyManifest(kubeConfigFile, "manifests/druid-router.yaml");
 
       // Wait for Router pod to be ready
       waitForPod(kubeConfigFile, "druid", "druid-router");
 
-      // Port forward router to localhost:8888
-      Process portForward = new ProcessBuilder(
-          "kubectl", "--kubeconfig", kubeConfigFile.toString(),
-          "-n", "druid", "port-forward", "svc/druid-router", "8888:8888"
-      ).inheritIO().start();
+      loadDruidImageToContainer();
+
+      // Forward all the required ports
+      portForwards.add(startPortForwarding(kubeConfigFile, "svc/druid-router", "8888:8888"));
+      // portForwards.add(startPortForwarding(kubeConfigFile, "svc/druid-coordinator-overlord", "8081:8081"));
+//      portForwards.add(startPortForwarding(kubeConfigFile, "svc/druid-middlemanager", "8091:8091"));
+//      portForwards.add(startPortForwarding(kubeConfigFile, "svc/druid-broker", "8082:8082"));
+//      portForwards.add(startPortForwarding(kubeConfigFile, "svc/druid-historical", "8083:8083"));
 
       Thread.sleep(15_000); // wait for port forward
 
       // Test: router should be reachable
-      var resp = new URL("http://localhost:8888/status/health")
+      byte[] resp = new URL("http://localhost:8888/status/health")
           .openConnection()
           .getInputStream()
           .readAllBytes();
       String body = new String(resp, StandardCharsets.UTF_8);
       assertTrue(body.contains("true"));
-
-      portForward.destroy();
+    }
+    finally {
+      portForwards.forEach(Process::destroy);
     }
   }
 
@@ -106,5 +117,30 @@ public class DruidOnK3sIT
       Thread.sleep(5000);
     }
     throw new RuntimeException("Pod " + appLabel + " not ready in time");
+  }
+
+  private Process startPortForwarding(Path kubeConfigFile, String service, String portMapping) throws IOException
+  {
+    return new ProcessBuilder(
+        "kubectl", "--kubeconfig", kubeConfigFile.toString(),
+        "-n", "druid", "port-forward", service, portMapping
+    ).inheritIO().start();
+  }
+
+  private void loadDruidImageToContainer() throws IOException, InterruptedException
+  {
+//    final String imageName = "apache/druid:33.0.0";
+//    final String tarPath = new File(FileUtils.createTempDir(), "tar").getAbsolutePath();
+//    ProcessBuilder listLocalProcess = new ProcessBuilder("docker", "images", "--format", "table {{.Repository}}:{{.Tag}}");
+//    listLocalProcess.start().waitFor();
+//
+//    ProcessBuilder saveProcess = new ProcessBuilder("docker", "save", "-o", tarPath, imageName);
+//    saveProcess.start().waitFor();
+//
+//    ProcessBuilder loadProcess = new ProcessBuilder("docker", "exec", containerId, "ctr", "-n", "k8s.io", "images", "import", "/tmp/druid-image.tar");
+//    loadProcess.start().waitFor();
+//
+//    ProcessBuilder listProcess = new ProcessBuilder("docker", "exec", containerId, "ctr", "-n", "k8s.io", "images", "list");
+//    listProcess.start().waitFor();
   }
 }

@@ -16,22 +16,29 @@ spec:
       containers:
         - name: druid-coordinator-overlord
           image: apache/druid:33.0.0
-          args: ["coordinator-overlord"]
+          args: ["coordinator"]
           ports:
             - containerPort: 8081
           volumeMounts:
             - name: druid-common
-              mountPath: /opt/druid/conf/druid/cluster/_common
+              mountPath: /opt/druid/conf/druid/cluster/_common/common.runtime.properties
+              subPath: common.runtime.properties
+            - name: druid-common
+              mountPath: /opt/druid/conf/druid/cluster/master/coordinator-overlord/runtime.properties
+              subPath: coordinator.runtime.properties
           env:
-            - name: DRUID_NODE_TYPE
-              value: coordinator-overlord
+            - name: DRUID_SET_HOST_IP
+              value: "0"
+            - name: DRUID_SET_HOST
+              value: "0"
+            - name: DRUID_XMS
+              value: "128m"
+            - name: DRUID_XMX
+              value: "128m"
       volumes:
         - name: druid-common
           configMap:
             name: druid-common
-            items:
-              - key: common.runtime.properties
-                path: common.runtime.properties
 ---
 apiVersion: v1
 kind: Service

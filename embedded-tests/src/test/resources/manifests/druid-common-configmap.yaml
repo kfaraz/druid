@@ -14,4 +14,33 @@ data:
     druid.storage.storageDirectory=/opt/druid/var/druid/segments
     druid.indexer.logs.type=file
     druid.indexer.logs.directory=/opt/druid/var/druid/indexing-logs
-    druid.extensions.loadList=["druid-kafka-indexing-service"]
+    druid.extensions.loadList=["postgresql-metadata-storage"]
+
+  coordinator.runtime.properties: |
+    druid.host=druid-coordinator-overlord
+    druid.coordinator.asOverlord.enabled=true
+    druid.coordinator.asOverlord.overlordService=druid/overlord
+
+  broker.runtime.properties: |
+    druid.host=druid-broker
+    druid.lookup.enableLookupSyncOnStartup=false
+    druid.processing.buffer.sizeBytes=10MiB
+    druid.processing.numMergeBuffers=2
+    druid.processing.numThreads=5
+
+  historical.runtime.properties: |
+    druid.host=druid-historical
+    druid.segmentCache.locations=[{"path":"/opt/druid/var/segment-cache","maxSize":"50M"}]
+    druid.processing.buffer.sizeBytes=10MiB
+    druid.processing.numMergeBuffers=2
+    druid.processing.numThreads=5
+
+  middlemanager.runtime.properties: |
+    druid.host=druid-middlemanager
+    druid.processing.buffer.sizeBytes=10MiB
+    druid.processing.numMergeBuffers=2
+    druid.processing.numThreads=5
+
+  router.runtime.properties: |
+    druid.random=ignore
+    druid.router.managementProxy.enabled=true

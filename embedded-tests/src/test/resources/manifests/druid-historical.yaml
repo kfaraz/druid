@@ -19,16 +19,26 @@ spec:
           args: ["historical"]
           ports:
             - containerPort: 8083
+          env:
+            - name: DRUID_SET_HOST_IP
+              value: "0"
+            - name: DRUID_SET_HOST
+              value: "0"
+            - name: DRUID_XMS
+              value: "128m"
+            - name: DRUID_XMX
+              value: "128m"
           volumeMounts:
             - name: druid-common
-              mountPath: /opt/druid/conf/druid/cluster/_common
+              mountPath: /opt/druid/conf/druid/cluster/_common/common.runtime.properties
+              subPath: common.runtime.properties
+            - name: druid-common
+              mountPath: /opt/druid/conf/druid/cluster/data/historical/runtime.properties
+              subPath: historical.runtime.properties
       volumes:
         - name: druid-common
           configMap:
             name: druid-common
-            items:
-              - key: common.runtime.properties
-                path: common.runtime.properties
 ---
 apiVersion: v1
 kind: Service
