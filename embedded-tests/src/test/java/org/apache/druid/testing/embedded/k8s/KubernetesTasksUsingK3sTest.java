@@ -19,13 +19,14 @@
 
 package org.apache.druid.testing.embedded.k8s;
 
-import org.apache.druid.java.util.common.FileUtils;
+import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
+import org.apache.druid.testing.embedded.docker.LatestImageDockerTest;
+import org.apache.druid.testing.embedded.indexing.IngestionSmokeTest;
 import org.apache.druid.testing.embedded.indexing.Resources;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.k3s.K3sContainer;
 import org.testcontainers.utility.DockerImageName;
 
-import java.io.File;
 import java.io.IOException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -36,8 +37,25 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-public class DruidOnK3sIT
+/**
+ * TODO:
+ *  - Bring everything to an embedded test cluster shape
+ *  - Use proper storage like min IO or possibly a mounted location
+ *  - reduce the yamls
+ *  - plug in to the embedded test model
+ *  - use fabric8 client
+ *  - use pre-built image
+ *  - use smoke test
+ *  - add new test for task logs etc.
+ */
+public class KubernetesTasksUsingK3sTest extends IngestionSmokeTest implements LatestImageDockerTest
 {
+  @Override
+  protected EmbeddedDruidCluster addServers(EmbeddedDruidCluster cluster)
+  {
+    return super.addServers(cluster);
+  }
+
   @Test
   void runDruidOnK3s() throws Exception
   {
@@ -68,10 +86,6 @@ public class DruidOnK3sIT
 
       // Forward all the required ports
       portForwards.add(startPortForwarding(kubeConfigFile, "svc/druid-router", "8888:8888"));
-      // portForwards.add(startPortForwarding(kubeConfigFile, "svc/druid-coordinator-overlord", "8081:8081"));
-//      portForwards.add(startPortForwarding(kubeConfigFile, "svc/druid-middlemanager", "8091:8091"));
-//      portForwards.add(startPortForwarding(kubeConfigFile, "svc/druid-broker", "8082:8082"));
-//      portForwards.add(startPortForwarding(kubeConfigFile, "svc/druid-historical", "8083:8083"));
 
       Thread.sleep(15_000); // wait for port forward
 
