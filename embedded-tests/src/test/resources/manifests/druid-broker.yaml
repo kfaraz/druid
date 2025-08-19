@@ -20,8 +20,6 @@ spec:
           ports:
             - containerPort: 8082
           env:
-            - name: DRUID_HOST_NAME
-              value: druid-broker
             - name: DRUID_SET_HOST_IP
               value: "0"
             - name: DRUID_SET_HOST
@@ -33,7 +31,7 @@ spec:
           volumeMounts:
             - name: druid-common
               mountPath: /opt/druid/conf/druid/cluster/_common/common.runtime.properties
-              subPath: commmon.runtime.properties
+              subPath: common.runtime.properties
             - name: druid-common
               mountPath: /opt/druid/conf/druid/cluster/query/broker/runtime.properties
               subPath: broker.runtime.properties
