@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: druid-coordinator-overlord
+  namespace: druid
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: druid-coordinator-overlord
+  template:
+    metadata:
+      labels:
+        app: druid-coordinator-overlord
+    spec:
+      containers:
+        - name: druid-coordinator-overlord
+          image: apache/druid:33.0.0
+          args: ["coordinator-overlord"]
+          ports:
+            - containerPort: 8081
+          volumeMounts:
+            - name: druid-common
+              mountPath: /opt/druid/conf/druid/cluster/_common
+          env:
+            - name: DRUID_NODE_TYPE
+              value: coordinator-overlord
+      volumes:
+        - name: druid-common
+          configMap:
+            name: druid-common
+            items:
+              - key: common.runtime.properties
+                path: common.runtime.properties
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: druid-coordinator-overlord
+  namespace: druid
+spec:
+  selector:
+    app: druid-coordinator-overlord
+  ports:
+    - port: 8081

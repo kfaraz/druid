@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: druid-indexer
+  namespace: druid
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: druid-indexer
+  template:
+    metadata:
+      labels:
+        app: druid-indexer
+    spec:
+      containers:
+        - name: druid-broker
+          image: apache/druid:33.0.0
+          args: ["indexer"]
+          ports:
+            - containerPort: 8091
+          volumeMounts:
+            - name: druid-common
+              mountPath: /opt/druid/conf/druid/cluster/_common
+      volumes:
+        - name: druid-common
+          configMap:
+            name: druid-common
+            items:
+              - key: common.runtime.properties
+                path: common.runtime.properties
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: druid-indexer
+  namespace: druid
+spec:
+  selector:
+    app: druid-indexer
+  ports:
+    - port: 8091

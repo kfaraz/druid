@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: druid-router
+  namespace: druid
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: druid-router
+  template:
+    metadata:
+      labels:
+        app: druid-router
+    spec:
+      containers:
+        - name: druid-router
+          image: apache/druid:33.0.0
+          args: ["router"]
+          ports:
+            - containerPort: 8888
+          volumeMounts:
+            - name: druid-common
+              mountPath: /opt/druid/conf/druid/cluster/_common
+      volumes:
+        - name: druid-common
+          configMap:
+            name: druid-common
+            items:
+              - key: common.runtime.properties
+                path: common.runtime.properties
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: druid-router
+  namespace: druid
+spec:
+  selector:
+    app: druid-router
+  ports:
+    - port: 8888

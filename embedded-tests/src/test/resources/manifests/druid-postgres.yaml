@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: druid-postgres
+  namespace: druid
+spec:
+  ports:
+    - port: 5432
+  selector:
+    app: druid-postgres
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: druid-postgres
+  namespace: druid
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: druid-postgres
+  template:
+    metadata:
+      labels:
+        app: druid-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15
+          env:
+            - name: POSTGRES_DB
+              value: druid
+            - name: POSTGRES_USER
+              value: druid
+            - name: POSTGRES_PASSWORD
+              value: druid
+          ports:
+            - containerPort: 5432

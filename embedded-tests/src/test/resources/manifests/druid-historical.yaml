@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: druid-historical
+  namespace: druid
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: druid-historical
+  template:
+    metadata:
+      labels:
+        app: druid-historical
+    spec:
+      containers:
+        - name: druid-historical
+          image: apache/druid:33.0.0
+          args: ["historical"]
+          ports:
+            - containerPort: 8083
+          volumeMounts:
+            - name: druid-common
+              mountPath: /opt/druid/conf/druid/cluster/_common
+      volumes:
+        - name: druid-common
+          configMap:
+            name: druid-common
+            items:
+              - key: common.runtime.properties
+                path: common.runtime.properties
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: druid-historical
+  namespace: druid
+spec:
+  selector:
+    app: druid-historical
+  ports:
+    - port: 8083

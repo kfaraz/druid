@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: druid-broker
+  namespace: druid
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: druid-broker
+  template:
+    metadata:
+      labels:
+        app: druid-broker
+    spec:
+      containers:
+        - name: druid-broker
+          image: apache/druid:33.0.0
+          args: ["broker"]
+          ports:
+            - containerPort: 8082
+          env:
+            - name: DRUID_XMS
+              value: "256m"
+            - name: DRUID_XMX
+              value: "512m"
+          volumeMounts:
+            - name: druid-common
+              mountPath: /opt/druid/conf/druid/cluster/_common
+      volumes:
+        - name: druid-common
+          configMap:
+            name: druid-common
+            items:
+              - key: common.runtime.properties
+                path: common.runtime.properties
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: druid-broker
+  namespace: druid
+spec:
+  selector:
+    app: druid-broker
+  ports:
+    - port: 8082
