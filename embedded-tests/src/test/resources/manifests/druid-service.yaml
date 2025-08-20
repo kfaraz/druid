@@ -1,24 +1,25 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: druid-historical
+  name: druid-${service}
   namespace: druid
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: druid-historical
+      app: druid-${service}
   template:
     metadata:
       labels:
-        app: druid-historical
+        app: druid-${service}
     spec:
+      hostNetwork: true
       containers:
-        - name: druid-historical
-          image: apache/druid:33.0.0
-          args: ["historical"]
+        - name: druid-${service}
+          image: ${image}
+          args: ["${command}"]
           ports:
-            - containerPort: 8083
+            - containerPort: ${port}
           env:
             - name: DRUID_SET_HOST_IP
               value: "0"
@@ -29,24 +30,27 @@ spec:
             - name: DRUID_XMX
               value: "128m"
           volumeMounts:
-            - name: druid-common
+            - name: druid-common-props
               mountPath: /opt/druid/conf/druid/cluster/_common/common.runtime.properties
               subPath: common.runtime.properties
-            - name: druid-common
-              mountPath: /opt/druid/conf/druid/cluster/data/historical/runtime.properties
-              subPath: historical.runtime.properties
+            - name: druid-${service}-props
+              mountPath: /opt/druid/conf/druid/cluster/${serviceFolder}/runtime.properties
+              subPath: runtime.properties
       volumes:
-        - name: druid-common
+        - name: druid-common-props
           configMap:
-            name: druid-common
+            name: druid-common-props
+        - name: druid-${service}-props
+          configMap:
+            name: druid-${service}-props
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: druid-historical
+  name: druid-${service}
   namespace: druid
 spec:
   selector:
-    app: druid-historical
+    app: druid-${service}
   ports:
-    - port: 8083
+    - port: ${port}
