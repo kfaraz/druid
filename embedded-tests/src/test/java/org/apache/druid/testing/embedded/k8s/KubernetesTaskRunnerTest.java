@@ -29,6 +29,7 @@ import org.apache.druid.rpc.ServiceClient;
 import org.apache.druid.rpc.indexing.SegmentUpdateResponse;
 import org.apache.druid.testing.DruidCommand;
 import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
+import org.apache.druid.testing.embedded.EmbeddedHistorical;
 import org.apache.druid.testing.embedded.indexing.IngestionSmokeTest;
 import org.jboss.netty.handler.codec.http.HttpMethod;
 import org.junit.jupiter.api.Assertions;
@@ -43,8 +44,8 @@ public class KubernetesTaskRunnerTest extends IngestionSmokeTest
     final K3sClusterResource k3sCluster = new K3sClusterResource()
         .addService(new K3sDruidService(DruidCommand.Server.COORDINATOR))
         .addService(new K3sDruidService(DruidCommand.Server.OVERLORD))
-        .addService(new K3sDruidService(DruidCommand.Server.HISTORICAL))
-        .addService(new K3sDruidService(DruidCommand.Server.MIDDLE_MANAGER))
+        //.addService(new K3sDruidService(DruidCommand.Server.HISTORICAL))
+        //.addService(new K3sDruidService(DruidCommand.Server.MIDDLE_MANAGER))
         .addService(new K3sDruidService(DruidCommand.Server.ROUTER))
         .addService(
             new K3sDruidService(DruidCommand.Server.BROKER)
@@ -59,7 +60,9 @@ public class KubernetesTaskRunnerTest extends IngestionSmokeTest
         .useContainerFriendlyHostname()
         .addResource(k3sCluster)
         .addServer(overlord)
+        .addServer(indexer)
         .addServer(broker)
+        .addServer(new EmbeddedHistorical())
         .addServer(eventCollector)
         .addCommonProperty(
             "druid.extensions.loadList",
