@@ -19,22 +19,16 @@
 
 package org.apache.druid.testing.embedded.k8s;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.druid.client.coordinator.Coordinator;
-import org.apache.druid.java.util.common.StringUtils;
-import org.apache.druid.java.util.http.client.response.BytesFullResponseHandler;
-import org.apache.druid.java.util.http.client.response.BytesFullResponseHolder;
-import org.apache.druid.rpc.RequestBuilder;
-import org.apache.druid.rpc.ServiceClient;
-import org.apache.druid.rpc.indexing.SegmentUpdateResponse;
 import org.apache.druid.testing.DruidCommand;
 import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
-import org.apache.druid.testing.embedded.EmbeddedHistorical;
 import org.apache.druid.testing.embedded.indexing.IngestionSmokeTest;
-import org.jboss.netty.handler.codec.http.HttpMethod;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 
+/**
+ * TODO:
+ *  - get K8s tasks running
+ */
 public class KubernetesTaskRunnerTest extends IngestionSmokeTest
 {
   @Override
@@ -44,8 +38,8 @@ public class KubernetesTaskRunnerTest extends IngestionSmokeTest
     final K3sClusterResource k3sCluster = new K3sClusterResource()
         .addService(new K3sDruidService(DruidCommand.Server.COORDINATOR))
         .addService(new K3sDruidService(DruidCommand.Server.OVERLORD))
-        //.addService(new K3sDruidService(DruidCommand.Server.HISTORICAL))
-        //.addService(new K3sDruidService(DruidCommand.Server.MIDDLE_MANAGER))
+        .addService(new K3sDruidService(DruidCommand.Server.HISTORICAL))
+        .addService(new K3sDruidService(DruidCommand.Server.MIDDLE_MANAGER))
         .addService(new K3sDruidService(DruidCommand.Server.ROUTER))
         .addService(
             new K3sDruidService(DruidCommand.Server.BROKER)
@@ -60,9 +54,7 @@ public class KubernetesTaskRunnerTest extends IngestionSmokeTest
         .useContainerFriendlyHostname()
         .addResource(k3sCluster)
         .addServer(overlord)
-        .addServer(indexer)
         .addServer(broker)
-        .addServer(new EmbeddedHistorical())
         .addServer(eventCollector)
         .addCommonProperty(
             "druid.extensions.loadList",
@@ -78,30 +70,5 @@ public class KubernetesTaskRunnerTest extends IngestionSmokeTest
     Assertions.assertFalse(
         overlord.bindings().overlordLeaderSelector().isLeader()
     );
-  }
-
-  @Override
-  protected int markSegmentsAsUnused(String dataSource)
-  {
-    // For old Druid versions, use Coordinator to mark segments as unused
-    final ServiceClient coordinatorClient =
-        overlord.bindings().getInstance(ServiceClient.class, Coordinator.class);
-
-    try {
-      RequestBuilder req = new RequestBuilder(
-          HttpMethod.DELETE,
-          StringUtils.format("/druid/coordinator/v1/datasources/%s", dataSource)
-      );
-      BytesFullResponseHolder responseHolder = coordinatorClient.request(
-          req,
-          new BytesFullResponseHandler()
-      );
-
-      final ObjectMapper mapper = overlord.bindings().jsonMapper();
-      return mapper.readValue(responseHolder.getContent(), SegmentUpdateResponse.class).getNumChangedSegments();
-    }
-    catch (Exception e) {
-      throw new RuntimeException(e);
-    }
   }
 }

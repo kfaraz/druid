@@ -39,10 +39,10 @@ public class K3sDruidService
   private static final String MANIFEST_TEMPLATE = "manifests/druid-service.yaml";
 
   /**
-   * Use the Druid 33 image until the K3s tests are modified to load the latest
+   * Use the Druid 34 image until the K3s tests are modified to load the latest
    * image built by CI into the K3s container.
    */
-  private static final String DRUID_IMAGE = "apache/druid:33.0.0";
+  private static final String DRUID_IMAGE = "apache/druid:34.0.0";
 
   private final DruidCommand command;
   private final Properties properties;
