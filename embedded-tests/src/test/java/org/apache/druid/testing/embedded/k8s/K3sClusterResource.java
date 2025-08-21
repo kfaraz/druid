@@ -19,6 +19,11 @@
 
 package org.apache.druid.testing.embedded.k8s;
 
+import com.github.dockerjava.api.DockerClient;
+import com.github.dockerjava.api.exception.NotFoundException;
+import com.github.dockerjava.core.DefaultDockerClientConfig;
+import com.github.dockerjava.core.DockerClientImpl;
+import com.github.dockerjava.httpclient5.ApacheDockerHttpClient;
 import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.client.Config;
@@ -27,26 +32,34 @@ import io.fabric8.kubernetes.client.KubernetesClientBuilder;
 import io.fabric8.kubernetes.client.KubernetesClientTimeoutException;
 import io.fabric8.kubernetes.client.dsl.PodResource;
 import io.fabric8.kubernetes.client.utils.Serialization;
+import org.apache.druid.error.InvalidInput;
+import org.apache.druid.java.util.common.FileUtils;
 import org.apache.druid.java.util.common.ISE;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.io.Closer;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
+import org.apache.druid.testing.embedded.TestFolder;
 import org.apache.druid.testing.embedded.TestcontainerResource;
+import org.apache.druid.testing.embedded.docker.DruidContainerResource;
 import org.apache.druid.testing.embedded.indexing.Resources;
 import org.apache.druid.testing.tools.ITRetryUtil;
 import org.testcontainers.k3s.K3sContainer;
 import org.testcontainers.utility.DockerImageName;
+import org.testcontainers.utility.MountableFile;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.io.StringWriter;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
@@ -56,7 +69,7 @@ public class K3sClusterResource extends TestcontainerResource<K3sContainer>
 
   private static final String K3S_IMAGE_NAME = "rancher/k3s:v1.28.8-k3s1";
 
-  private static final String DRUID_NAMESPACE = "druid";
+  public static final String DRUID_NAMESPACE = "druid";
   private static final String NAMESPACE_MANIFEST = "manifests/druid-namespace.yaml";
 
   private static final String COMMON_CONFIG_MAP = "druid-common-props";
@@ -68,6 +81,7 @@ public class K3sClusterResource extends TestcontainerResource<K3sContainer>
   private final List<K3sDruidService> services = new ArrayList<>();
 
   private KubernetesClient client;
+  private String druidImageName;
 
   private final Closer closer = Closer.create();
 
@@ -83,9 +97,36 @@ public class K3sClusterResource extends TestcontainerResource<K3sContainer>
     return this;
   }
 
+  public K3sClusterResource usingDruidImage(String druidImageName)
+  {
+    this.druidImageName = druidImageName;
+    return this;
+  }
+
+  /**
+   * Uses the Docker test image specified by the system property
+   * {@link DruidContainerResource#PROPERTY_TEST_IMAGE} for this container.
+   */
+  public K3sClusterResource usingTestImage()
+  {
+    final String imageName = System.getProperty(DruidContainerResource.PROPERTY_TEST_IMAGE);
+    InvalidInput.conditionalException(
+        imageName != null,
+        StringUtils.format(
+            "System property[%s] must be set while running Docker tests locally"
+            + " to specify which Druid image to use. Update your run configuration"
+            + " to include '-D%s=<your-test-image>'.",
+            DruidContainerResource.PROPERTY_TEST_IMAGE,
+            DruidContainerResource.PROPERTY_TEST_IMAGE
+        )
+    );
+    return usingDruidImage(imageName);
+  }
+
   @Override
   protected K3sContainer createContainer()
   {
+    Objects.requireNonNull(druidImageName, "No Druid image specified");
     final K3sContainer container = new K3sContainer(DockerImageName.parse(K3S_IMAGE_NAME));
 
     final List<String> portBindings = new ArrayList<>();
@@ -110,6 +151,8 @@ public class K3sClusterResource extends TestcontainerResource<K3sContainer>
         .withConfig(Config.fromKubeconfig(getContainer().getKubeConfigYaml()))
         .build();
     closer.register(client);
+
+    loadLocalDockerImageIntoContainer(druidImageName, cluster.getTestFolder());
 
     manifestFiles.forEach(this::applyManifest);
 
@@ -145,6 +188,67 @@ public class K3sClusterResource extends TestcontainerResource<K3sContainer>
       log.error(e, "Could not close resources");
     }
     super.stop();
+  }
+
+  /**
+   * Loads the given Docker image from the host Docker to the container. If the
+   * image does not exist in the host Docker, the image will be pulled by the
+   * K3s container itself.
+   */
+  private void loadLocalDockerImageIntoContainer(String localImageName, TestFolder testFolder)
+  {
+    ensureRunning();
+
+    final File tempDir = testFolder.getOrCreateFolder("druid-k3s-image");
+    final File tarFile = new File(tempDir, "druid-image.tar");
+
+    final DefaultDockerClientConfig config = DefaultDockerClientConfig.createDefaultConfigBuilder().build();
+
+    try (
+        final ApacheDockerHttpClient httpClient = new ApacheDockerHttpClient
+            .Builder()
+            .dockerHost(config.getDockerHost())
+            .build();
+        final DockerClient dockerClient = DockerClientImpl.getInstance(config, httpClient);
+        final FileOutputStream tarOutputStream = new FileOutputStream(tarFile);
+        final InputStream imageInputStream = dockerClient.saveImageCmd(localImageName).exec();
+    ) {
+      if (doesImageExistInHostDocker(localImageName, dockerClient)) {
+        log.info("Transfering image[%s] from host Docker to K3s container.", localImageName);
+      } else {
+        log.info("Image[%s] will be pulled by K3s container as it does not exist host Docker.", localImageName);
+        return;
+      }
+
+      imageInputStream.transferTo(tarOutputStream);
+      log.info("Docker image[%s] saved to tar[%s].", localImageName, tarFile);
+
+      getContainer().copyFileToContainer(
+          MountableFile.forHostPath(tarFile.getAbsolutePath()),
+          "/tmp/druid-image.tar"
+      );
+
+      getContainer().execInContainer("ctr", "-n", "k8s.io", "images", "import", "/tmp/druid-image.tar");
+      log.info("Image[%s] loaded into K3s containerd", localImageName);
+
+      getContainer().execInContainer("rm", "/tmp/druid-image.tar");
+
+      FileUtils.deleteDirectory(tempDir);
+    }
+    catch (Exception e) {
+      throw new ISE("Failed to load local Docker image[%s]" + localImageName, e);
+    }
+  }
+
+  private boolean doesImageExistInHostDocker(String localImageName, DockerClient dockerClient)
+  {
+    try {
+      dockerClient.inspectImageCmd(localImageName).exec();
+      return true;
+    }
+    catch (NotFoundException e) {
+      return false;
+    }
   }
 
   private void applyConfigMap(ConfigMap configMap)

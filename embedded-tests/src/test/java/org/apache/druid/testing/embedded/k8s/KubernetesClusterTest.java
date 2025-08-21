@@ -21,30 +21,28 @@ package org.apache.druid.testing.embedded.k8s;
 
 import org.apache.druid.testing.DruidCommand;
 import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
+import org.apache.druid.testing.embedded.docker.LatestImageDockerTest;
 import org.apache.druid.testing.embedded.indexing.IngestionSmokeTest;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 
-/**
- * TODO:
- *  - get K8s tasks running
- */
-public class KubernetesTaskRunnerTest extends IngestionSmokeTest
+public class KubernetesClusterTest extends IngestionSmokeTest implements LatestImageDockerTest
 {
   @Override
   protected EmbeddedDruidCluster addServers(EmbeddedDruidCluster cluster)
   {
+    final K3sDruidService brokerService = new K3sDruidService(DruidCommand.Server.BROKER)
+        .addProperty("druid.sql.planner.metadataRefreshPeriod", "PT1s");
+
     // Create a K3s cluster with all the required services
     final K3sClusterResource k3sCluster = new K3sClusterResource()
+        .usingTestImage()
         .addService(new K3sDruidService(DruidCommand.Server.COORDINATOR))
         .addService(new K3sDruidService(DruidCommand.Server.OVERLORD))
         .addService(new K3sDruidService(DruidCommand.Server.HISTORICAL))
         .addService(new K3sDruidService(DruidCommand.Server.MIDDLE_MANAGER))
         .addService(new K3sDruidService(DruidCommand.Server.ROUTER))
-        .addService(
-            new K3sDruidService(DruidCommand.Server.BROKER)
-                .addProperty("druid.sql.planner.metadataRefreshPeriod", "PT1s")
-        );
+        .addService(brokerService);
 
     // Add an EmbeddedOverlord and EmbeddedBroker to use their client and mapper bindings.
     overlord.addProperty("druid.plaintextPort", "7090");
