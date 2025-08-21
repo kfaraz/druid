@@ -1624,7 +1624,7 @@
             <plugin>
                 <groupId>de.thetaphi</groupId>
                 <artifactId>forbiddenapis</artifactId>
-                <version>3.2</version>
+                <version>3.9</version>
                 <configuration>
                     <ignoreSignaturesOfMissingClasses>true</ignoreSignaturesOfMissingClasses>
                     <bundledSignatures>
