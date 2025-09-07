@@ -28,9 +28,14 @@ import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.java.util.common.parsers.CloseableIterator;
 import org.apache.druid.segment.TestHelper;
+import org.apache.druid.testing.embedded.EmbeddedBroker;
 import org.apache.druid.testing.embedded.EmbeddedClusterApis;
 import org.apache.druid.testing.embedded.EmbeddedCoordinator;
+import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
+import org.apache.druid.testing.embedded.EmbeddedHistorical;
+import org.apache.druid.testing.embedded.EmbeddedIndexer;
 import org.apache.druid.testing.embedded.EmbeddedOverlord;
+import org.apache.druid.testing.embedded.EmbeddedRouter;
 import org.apache.druid.testing.embedded.junit5.EmbeddedClusterTestBase;
 
 import java.io.Closeable;
@@ -54,6 +59,19 @@ public abstract class AbstractIndexerTest extends EmbeddedClusterTestBase
   protected final ObjectMapper jsonMapper = TestHelper.JSON_MAPPER;
   protected SqlQueryHelper sqlQueryHelper = null;
   protected SqlQueryHelper queryHelper = null;
+
+  @Override
+  public EmbeddedDruidCluster createCluster()
+  {
+    return EmbeddedDruidCluster
+        .withEmbeddedDerbyAndZookeeper()
+        .addServer(coordinator)
+        .addServer(overlord)
+        .addServer(new EmbeddedIndexer())
+        .addServer(new EmbeddedBroker())
+        .addServer(new EmbeddedHistorical())
+        .addServer(new EmbeddedRouter());
+  }
 
   protected Closeable unloader(final String dataSource)
   {

@@ -20,23 +20,16 @@
 package org.apache.druid.testing.embedded.indexer;
 
 import com.google.common.collect.ImmutableList;
-import junitparams.Parameters;
 import org.apache.druid.indexer.partitions.DynamicPartitionsSpec;
 import org.apache.druid.java.util.common.Pair;
 import org.apache.druid.java.util.common.StringUtils;
-import org.apache.druid.testsEx.categories.InputSource;
-import org.apache.druid.testsEx.config.DruidTestRunner;
-import org.junit.Test;
-import org.junit.experimental.categories.Category;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.Closeable;
 import java.util.List;
-import java.util.UUID;
 import java.util.function.Function;
 
-@RunWith(DruidTestRunner.class)
-@Category(InputSource.class)
 public class ITSqlInputSourceTest extends AbstractITBatchIndexTest
 {
   private static final String INDEX_TASK = "/indexer/wikipedia_parallel_index_using_sqlinputsource_task.json";
@@ -64,13 +57,13 @@ public class ITSqlInputSourceTest extends AbstractITBatchIndexTest
     };
   }
 
-  @Test
-  @Parameters(method = "resources")
+  @ParameterizedTest
+  @MethodSource("resources")
   public void testIndexData(List<String> sqlQueries) throws Exception
   {
-    final String indexDatasource = "wikipedia_index_test_" + UUID.randomUUID();
+    final String indexDatasource = dataSource;
     try (
-        final Closeable ignored1 = unloader(indexDatasource + config.getExtraDatasourceNameSuffix());
+        final Closeable ignored1 = unloader(indexDatasource);
     ) {
       final Function<String, String> sqlInputSourcePropsTransform = spec -> {
         try {

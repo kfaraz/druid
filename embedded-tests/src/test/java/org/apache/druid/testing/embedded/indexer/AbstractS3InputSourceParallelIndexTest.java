@@ -20,7 +20,7 @@
 package org.apache.druid.testing.embedded.indexer;
 
 import org.apache.druid.java.util.common.logger.Logger;
-import org.apache.druid.testsEx.utils.S3TestUtil;
+import org.apache.druid.testing.embedded.minio.MinIOStorageResource;
 import org.junit.After;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assertions;
@@ -38,7 +38,8 @@ import java.util.List;
 public abstract class AbstractS3InputSourceParallelIndexTest extends AbstractCloudInputSourceParallelIndexTest
 {
   private static final Logger LOG = new Logger(AbstractS3InputSourceParallelIndexTest.class);
-  private static S3TestUtil s3;
+  private final MinIOStorageResource minIOStorageResource = new MinIOStorageResource();
+  private S3TestUtil s3;
 
   @BeforeAll
   public void uploadDataFilesToS3()
@@ -49,7 +50,7 @@ public abstract class AbstractS3InputSourceParallelIndexTest extends AbstractClo
       filesToUpload.add(localPath + file);
     }
     try {
-      s3 = new S3TestUtil();
+      s3 = new S3TestUtil(minIOStorageResource.getS3Client());
       s3.uploadDataFilesToS3(filesToUpload);
     }
     catch (Exception e) {
@@ -63,11 +64,11 @@ public abstract class AbstractS3InputSourceParallelIndexTest extends AbstractClo
   public void deleteSegmentsFromS3()
   {
     // Deleting folder created for storing segments (by druid) after test is completed
-    s3.deleteFolderFromS3(indexDatasource);
+    s3.deleteFolderFromS3(dataSource);
   }
 
   @AfterAll
-  public static void deleteDataFilesFromS3()
+  public void deleteDataFilesFromS3()
   {
     // Deleting uploaded data files
     s3.deleteFilesFromS3(fileList());

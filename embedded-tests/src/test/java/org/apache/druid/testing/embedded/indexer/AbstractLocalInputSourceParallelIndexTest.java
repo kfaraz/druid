@@ -28,7 +28,6 @@ import javax.annotation.Nonnull;
 import java.io.Closeable;
 import java.util.Collections;
 import java.util.Map;
-import java.util.UUID;
 import java.util.function.Function;
 
 public abstract class AbstractLocalInputSourceParallelIndexTest extends AbstractITBatchIndexTest
@@ -72,12 +71,12 @@ public abstract class AbstractLocalInputSourceParallelIndexTest extends Abstract
       Pair<Boolean, Boolean> segmentAvailabilityConfirmationPair
   ) throws Exception
   {
-    final String indexDatasource = "wikipedia_index_test_" + UUID.randomUUID();
+    final String indexDatasource = dataSource;
     Map<String, Object> inputFormatMap = new ImmutableMap.Builder<String, Object>().putAll(extraInputFormatMap)
                                                                  .put("type", inputFormatDetails.getInputFormatType())
                                                                  .build();
     try (
-        final Closeable ignored1 = unloader(indexDatasource + config.getExtraDatasourceNameSuffix());
+        final Closeable ignored1 = unloader(indexDatasource);
     ) {
       final Function<String, String> sqlInputSourcePropsTransform = spec -> {
         try {

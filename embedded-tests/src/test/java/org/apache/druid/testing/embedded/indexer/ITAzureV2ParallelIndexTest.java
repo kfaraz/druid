@@ -19,13 +19,9 @@
 
 package org.apache.druid.testing.embedded.indexer;
 
-import junitparams.Parameters;
 import org.apache.druid.java.util.common.Pair;
-import org.apache.druid.testsEx.categories.AzureDeepStorage;
-import org.apache.druid.testsEx.config.DruidTestRunner;
-import org.junit.Test;
-import org.junit.experimental.categories.Category;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.List;
 
@@ -38,13 +34,10 @@ import java.util.List;
  * <p>
  * <a href="https://druid.apache.org/docs/latest/development/extensions-core/azure.html">Azure Deep Storage setup in druid</a>
  */
-
-@RunWith(DruidTestRunner.class)
-@Category(AzureDeepStorage.class)
 public class ITAzureV2ParallelIndexTest extends AbstractAzureInputSourceParallelIndexTest
 {
-  @Test
-  @Parameters(method = "resources")
+  @ParameterizedTest
+  @MethodSource("resources")
   public void testAzureIndexData(Pair<String, List<?>> azureInputSource) throws Exception
   {
     String dataSource = doTest(azureInputSource, new Pair<>(false, false), "azureStorage");

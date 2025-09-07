@@ -23,38 +23,33 @@ import com.google.common.collect.ImmutableMap;
 import org.apache.druid.indexer.partitions.DynamicPartitionsSpec;
 import org.apache.druid.java.util.common.Pair;
 import org.apache.druid.java.util.common.StringUtils;
-import org.apache.druid.testsEx.categories.BatchIndex;
-import org.apache.druid.testsEx.config.DruidTestRunner;
-import org.junit.Test;
-import org.junit.experimental.categories.Category;
-import org.junit.runner.RunWith;
+import org.apache.druid.testing.embedded.EmbeddedClusterApis;
+import org.junit.jupiter.api.Test;
 
 import java.io.Closeable;
 import java.util.Map;
 import java.util.function.Function;
 
-@RunWith(DruidTestRunner.class)
-@Category(BatchIndex.class)
 public class ITCombiningInputSourceParallelIndexTest extends AbstractITBatchIndexTest
 {
   private static final String INDEX_TASK = "/indexer/wikipedia_local_input_source_index_task.json";
   private static final String INDEX_QUERIES_RESOURCE = "/indexer/wikipedia_index_queries.json";
-  private static final String INDEX_DATASOURCE = "wikipedia_index_test";
 
   private static final String COMBINING_INDEX_TASK = "/indexer/wikipedia_combining_input_source_index_parallel_task.json";
   private static final String COMBINING_QUERIES_RESOURCE = "/indexer/wikipedia_combining_input_source_index_queries.json";
-  private static final String COMBINING_INDEX_DATASOURCE = "wikipedia_comb_index_test";
 
   @Test
   public void testIndexData() throws Exception
   {
+    final String indexDatasource = dataSource;
+    final String combiningDatasource = EmbeddedClusterApis.createTestDatasourceName();
     Map<String, Object> inputFormatMap = new ImmutableMap
         .Builder<String, Object>()
         .put("type", "json")
         .build();
     try (
-        final Closeable ignored1 = unloader(INDEX_DATASOURCE + config.getExtraDatasourceNameSuffix());
-        final Closeable ignored2 = unloader(COMBINING_INDEX_DATASOURCE + config.getExtraDatasourceNameSuffix());
+        final Closeable ignored1 = unloader(indexDatasource);
+        final Closeable ignored2 = unloader(combiningDatasource);
     ) {
       final Function<String, String> combiningInputSourceSpecTransform = spec -> {
         try {
@@ -96,7 +91,7 @@ public class ITCombiningInputSourceParallelIndexTest extends AbstractITBatchInde
           spec = StringUtils.replace(
               spec,
               "%%COMBINING_DATASOURCE%%",
-              INDEX_DATASOURCE + config.getExtraDatasourceNameSuffix()
+              combiningDatasource
           );
           return spec;
         }
@@ -106,7 +101,7 @@ public class ITCombiningInputSourceParallelIndexTest extends AbstractITBatchInde
       };
 
       doIndexTest(
-          INDEX_DATASOURCE,
+          indexDatasource,
           INDEX_TASK,
           combiningInputSourceSpecTransform,
           INDEX_QUERIES_RESOURCE,
@@ -116,7 +111,7 @@ public class ITCombiningInputSourceParallelIndexTest extends AbstractITBatchInde
           new Pair<>(false, false)
       );
       doIndexTest(
-          COMBINING_INDEX_DATASOURCE,
+          combiningDatasource,
           COMBINING_INDEX_TASK,
           combiningInputSourceSpecTransform,
           COMBINING_QUERIES_RESOURCE,

@@ -20,44 +20,36 @@
 package org.apache.druid.testing.embedded.msq;
 
 import com.google.common.collect.ImmutableMap;
-import junitparams.Parameters;
-import junitparams.naming.TestCaseName;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.druid.java.util.common.logger.Logger;
-import org.apache.druid.testsEx.categories.MultiStageQuery;
-import org.apache.druid.testsEx.config.DruidTestRunner;
-import org.apache.druid.testsEx.indexer.AbstractITBatchIndexTest;
-import org.junit.Test;
-import org.junit.experimental.categories.Category;
-import org.junit.runner.RunWith;
+import org.apache.druid.testing.embedded.indexer.AbstractITBatchIndexTest;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
-import java.util.Arrays;
-import java.util.List;
+import java.util.stream.Stream;
 
-@RunWith(DruidTestRunner.class)
-@Category(MultiStageQuery.class)
 public class ITSQLBasedBatchIngestionTest extends AbstractITBatchIndexTest
 {
   private static final String MSQ_TASKS_DIR = "/multi-stage-query/";
 
   private static final Logger LOG = new Logger(ITSQLBasedBatchIngestionTest.class);
 
-  public static List<List<String>> test_cases()
+  public static Stream<Arguments> test_cases()
   {
-    return Arrays.asList(
-        Arrays.asList("msq_inline.sql", "json_path_index_queries.json"),
-        Arrays.asList("sparse_column_msq.sql", "sparse_column_msq.json"),
-        Arrays.asList("wikipedia_http_inputsource_msq.sql", "wikipedia_http_inputsource_queries.json"),
-        Arrays.asList("wikipedia_index_msq.sql", "wikipedia_index_queries.json"),
-        Arrays.asList("wikipedia_merge_index_msq.sql", "wikipedia_merge_index_queries.json"),
-        Arrays.asList("wikipedia_index_task_with_transform.sql", "wikipedia_index_queries_with_transform.json")
+    return Stream.of(
+        Arguments.of("msq_inline.sql", "json_path_index_queries.json"),
+        Arguments.of("sparse_column_msq.sql", "sparse_column_msq.json"),
+        Arguments.of("wikipedia_http_inputsource_msq.sql", "wikipedia_http_inputsource_queries.json"),
+        Arguments.of("wikipedia_index_msq.sql", "wikipedia_index_queries.json"),
+        Arguments.of("wikipedia_merge_index_msq.sql", "wikipedia_merge_index_queries.json"),
+        Arguments.of("wikipedia_index_task_with_transform.sql", "wikipedia_index_queries_with_transform.json")
     );
 
   }
 
-  @Test
-  @Parameters(method = "test_cases")
-  @TestCaseName("Test_{index} ({0}, {1})")
+  @ParameterizedTest(name = "Test_{index} ({0}, {1})")
+  @MethodSource("test_cases")
   public void testSQLBasedBatchIngestion(String sqlFileName, String queryFileName)
   {
     try {

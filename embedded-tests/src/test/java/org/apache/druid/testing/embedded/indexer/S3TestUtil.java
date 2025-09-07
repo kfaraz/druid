@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.druid.testsEx.utils;
+package org.apache.druid.testing.embedded.indexer;
 
 import com.amazonaws.ClientConfiguration;
 import com.amazonaws.Protocol;
@@ -33,7 +33,6 @@ import com.amazonaws.services.s3.model.ListObjectsRequest;
 import com.amazonaws.services.s3.model.ObjectListing;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import org.apache.druid.java.util.common.logger.Logger;
-import org.apache.druid.testing.utils.TestQueryHelper;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -42,7 +41,7 @@ import java.util.List;
 
 public class S3TestUtil
 {
-  public static final Logger LOG = new Logger(TestQueryHelper.class);
+  private static final Logger LOG = new Logger(S3TestUtil.class);
 
   private final AmazonS3 s3Client;
   private final String S3_ACCESS_KEY;
@@ -51,7 +50,7 @@ public class S3TestUtil
   private final String S3_CLOUD_PATH;
   private final String S3_CLOUD_BUCKET;
 
-  public S3TestUtil()
+  public S3TestUtil(AmazonS3 s3Client)
   {
     verifyEnvironment();
     S3_ACCESS_KEY = System.getenv("AWS_ACCESS_KEY_ID");
@@ -59,7 +58,7 @@ public class S3TestUtil
     S3_REGION = System.getenv("AWS_REGION");
     S3_CLOUD_PATH = System.getenv("DRUID_CLOUD_PATH");
     S3_CLOUD_BUCKET = System.getenv("DRUID_CLOUD_BUCKET");
-    s3Client = s3Client();
+    this.s3Client = s3Client;
   }
 
   /**

@@ -20,38 +20,32 @@
 package org.apache.druid.testing.embedded.indexer;
 
 import org.apache.druid.java.util.common.Pair;
-import org.apache.druid.testsEx.categories.BatchIndex;
-import org.apache.druid.testsEx.config.DruidTestRunner;
-import org.junit.Test;
-import org.junit.experimental.categories.Category;
-import org.junit.runner.RunWith;
+import org.apache.druid.testing.embedded.EmbeddedClusterApis;
+import org.junit.jupiter.api.Test;
 
 import java.io.Closeable;
 import java.io.IOException;
 
-@RunWith(DruidTestRunner.class)
-@Category(BatchIndex.class)
 public class ITTransformTest extends AbstractITBatchIndexTest
 {
   private static final String INDEX_TASK_WITH_INPUT_SOURCE = "/indexer/wikipedia_index_task_with_inputsource_transform.json";
   private static final String INDEX_QUERIES_RESOURCE = "/indexer/wikipedia_index_queries_with_transform.json";
-  private static final String INDEX_DATASOURCE = "wikipedia_index_test";
 
   private static final String REINDEX_TASK_WITH_DRUID_INPUT_SOURCE = "/indexer/wikipedia_reindex_druid_input_source_task_with_transforms.json";
   private static final String REINDEX_QUERIES_RESOURCE = "/indexer/wikipedia_reindex_queries_with_transforms.json";
-  private static final String REINDEX_DATASOURCE = "wikipedia_reindex_test";
 
   @Test
   public void testIndexAndReIndexWithTransformSpec() throws IOException
   {
-    final String reindexDatasourceWithDruidInputSource = REINDEX_DATASOURCE + "-druidInputSource";
+    final String indexDatasource = dataSource;
+    final String reindexDatasourceWithDruidInputSource = EmbeddedClusterApis.createTestDatasourceName();
 
     try (
-        final Closeable ignored1 = unloader(INDEX_DATASOURCE + config.getExtraDatasourceNameSuffix());
-        final Closeable ignored2 = unloader(reindexDatasourceWithDruidInputSource + config.getExtraDatasourceNameSuffix())
+        final Closeable ignored1 = unloader(indexDatasource);
+        final Closeable ignored2 = unloader(reindexDatasourceWithDruidInputSource)
     ) {
       doIndexTest(
-          INDEX_DATASOURCE,
+          indexDatasource,
           INDEX_TASK_WITH_INPUT_SOURCE,
           INDEX_QUERIES_RESOURCE,
           false,
@@ -60,7 +54,7 @@ public class ITTransformTest extends AbstractITBatchIndexTest
           new Pair<>(false, false)
       );
       doReindexTest(
-          INDEX_DATASOURCE,
+          indexDatasource,
           reindexDatasourceWithDruidInputSource,
           REINDEX_TASK_WITH_DRUID_INPUT_SOURCE,
           REINDEX_QUERIES_RESOURCE,

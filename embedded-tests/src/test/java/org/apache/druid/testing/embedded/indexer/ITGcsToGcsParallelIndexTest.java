@@ -19,13 +19,9 @@
 
 package org.apache.druid.testing.embedded.indexer;
 
-import junitparams.Parameters;
 import org.apache.druid.java.util.common.Pair;
-import org.apache.druid.testsEx.categories.GcsDeepStorage;
-import org.apache.druid.testsEx.config.DruidTestRunner;
-import org.junit.Test;
-import org.junit.experimental.categories.Category;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.List;
 
@@ -37,13 +33,10 @@ import java.util.List;
  * GOOGLE_APPLICATION_CREDENTIALS - path to the json file containing google cloud credentials
  * <a href="https://druid.apache.org/docs/latest/development/extensions-core/google.html">Google Cloud Storage setup in druid</a>
  */
-
-@RunWith(DruidTestRunner.class)
-@Category(GcsDeepStorage.class)
 public class ITGcsToGcsParallelIndexTest extends AbstractGcsInputSourceParallelIndexTest
 {
-  @Test
-  @Parameters(method = "resources")
+  @ParameterizedTest
+  @MethodSource("resources")
   public void testGcsIndexData(Pair<String, List<?>> gcsInputSource) throws Exception
   {
     doTest(gcsInputSource, new Pair<>(false, false), "google");

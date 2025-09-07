@@ -23,19 +23,12 @@ import com.google.common.collect.ImmutableMap;
 import org.apache.druid.indexer.partitions.DynamicPartitionsSpec;
 import org.apache.druid.java.util.common.Pair;
 import org.apache.druid.java.util.common.StringUtils;
-import org.apache.druid.testsEx.categories.BatchIndex;
-import org.apache.druid.testsEx.config.DruidTestRunner;
-import org.junit.Test;
-import org.junit.experimental.categories.Category;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.Test;
 
 import java.io.Closeable;
 import java.util.Map;
-import java.util.UUID;
 import java.util.function.Function;
 
-@RunWith(DruidTestRunner.class)
-@Category(BatchIndex.class)
 public class ITOverwriteBatchIndexTest extends AbstractITBatchIndexTest
 {
   private static final String INDEX_TASK = "/indexer/wikipedia_local_input_source_index_task.json";
@@ -48,9 +41,9 @@ public class ITOverwriteBatchIndexTest extends AbstractITBatchIndexTest
   @Test
   public void doIndexTestWithOverwriteAndDrop() throws Exception
   {
-    final String indexDatasource = "wikipedia_index_test_" + UUID.randomUUID();
+    final String indexDatasource = dataSource;
     try (
-        final Closeable ignored1 = unloader(indexDatasource + config.getExtraDatasourceNameSuffix())
+        final Closeable ignored1 = unloader(indexDatasource)
     ) {
       // Submit initial ingestion task
       // The data interval is 2013-08-31 to 2013-09-02 with DAY segmentGranularity
@@ -77,9 +70,9 @@ public class ITOverwriteBatchIndexTest extends AbstractITBatchIndexTest
   @Test
   public void doIndexTestWithOverwriteAndNoDrop() throws Exception
   {
-    final String indexDatasource = "wikipedia_index_test_" + UUID.randomUUID();
+    final String indexDatasource = dataSource;
     try (
-        final Closeable ignored1 = unloader(indexDatasource + config.getExtraDatasourceNameSuffix())
+        final Closeable ignored1 = unloader(indexDatasource)
     ) {
       // Submit initial ingestion task
       // The data interval is 2013-08-31 to 2013-09-02 with DAY segmentGranularity

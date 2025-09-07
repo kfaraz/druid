@@ -19,11 +19,10 @@
 
 package org.apache.druid.testing.embedded.msq;
 
-import junitparams.Parameters;
-import junitparams.naming.TestCaseName;
 import org.apache.druid.java.util.common.Pair;
-import org.apache.druid.testsEx.indexer.AbstractAzureInputSourceParallelIndexTest;
-import org.junit.Test;
+import org.apache.druid.testing.embedded.indexer.AbstractAzureInputSourceParallelIndexTest;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.List;
 
@@ -40,9 +39,8 @@ public class ITAzureSQLBasedIngestionTest extends AbstractAzureInputSourceParall
   private static final String CLOUD_INGEST_SQL = "/multi-stage-query/wikipedia_cloud_index_msq.sql";
   private static final String INDEX_QUERIES_FILE = "/multi-stage-query/wikipedia_index_queries.json";
 
-  @Test
-  @Parameters(method = "resources")
-  @TestCaseName("Test_{index} ({0})")
+  @ParameterizedTest(name = "Test_{index} ({0})")
+  @MethodSource("resources")
   public void testSQLBasedBatchIngestion(Pair<String, List<?>> s3InputSource)
   {
     doMSQTest(s3InputSource, CLOUD_INGEST_SQL, INDEX_QUERIES_FILE, "azure");

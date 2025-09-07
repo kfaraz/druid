@@ -20,11 +20,10 @@
 package org.apache.druid.testing.embedded.indexer;
 
 import org.apache.druid.java.util.common.logger.Logger;
-import org.apache.druid.testsEx.utils.GcsTestUtil;
 import org.junit.After;
-import org.junit.AfterClass;
 import org.junit.Assert;
-import org.junit.BeforeClass;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 
 /**
  * This class defines methods to upload and delete the data files used by the tests, which will inherit this class.
@@ -35,10 +34,10 @@ import org.junit.BeforeClass;
 public class AbstractGcsInputSourceParallelIndexTest extends AbstractCloudInputSourceParallelIndexTest
 {
   private static final Logger LOG = new Logger(AbstractGcsInputSourceParallelIndexTest.class);
-  private static GcsTestUtil gcs;
+  private GcsTestUtil gcs;
 
-  @BeforeClass
-  public static void uploadDataFilesToGcs()
+  @BeforeAll
+  public void uploadDataFilesToGcs()
   {
     LOG.info("Uploading data files to GCS");
     String localPath = "resources/data/batch_index/json/";
@@ -60,15 +59,15 @@ public class AbstractGcsInputSourceParallelIndexTest extends AbstractCloudInputS
   {
     // Deleting folder created for storing segments (by druid) after test is completed
     try {
-      gcs.deletePrefixFolderFromGcs(indexDatasource);
+      gcs.deletePrefixFolderFromGcs(dataSource);
     }
     catch (Exception e) {
       LOG.warn(e, "Unable to delete segments from GCS");
     }
   }
 
-  @AfterClass
-  public static void deleteDataFilesFromGcs()
+  @AfterAll
+  public void deleteDataFilesFromGcs()
   {
     LOG.info("Deleting data files from GCS");
     try {

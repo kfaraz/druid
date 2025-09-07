@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.druid.testsEx.utils;
+package org.apache.druid.testing.embedded.indexer;
 
 import com.google.api.client.googleapis.auth.oauth2.GoogleCredential;
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
@@ -41,7 +41,7 @@ import java.util.Collections;
 
 public class GcsTestUtil
 {
-  private static final Logger LOG = new Logger(AzureTestUtil.class);
+  private static final Logger LOG = new Logger(GcsTestUtil.class);
   private final GoogleStorage googleStorageClient;
   private final String GOOGLE_BUCKET;
   private final String GOOGLE_PREFIX;

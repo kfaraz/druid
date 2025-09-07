@@ -21,10 +21,9 @@ package org.apache.druid.testing.embedded.indexer;
 
 import com.google.common.collect.ImmutableList;
 import org.apache.druid.java.util.common.logger.Logger;
-import org.apache.druid.testsEx.utils.AzureTestUtil;
-import org.junit.AfterClass;
 import org.junit.Assert;
-import org.junit.BeforeClass;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 
 import java.net.URI;
 import java.util.List;
@@ -41,10 +40,10 @@ public abstract class AbstractAzureInputSourceParallelIndexTest extends Abstract
 {
   private static final Logger LOG = new Logger(AbstractAzureInputSourceParallelIndexTest.class);
 
-  static AzureTestUtil azure;
+  private AzureTestUtil azure;
 
-  @BeforeClass
-  public static void uploadDataFilesToAzure()
+  @BeforeAll
+  public void uploadDataFilesToAzure()
   {
     try {
       LOG.info("Uploading files to Azure");
@@ -63,8 +62,8 @@ public abstract class AbstractAzureInputSourceParallelIndexTest extends Abstract
     }
   }
 
-  @AfterClass
-  public static void deleteDataFilesFromAzure()
+  @AfterAll
+  public void deleteDataFilesFromAzure()
   {
     try {
       // Deleting uploaded data files
@@ -75,7 +74,7 @@ public abstract class AbstractAzureInputSourceParallelIndexTest extends Abstract
     }
   }
 
-  public static void validateAzureSegmentFilesDeleted(String path)
+  public void validateAzureSegmentFilesDeleted(String path)
   {
     List<URI> segmentFiles = ImmutableList.of();
     try {

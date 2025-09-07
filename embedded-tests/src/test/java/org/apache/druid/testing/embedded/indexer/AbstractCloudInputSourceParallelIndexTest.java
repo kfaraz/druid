@@ -30,7 +30,6 @@ import java.io.Closeable;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.function.Function;
 
 /**
@@ -54,8 +53,6 @@ public abstract class AbstractCloudInputSourceParallelIndexTest extends Abstract
   private static final String AZURE_CONTAINER = "azureContainer";
   private static final String AZURE_STORAGE_ACCOUNT = "azureAccount";
   private static final Logger LOG = new Logger(AbstractCloudInputSourceParallelIndexTest.class);
-
-  String indexDatasource = "wikipedia_cloud_index_test_";
 
   public static Object[][] resources()
   {
@@ -142,9 +139,9 @@ public abstract class AbstractCloudInputSourceParallelIndexTest extends Abstract
       String inputSourceType
   ) throws Exception
   {
-    indexDatasource = indexDatasource + UUID.randomUUID();
+    final String indexDatasource = dataSource;
     try (
-        final Closeable ignored1 = unloader(indexDatasource + config.getExtraDatasourceNameSuffix());
+        final Closeable ignored1 = unloader(indexDatasource);
     ) {
       final Function<String, String> azurePropsTransform = spec -> {
         try {
@@ -220,7 +217,7 @@ public abstract class AbstractCloudInputSourceParallelIndexTest extends Abstract
   )
   {
     try {
-      indexDatasource = "wikipedia_index_test_" + UUID.randomUUID();
+      final String indexDatasource = dataSource;
       String sqlTask = getStringFromFileAndReplaceDatasource(ingestSQLFilePath, indexDatasource);
       String inputSourceValue = jsonMapper.writeValueAsString(inputSource.rhs);
       Map<String, Object> context = ImmutableMap.of("finalizeAggregations", false,

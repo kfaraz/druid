@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.druid.testsEx.utils;
+package org.apache.druid.testing.embedded.indexer;
 
 import com.microsoft.azure.storage.CloudStorageAccount;
 import com.microsoft.azure.storage.StorageException;
