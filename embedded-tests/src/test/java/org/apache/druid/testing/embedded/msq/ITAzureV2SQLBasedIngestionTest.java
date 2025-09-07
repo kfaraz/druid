@@ -17,14 +17,14 @@
  * under the License.
  */
 
-package org.apache.druid.testsEx.msq;
+package org.apache.druid.testing.embedded.msq;
 
 import junitparams.Parameters;
 import junitparams.naming.TestCaseName;
 import org.apache.druid.java.util.common.Pair;
-import org.apache.druid.testsEx.categories.GcsDeepStorage;
+import org.apache.druid.testsEx.categories.AzureDeepStorage;
 import org.apache.druid.testsEx.config.DruidTestRunner;
-import org.apache.druid.testsEx.indexer.AbstractGcsInputSourceParallelIndexTest;
+import org.apache.druid.testsEx.indexer.AbstractAzureInputSourceParallelIndexTest;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
@@ -34,15 +34,15 @@ import java.util.List;
 /**
  * IMPORTANT:
  * To run this test, you must set the following env variables in the build environment -
- * GOOGLE_PREFIX - path inside the bucket where the test data files will be uploaded
- * GOOGLE_BUCKET - Google cloud bucket name
- * GOOGLE_APPLICATION_CREDENTIALS - path to the json file containing google cloud credentials
- * <a href="https://druid.apache.org/docs/latest/development/extensions-core/google.html">Google Cloud Storage setup in druid</a>
+ * <p>
+ * The AZURE account, key and container should be set in AZURE_ACCOUNT, AZURE_KEY and AZURE_CONTAINER respectively.
+ * <p>
+ * <a href="https://druid.apache.org/docs/latest/development/extensions-core/azure.html">Azure Deep Storage setup in druid</a>
  */
 
 @RunWith(DruidTestRunner.class)
-@Category(GcsDeepStorage.class)
-public class ITGcsSQLBasedIngestionTest extends AbstractGcsInputSourceParallelIndexTest
+@Category(AzureDeepStorage.class)
+public class ITAzureV2SQLBasedIngestionTest extends AbstractAzureInputSourceParallelIndexTest
 {
   private static final String CLOUD_INGEST_SQL = "/multi-stage-query/wikipedia_cloud_index_msq.sql";
   private static final String INDEX_QUERIES_FILE = "/multi-stage-query/wikipedia_index_queries.json";
@@ -50,8 +50,8 @@ public class ITGcsSQLBasedIngestionTest extends AbstractGcsInputSourceParallelIn
   @Test
   @Parameters(method = "resources")
   @TestCaseName("Test_{index} ({0})")
-  public void testSQLBasedBatchIngestion(Pair<String, List<?>> GcsInputSource)
+  public void testSQLBasedBatchIngestion(Pair<String, List<?>> azureStorageInputSource)
   {
-    doMSQTest(GcsInputSource, CLOUD_INGEST_SQL, INDEX_QUERIES_FILE, "google");
+    doMSQTest(azureStorageInputSource, CLOUD_INGEST_SQL, INDEX_QUERIES_FILE, "azureStorage");
   }
 }

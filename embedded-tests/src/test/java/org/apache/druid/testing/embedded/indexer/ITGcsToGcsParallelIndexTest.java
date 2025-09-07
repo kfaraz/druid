@@ -17,11 +17,11 @@
  * under the License.
  */
 
-package org.apache.druid.testsEx.indexer;
+package org.apache.druid.testing.embedded.indexer;
 
 import junitparams.Parameters;
 import org.apache.druid.java.util.common.Pair;
-import org.apache.druid.testsEx.categories.AzureDeepStorage;
+import org.apache.druid.testsEx.categories.GcsDeepStorage;
 import org.apache.druid.testsEx.config.DruidTestRunner;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -32,21 +32,20 @@ import java.util.List;
 /**
  * IMPORTANT:
  * To run this test, you must set the following env variables in the build environment -
- * DRUID_CLOUD_PATH - path inside the container where the test data files will be uploaded
- * <p>
- * The AZURE account, key and container should be set in AZURE_ACCOUNT, AZURE_KEY and AZURE_CONTAINER respectively.
- * <p>
- * <a href="https://druid.apache.org/docs/latest/development/extensions-core/azure.html">Azure Deep Storage setup in druid</a>
+ * GOOGLE_PREFIX - path inside the bucket where the test data files will be uploaded
+ * GOOGLE_BUCKET - Google cloud bucket name
+ * GOOGLE_APPLICATION_CREDENTIALS - path to the json file containing google cloud credentials
+ * <a href="https://druid.apache.org/docs/latest/development/extensions-core/google.html">Google Cloud Storage setup in druid</a>
  */
 
 @RunWith(DruidTestRunner.class)
-@Category(AzureDeepStorage.class)
-public class ITAzureToAzureParallelIndexTest extends AbstractAzureInputSourceParallelIndexTest
+@Category(GcsDeepStorage.class)
+public class ITGcsToGcsParallelIndexTest extends AbstractGcsInputSourceParallelIndexTest
 {
   @Test
   @Parameters(method = "resources")
-  public void testAzureIndexData(Pair<String, List<?>> azureInputSource) throws Exception
+  public void testGcsIndexData(Pair<String, List<?>> gcsInputSource) throws Exception
   {
-    doTest(azureInputSource, new Pair<>(false, false), "azure");
+    doTest(gcsInputSource, new Pair<>(false, false), "google");
   }
 }

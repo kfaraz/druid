@@ -17,46 +17,38 @@
  * under the License.
  */
 
-package org.apache.druid.testsEx.msq;
+package org.apache.druid.testing.embedded.msq;
 
 import com.google.common.collect.ImmutableMap;
-import junitparams.Parameters;
-import junitparams.naming.TestCaseName;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.msq.util.MultiStageQueryContext;
 import org.apache.druid.query.groupby.GroupByQueryConfig;
-import org.apache.druid.testsEx.categories.MultiStageQuery;
-import org.apache.druid.testsEx.config.DruidTestRunner;
-import org.apache.druid.testsEx.indexer.AbstractITBatchIndexTest;
-import org.junit.Test;
-import org.junit.experimental.categories.Category;
-import org.junit.runner.RunWith;
+import org.apache.druid.testing.embedded.indexer.AbstractITBatchIndexTest;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
-import java.util.Arrays;
-import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
-@RunWith(DruidTestRunner.class)
-@Category(MultiStageQuery.class)
 public class ITMSQReindexTest extends AbstractITBatchIndexTest
 {
   private static final String MSQ_TASKS_DIR = "/multi-stage-query/";
 
   private static final Logger LOG = new Logger(ITMSQReindexTest.class);
 
-  public static List<List<String>> test_cases()
+  public static Stream<Arguments> test_cases()
   {
-    return Arrays.asList(
-        Arrays.asList("wikipedia_index_msq.sql", "wikipedia_reindex_msq.sql", "wikipedia_reindex_queries.json"),
-        Arrays.asList("wikipedia_merge_index_msq.sql", "wikipedia_merge_reindex_msq.sql", "wikipedia_merge_index_queries.json"),
-        Arrays.asList("wikipedia_index_task_with_transform.sql", "wikipedia_reindex_with_transform_msq.sql", "wikipedia_reindex_queries_with_transforms.json")
+    return Stream.of(
+        Arguments.of("wikipedia_index_msq.sql", "wikipedia_reindex_msq.sql", "wikipedia_reindex_queries.json"),
+        Arguments.of("wikipedia_merge_index_msq.sql", "wikipedia_merge_reindex_msq.sql", "wikipedia_merge_index_queries.json"),
+        Arguments.of("wikipedia_index_task_with_transform.sql", "wikipedia_reindex_with_transform_msq.sql", "wikipedia_reindex_queries_with_transforms.json")
     );
   }
 
-  @Test
-  @Parameters(method = "test_cases")
-  @TestCaseName("Test_{index} ({0}, {1}, {2})")
+  @MethodSource("test_cases")
+  @ParameterizedTest(name = "Test_{index} ({0}, {1}, {2})")
   public void testMSQDruidInputSource(String sqlFileName, String reIndexSqlFileName, String reIndexQueryFileName)
   {
     String indexDatasource = FilenameUtils.removeExtension(sqlFileName);

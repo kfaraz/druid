@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.druid.testsEx.indexer;
+package org.apache.druid.testing.embedded.indexer;
 
 import org.apache.druid.java.util.common.Pair;
 import org.apache.druid.testsEx.categories.BatchIndex;

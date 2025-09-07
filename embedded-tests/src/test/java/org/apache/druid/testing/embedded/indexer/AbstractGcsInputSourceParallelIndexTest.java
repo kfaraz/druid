@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.druid.testsEx.indexer;
+package org.apache.druid.testing.embedded.indexer;
 
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.testsEx.utils.GcsTestUtil;

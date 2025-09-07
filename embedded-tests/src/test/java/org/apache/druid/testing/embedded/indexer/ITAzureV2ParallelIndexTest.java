@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.druid.testsEx.indexer;
+package org.apache.druid.testing.embedded.indexer;
 
 import junitparams.Parameters;
 import org.apache.druid.java.util.common.Pair;
@@ -48,6 +48,6 @@ public class ITAzureV2ParallelIndexTest extends AbstractAzureInputSourceParallel
   public void testAzureIndexData(Pair<String, List<?>> azureInputSource) throws Exception
   {
     String dataSource = doTest(azureInputSource, new Pair<>(false, false), "azureStorage");
-    AbstractAzureInputSourceParallelIndexTest.validateAzureSegmentFilesDeleted("segments" + "/" + dataSource);
+    validateAzureSegmentFilesDeleted("segments" + "/" + dataSource);
   }
 }

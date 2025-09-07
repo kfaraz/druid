@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.druid.testsEx.indexer;
+package org.apache.druid.testing.embedded.indexer;
 
 import com.google.common.collect.ImmutableList;
 import junitparams.Parameters;

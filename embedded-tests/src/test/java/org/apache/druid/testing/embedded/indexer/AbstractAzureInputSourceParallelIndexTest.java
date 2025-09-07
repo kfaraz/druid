@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.druid.testsEx.indexer;
+package org.apache.druid.testing.embedded.indexer;
 
 import com.google.common.collect.ImmutableList;
 import org.apache.druid.java.util.common.logger.Logger;
@@ -37,7 +37,7 @@ import static org.junit.Assert.fail;
  * "AZURE_KEY", "AZURE_ACCOUNT", "AZURE_CONTAINER", "DRUID_CLOUD_PATH"
  * The test will fail if the above variables are not set.
  */
-public class AbstractAzureInputSourceParallelIndexTest extends AbstractCloudInputSourceParallelIndexTest
+public abstract class AbstractAzureInputSourceParallelIndexTest extends AbstractCloudInputSourceParallelIndexTest
 {
   private static final Logger LOG = new Logger(AbstractAzureInputSourceParallelIndexTest.class);
 

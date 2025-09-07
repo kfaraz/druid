@@ -17,16 +17,15 @@
  * under the License.
  */
 
-package org.apache.druid.testsEx.indexer;
+package org.apache.druid.testing.embedded.indexer;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.google.inject.Inject;
 import org.apache.druid.java.util.common.Intervals;
 import org.apache.druid.java.util.common.Pair;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.metadata.LockFilterPolicy;
 import org.apache.druid.server.coordinator.CoordinatorDynamicConfig;
-import org.apache.druid.testing.clients.CoordinatorResourceTestClient;
+import org.apache.druid.testing.embedded.EmbeddedClusterApis;
 import org.apache.druid.testing.tools.ITRetryUtil;
 import org.joda.time.Interval;
 import org.junit.Assert;
@@ -43,18 +42,15 @@ public class IndexerTest extends AbstractITBatchIndexTest
 {
   private static final String INDEX_TASK = "/indexer/wikipedia_index_task.json";
   private static final String INDEX_QUERIES_RESOURCE = "/indexer/wikipedia_index_queries.json";
-  private static final String INDEX_DATASOURCE = "wikipedia_index_test";
 
   private static final String INDEX_WITH_TIMESTAMP_TASK = "/indexer/wikipedia_with_timestamp_index_task.json";
   // TODO: add queries that validate timestamp is different from the __time column since it is a dimension
   // TODO: https://github.com/apache/druid/issues/9565
   private static final String INDEX_WITH_TIMESTAMP_QUERIES_RESOURCE = "/indexer/wikipedia_index_queries.json";
-  private static final String INDEX_WITH_TIMESTAMP_DATASOURCE = "wikipedia_with_timestamp_index_test";
 
   private static final String REINDEX_TASK = "/indexer/wikipedia_reindex_task.json";
   private static final String REINDEX_TASK_WITH_DRUID_INPUT_SOURCE = "/indexer/wikipedia_reindex_druid_input_source_task.json";
   private static final String REINDEX_QUERIES_RESOURCE = "/indexer/wikipedia_reindex_queries.json";
-  private static final String REINDEX_DATASOURCE = "wikipedia_reindex_test";
 
   private static final String MERGE_INDEX_TASK = "/indexer/wikipedia_merge_index_task.json";
   private static final String MERGE_INDEX_QUERIES_RESOURCE = "/indexer/wikipedia_merge_index_queries.json";
@@ -75,18 +71,16 @@ public class IndexerTest extends AbstractITBatchIndexTest
   private static final CoordinatorDynamicConfig DYNAMIC_CONFIG_DEFAULT =
       CoordinatorDynamicConfig.builder().build();
 
-  @Inject
-  CoordinatorResourceTestClient coordinatorClient;
-
   @Test
   public void testIndexData() throws Exception
   {
-    final String reindexDatasource = REINDEX_DATASOURCE + "-testIndexData";
-    final String reindexDatasourceWithDruidInputSource = REINDEX_DATASOURCE + "-testIndexData-druidInputSource";
+    final String indexDatasource = dataSource;
+    final String reindexDatasource = EmbeddedClusterApis.createTestDatasourceName();
+    final String reindexDatasourceWithDruidInputSource = EmbeddedClusterApis.createTestDatasourceName();
     try (
-        final Closeable ignored1 = unloader(INDEX_DATASOURCE + config.getExtraDatasourceNameSuffix());
-        final Closeable ignored2 = unloader(reindexDatasource + config.getExtraDatasourceNameSuffix());
-        final Closeable ignored3 = unloader(reindexDatasourceWithDruidInputSource + config.getExtraDatasourceNameSuffix())
+        final Closeable ignored1 = unloader(indexDatasource);
+        final Closeable ignored2 = unloader(reindexDatasource);
+        final Closeable ignored3 = unloader(reindexDatasourceWithDruidInputSource)
     ) {
 
       final Function<String, String> transform = spec -> {
@@ -103,7 +97,7 @@ public class IndexerTest extends AbstractITBatchIndexTest
       };
 
       doIndexTest(
-          INDEX_DATASOURCE,
+          indexDatasource,
           INDEX_TASK,
           transform,
           INDEX_QUERIES_RESOURCE,
@@ -113,14 +107,14 @@ public class IndexerTest extends AbstractITBatchIndexTest
           new Pair<>(false, false)
       );
       doReindexTest(
-          INDEX_DATASOURCE,
+          indexDatasource,
           reindexDatasource,
           REINDEX_TASK,
           REINDEX_QUERIES_RESOURCE,
           new Pair<>(false, false)
       );
       doReindexTest(
-          INDEX_DATASOURCE,
+          indexDatasource,
           reindexDatasourceWithDruidInputSource,
           REINDEX_TASK_WITH_DRUID_INPUT_SOURCE,
           REINDEX_QUERIES_RESOURCE,
@@ -132,15 +126,16 @@ public class IndexerTest extends AbstractITBatchIndexTest
   @Test
   public void testReIndexDataWithTimestamp() throws Exception
   {
-    final String reindexDatasource = REINDEX_DATASOURCE + "-testReIndexDataWithTimestamp";
-    final String reindexDatasourceWithDruidInputSource = REINDEX_DATASOURCE + "-testReIndexDataWithTimestamp-druidInputSource";
+    final String indexDatasource = dataSource;
+    final String reindexDatasource = EmbeddedClusterApis.createTestDatasourceName();
+    final String reindexDatasourceWithDruidInputSource = EmbeddedClusterApis.createTestDatasourceName();
     try (
-        final Closeable ignored1 = unloader(INDEX_WITH_TIMESTAMP_DATASOURCE + config.getExtraDatasourceNameSuffix());
-        final Closeable ignored2 = unloader(reindexDatasource + config.getExtraDatasourceNameSuffix());
-        final Closeable ignored3 = unloader(reindexDatasourceWithDruidInputSource + config.getExtraDatasourceNameSuffix())
+        final Closeable ignored1 = unloader(indexDatasource);
+        final Closeable ignored2 = unloader(reindexDatasource);
+        final Closeable ignored3 = unloader(reindexDatasourceWithDruidInputSource)
     ) {
       doIndexTest(
-          INDEX_WITH_TIMESTAMP_DATASOURCE,
+          indexDatasource,
           INDEX_WITH_TIMESTAMP_TASK,
           INDEX_WITH_TIMESTAMP_QUERIES_RESOURCE,
           false,
@@ -149,14 +144,14 @@ public class IndexerTest extends AbstractITBatchIndexTest
           new Pair<>(false, false)
       );
       doReindexTest(
-          INDEX_WITH_TIMESTAMP_DATASOURCE,
+          indexDatasource,
           reindexDatasource,
           REINDEX_TASK,
           REINDEX_QUERIES_RESOURCE,
           new Pair<>(false, false)
       );
       doReindexTest(
-          INDEX_WITH_TIMESTAMP_DATASOURCE,
+          indexDatasource,
           reindexDatasourceWithDruidInputSource,
           REINDEX_TASK_WITH_DRUID_INPUT_SOURCE,
           REINDEX_QUERIES_RESOURCE,
@@ -200,9 +195,9 @@ public class IndexerTest extends AbstractITBatchIndexTest
     final String reindexDatasource = MERGE_REINDEX_DATASOURCE + "-testMergeIndexData";
     final String reindexDatasourceWithDruidInputSource = MERGE_REINDEX_DATASOURCE + "-testMergeReIndexData-druidInputSource";
     try (
-        final Closeable ignored1 = unloader(MERGE_INDEX_DATASOURCE + config.getExtraDatasourceNameSuffix());
-        final Closeable ignored2 = unloader(reindexDatasource + config.getExtraDatasourceNameSuffix());
-        final Closeable ignored3 = unloader(reindexDatasourceWithDruidInputSource + config.getExtraDatasourceNameSuffix())
+        final Closeable ignored1 = unloader(MERGE_INDEX_DATASOURCE);
+        final Closeable ignored2 = unloader(reindexDatasource);
+        final Closeable ignored3 = unloader(reindexDatasourceWithDruidInputSource)
     ) {
       doIndexTest(
           MERGE_INDEX_DATASOURCE,
@@ -238,8 +233,9 @@ public class IndexerTest extends AbstractITBatchIndexTest
   @Test
   public void testIndexDataAwaitSegmentAvailability() throws Exception
   {
+    final String indexDatasource = dataSource;
     try (
-        final Closeable ignored1 = unloader(INDEX_DATASOURCE + config.getExtraDatasourceNameSuffix());
+        final Closeable ignored1 = unloader(indexDatasource);
     ) {
       final Function<String, String> transform = spec -> {
         try {
@@ -255,7 +251,7 @@ public class IndexerTest extends AbstractITBatchIndexTest
       };
 
       doIndexTest(
-          INDEX_DATASOURCE,
+          indexDatasource,
           INDEX_TASK,
           transform,
           INDEX_QUERIES_RESOURCE,
@@ -276,10 +272,11 @@ public class IndexerTest extends AbstractITBatchIndexTest
   @Test
   public void testIndexDataAwaitSegmentAvailabilityFailsButTaskSucceeds() throws Exception
   {
+    final String indexDatasource = dataSource;
     try (
-        final Closeable ignored1 = unloader(INDEX_DATASOURCE + config.getExtraDatasourceNameSuffix());
+        final Closeable ignored1 = unloader(indexDatasource);
     ) {
-      coordinatorClient.postDynamicConfig(DYNAMIC_CONFIG_PAUSED);
+      cluster.callApi().onLeaderCoordinator(c -> c.updateCoordinatorDynamicConfig(DYNAMIC_CONFIG_PAUSED));
       final Function<String, String> transform = spec -> {
         try {
           return StringUtils.replace(
@@ -294,7 +291,7 @@ public class IndexerTest extends AbstractITBatchIndexTest
       };
 
       doIndexTest(
-          INDEX_DATASOURCE,
+          indexDatasource,
           INDEX_TASK,
           transform,
           INDEX_QUERIES_RESOURCE,
@@ -303,10 +300,8 @@ public class IndexerTest extends AbstractITBatchIndexTest
           false,
           new Pair<>(true, false)
       );
-      coordinatorClient.postDynamicConfig(DYNAMIC_CONFIG_DEFAULT);
-      ITRetryUtil.retryUntilTrue(
-          () -> coordinator.areSegmentsLoaded(INDEX_DATASOURCE + config.getExtraDatasourceNameSuffix()), "Segment Load"
-      );
+      cluster.callApi().onLeaderCoordinator(c -> c.updateCoordinatorDynamicConfig(DYNAMIC_CONFIG_DEFAULT));
+      cluster.callApi().waitForAllSegmentsToBeAvailable(dataSource, coordinator);
     }
   }
 
@@ -315,7 +310,7 @@ public class IndexerTest extends AbstractITBatchIndexTest
   public void testIndexWithMergeColumnLimitData() throws Exception
   {
     try (
-        final Closeable ignored1 = unloader(INDEX_WITH_MERGE_COLUMN_LIMIT_DATASOURCE + config.getExtraDatasourceNameSuffix());
+        final Closeable ignored1 = unloader(INDEX_WITH_MERGE_COLUMN_LIMIT_DATASOURCE);
     ) {
       doIndexTest(
           INDEX_WITH_MERGE_COLUMN_LIMIT_DATASOURCE,
@@ -332,7 +327,7 @@ public class IndexerTest extends AbstractITBatchIndexTest
   @Test
   public void testGetLockedIntervals() throws Exception
   {
-    final String datasourceName = GET_LOCKED_INTERVALS + config.getExtraDatasourceNameSuffix();
+    final String datasourceName = GET_LOCKED_INTERVALS;
     try (final Closeable ignored = unloader(datasourceName)) {
       // Submit an Indexing Task
       submitIndexTask(INDEX_TASK, datasourceName);
@@ -343,7 +338,7 @@ public class IndexerTest extends AbstractITBatchIndexTest
       ITRetryUtil.retryUntilFalse(
           () -> {
             lockedIntervals.clear();
-            lockedIntervals.putAll(indexer.getLockedIntervals(lockFilterPolicies));
+            lockedIntervals.putAll(cluster.callApi().onLeaderOverlord(o -> o.findLockedIntervals(lockFilterPolicies)));
             return lockedIntervals.isEmpty();
           },
           "Verify Intervals are Locked"
@@ -356,10 +351,7 @@ public class IndexerTest extends AbstractITBatchIndexTest
           Collections.singletonList(Intervals.of("2013-08-31/2013-09-02"))
       );
 
-      ITRetryUtil.retryUntilTrue(
-          () -> coordinator.areSegmentsLoaded(datasourceName),
-          "Segment Load"
-      );
+      cluster.callApi().waitForAllSegmentsToBeAvailable(dataSource, coordinator);
     }
   }
 

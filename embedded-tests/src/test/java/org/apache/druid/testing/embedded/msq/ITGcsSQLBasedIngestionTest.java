@@ -17,12 +17,14 @@
  * under the License.
  */
 
-package org.apache.druid.testsEx.indexer;
+package org.apache.druid.testing.embedded.msq;
 
 import junitparams.Parameters;
+import junitparams.naming.TestCaseName;
 import org.apache.druid.java.util.common.Pair;
 import org.apache.druid.testsEx.categories.GcsDeepStorage;
 import org.apache.druid.testsEx.config.DruidTestRunner;
+import org.apache.druid.testsEx.indexer.AbstractGcsInputSourceParallelIndexTest;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
@@ -40,12 +42,16 @@ import java.util.List;
 
 @RunWith(DruidTestRunner.class)
 @Category(GcsDeepStorage.class)
-public class ITGcsToGcsParallelIndexTest extends AbstractGcsInputSourceParallelIndexTest
+public class ITGcsSQLBasedIngestionTest extends AbstractGcsInputSourceParallelIndexTest
 {
+  private static final String CLOUD_INGEST_SQL = "/multi-stage-query/wikipedia_cloud_index_msq.sql";
+  private static final String INDEX_QUERIES_FILE = "/multi-stage-query/wikipedia_index_queries.json";
+
   @Test
   @Parameters(method = "resources")
-  public void testGcsIndexData(Pair<String, List<?>> gcsInputSource) throws Exception
+  @TestCaseName("Test_{index} ({0})")
+  public void testSQLBasedBatchIngestion(Pair<String, List<?>> GcsInputSource)
   {
-    doTest(gcsInputSource, new Pair<>(false, false), "google");
+    doMSQTest(GcsInputSource, CLOUD_INGEST_SQL, INDEX_QUERIES_FILE, "google");
   }
 }

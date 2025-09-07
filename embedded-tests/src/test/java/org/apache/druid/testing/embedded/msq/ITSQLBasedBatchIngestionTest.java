@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.druid.testsEx.msq;
+package org.apache.druid.testing.embedded.msq;
 
 import com.google.common.collect.ImmutableMap;
 import junitparams.Parameters;

@@ -17,15 +17,15 @@
  * under the License.
  */
 
-package org.apache.druid.testsEx.indexer;
+package org.apache.druid.testing.embedded.indexer;
 
-import org.apache.druid.testsEx.categories.BatchIndex;
-import org.apache.druid.testsEx.config.DruidTestRunner;
-import org.junit.experimental.categories.Category;
-import org.junit.runner.RunWith;
-
-@RunWith(DruidTestRunner.class)
-@Category(BatchIndex.class)
-public class ITIndexerTest extends IndexerTest
+public interface SqlQueryHelper
 {
+  void testQueriesFromString(String query);
+
+  void testQueriesFromString(String url, String query);
+
+  void testQueriesFromFile(String file);
+
+  void testQueriesFromFile(String url, String file);
 }

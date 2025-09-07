@@ -17,14 +17,14 @@
  * under the License.
  */
 
-package org.apache.druid.testsEx.indexer;
+package org.apache.druid.testing.embedded.indexer;
 
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.testsEx.utils.S3TestUtil;
 import org.junit.After;
-import org.junit.AfterClass;
-import org.junit.Assert;
-import org.junit.BeforeClass;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeAll;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -40,8 +40,8 @@ public abstract class AbstractS3InputSourceParallelIndexTest extends AbstractClo
   private static final Logger LOG = new Logger(AbstractS3InputSourceParallelIndexTest.class);
   private static S3TestUtil s3;
 
-  @BeforeClass
-  public static void uploadDataFilesToS3()
+  @BeforeAll
+  public void uploadDataFilesToS3()
   {
     List<String> filesToUpload = new ArrayList<>();
     String localPath = "resources/data/batch_index/json/";
@@ -55,7 +55,7 @@ public abstract class AbstractS3InputSourceParallelIndexTest extends AbstractClo
     catch (Exception e) {
       LOG.error(e, "Unable to upload files to s3");
       // Fail if exception
-      Assert.fail(e.getMessage());
+      Assertions.fail(e.getMessage());
     }
   }
 
@@ -66,7 +66,7 @@ public abstract class AbstractS3InputSourceParallelIndexTest extends AbstractClo
     s3.deleteFolderFromS3(indexDatasource);
   }
 
-  @AfterClass
+  @AfterAll
   public static void deleteDataFilesFromS3()
   {
     // Deleting uploaded data files

@@ -17,77 +17,47 @@
  * under the License.
  */
 
-package org.apache.druid.testsEx.indexer;
+package org.apache.druid.testing.embedded.indexer;
 
 import com.google.common.collect.ImmutableMap;
 import org.apache.druid.indexer.partitions.DynamicPartitionsSpec;
 import org.apache.druid.java.util.common.Pair;
 import org.apache.druid.java.util.common.StringUtils;
+import org.apache.druid.testsEx.categories.BatchIndex;
+import org.apache.druid.testsEx.config.DruidTestRunner;
+import org.junit.Test;
+import org.junit.experimental.categories.Category;
+import org.junit.runner.RunWith;
 
-import javax.annotation.Nonnull;
 import java.io.Closeable;
-import java.util.Collections;
 import java.util.Map;
-import java.util.UUID;
 import java.util.function.Function;
 
-public abstract class AbstractLocalInputSourceParallelIndexTest extends AbstractITBatchIndexTest
+@RunWith(DruidTestRunner.class)
+@Category(BatchIndex.class)
+public class ITCombiningInputSourceParallelIndexTest extends AbstractITBatchIndexTest
 {
   private static final String INDEX_TASK = "/indexer/wikipedia_local_input_source_index_task.json";
   private static final String INDEX_QUERIES_RESOURCE = "/indexer/wikipedia_index_queries.json";
+  private static final String INDEX_DATASOURCE = "wikipedia_index_test";
 
-  public void doIndexTest(
-      InputFormatDetails inputFormatDetails,
-      Pair<Boolean, Boolean> segmentAvailabilityConfirmationPair
-  ) throws Exception
+  private static final String COMBINING_INDEX_TASK = "/indexer/wikipedia_combining_input_source_index_parallel_task.json";
+  private static final String COMBINING_QUERIES_RESOURCE = "/indexer/wikipedia_combining_input_source_index_queries.json";
+  private static final String COMBINING_INDEX_DATASOURCE = "wikipedia_comb_index_test";
+
+  @Test
+  public void testIndexData() throws Exception
   {
-    doIndexTest(inputFormatDetails, ImmutableMap.of(), segmentAvailabilityConfirmationPair);
-  }
-
-  public void doIndexTest(
-      InputFormatDetails inputFormatDetails,
-      @Nonnull Map<String, Object> extraInputFormatMap,
-      Pair<Boolean, Boolean> segmentAvailabilityConfirmationPair
-  ) throws Exception
-  {
-    doIndexTest(
-        inputFormatDetails,
-        INDEX_TASK,
-        INDEX_QUERIES_RESOURCE,
-        false,
-        Collections.emptyMap(),
-        extraInputFormatMap,
-        segmentAvailabilityConfirmationPair
-    );
-  }
-
-
-  public void doIndexTest(
-      InputFormatDetails inputFormatDetails,
-      String ingestSpecTemplate,
-      String queries,
-      boolean useSqlQueries,
-      @Nonnull Map<String, Object> templateValues,
-      @Nonnull Map<String, Object> extraInputFormatMap,
-      Pair<Boolean, Boolean> segmentAvailabilityConfirmationPair
-  ) throws Exception
-  {
-    final String indexDatasource = "wikipedia_index_test_" + UUID.randomUUID();
-    Map<String, Object> inputFormatMap = new ImmutableMap.Builder<String, Object>().putAll(extraInputFormatMap)
-                                                                 .put("type", inputFormatDetails.getInputFormatType())
-                                                                 .build();
+    Map<String, Object> inputFormatMap = new ImmutableMap
+        .Builder<String, Object>()
+        .put("type", "json")
+        .build();
     try (
-        final Closeable ignored1 = unloader(indexDatasource + config.getExtraDatasourceNameSuffix());
+        final Closeable ignored1 = unloader(INDEX_DATASOURCE + config.getExtraDatasourceNameSuffix());
+        final Closeable ignored2 = unloader(COMBINING_INDEX_DATASOURCE + config.getExtraDatasourceNameSuffix());
     ) {
-      final Function<String, String> sqlInputSourcePropsTransform = spec -> {
+      final Function<String, String> combiningInputSourceSpecTransform = spec -> {
         try {
-          for (Map.Entry<String, Object> entry : templateValues.entrySet()) {
-            spec = StringUtils.replace(
-                spec,
-                "%%" + entry.getKey() + "%%",
-                jsonMapper.writeValueAsString(entry.getValue())
-            );
-          }
           spec = StringUtils.replace(
               spec,
               "%%PARTITIONS_SPEC%%",
@@ -96,12 +66,12 @@ public abstract class AbstractLocalInputSourceParallelIndexTest extends Abstract
           spec = StringUtils.replace(
               spec,
               "%%INPUT_SOURCE_FILTER%%",
-              "*" + inputFormatDetails.getFileExtension()
+              "wikipedia_index_data*"
           );
           spec = StringUtils.replace(
               spec,
               "%%INPUT_SOURCE_BASE_DIR%%",
-              "/resources/data/batch_index" + inputFormatDetails.getFolderSuffix()
+              "/resources/data/batch_index/json"
           );
           spec = StringUtils.replace(
               spec,
@@ -123,6 +93,11 @@ public abstract class AbstractLocalInputSourceParallelIndexTest extends Abstract
               "%%FORCE_GUARANTEED_ROLLUP%%",
               jsonMapper.writeValueAsString(false)
           );
+          spec = StringUtils.replace(
+              spec,
+              "%%COMBINING_DATASOURCE%%",
+              INDEX_DATASOURCE + config.getExtraDatasourceNameSuffix()
+          );
           return spec;
         }
         catch (Exception e) {
@@ -131,15 +106,24 @@ public abstract class AbstractLocalInputSourceParallelIndexTest extends Abstract
       };
 
       doIndexTest(
-          indexDatasource,
-          ingestSpecTemplate,
-          sqlInputSourcePropsTransform,
-          queries,
+          INDEX_DATASOURCE,
+          INDEX_TASK,
+          combiningInputSourceSpecTransform,
+          INDEX_QUERIES_RESOURCE,
           false,
           true,
-          useSqlQueries,
           true,
-          segmentAvailabilityConfirmationPair
+          new Pair<>(false, false)
+      );
+      doIndexTest(
+          COMBINING_INDEX_DATASOURCE,
+          COMBINING_INDEX_TASK,
+          combiningInputSourceSpecTransform,
+          COMBINING_QUERIES_RESOURCE,
+          false,
+          true,
+          true,
+          new Pair<>(false, false)
       );
     }
   }
