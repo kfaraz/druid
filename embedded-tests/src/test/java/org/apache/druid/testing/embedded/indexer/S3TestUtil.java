@@ -19,24 +19,16 @@
 
 package org.apache.druid.testing.embedded.indexer;
 
-import com.amazonaws.ClientConfiguration;
-import com.amazonaws.Protocol;
-import com.amazonaws.auth.AWSCredentials;
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.client.builder.AwsClientBuilder;
 import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.s3.model.DeleteObjectsRequest;
 import com.amazonaws.services.s3.model.DeleteObjectsRequest.KeyVersion;
 import com.amazonaws.services.s3.model.ListObjectsRequest;
 import com.amazonaws.services.s3.model.ObjectListing;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import org.apache.druid.java.util.common.logger.Logger;
+import org.apache.druid.testing.embedded.indexing.Resources;
 
-import java.io.File;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 public class S3TestUtil
@@ -44,56 +36,17 @@ public class S3TestUtil
   private static final Logger LOG = new Logger(S3TestUtil.class);
 
   private final AmazonS3 s3Client;
-  private final String S3_ACCESS_KEY;
-  private final String S3_SECRET_KEY;
-  private final String S3_REGION;
-  private final String S3_CLOUD_PATH;
-  private final String S3_CLOUD_BUCKET;
+  private static final String S3_CLOUD_PATH = "path";
+  private static final String S3_CLOUD_BUCKET = "bucket";
 
   public S3TestUtil(AmazonS3 s3Client)
   {
-    verifyEnvironment();
-    S3_ACCESS_KEY = System.getenv("AWS_ACCESS_KEY_ID");
-    S3_SECRET_KEY = System.getenv("AWS_SECRET_ACCESS_KEY");
-    S3_REGION = System.getenv("AWS_REGION");
-    S3_CLOUD_PATH = System.getenv("DRUID_CLOUD_PATH");
-    S3_CLOUD_BUCKET = System.getenv("DRUID_CLOUD_BUCKET");
     this.s3Client = s3Client;
   }
 
-  /**
-   * Verify required environment variables are set for
-   */
-  public void verifyEnvironment()
+  public void createBucket()
   {
-    String[] envVars = {"DRUID_CLOUD_BUCKET", "DRUID_CLOUD_PATH", "AWS_ACCESS_KEY_ID",
-                        "AWS_SECRET_ACCESS_KEY", "AWS_REGION"};
-    for (String val : envVars) {
-      String envValue = System.getenv(val);
-      if (envValue == null) {
-        LOG.error("%s was not set", val);
-        LOG.error("All of %s MUST be set in the environment", Arrays.toString(envVars));
-      }
-    }
-  }
-
-  /**
-   * Creates a s3Client which will be used for uploading and deleting files from s3
-   */
-  private AmazonS3 s3Client()
-  {
-    AWSCredentials credentials = new BasicAWSCredentials(S3_ACCESS_KEY, S3_SECRET_KEY);
-    ClientConfiguration clientConfig = new ClientConfiguration();
-    clientConfig.setProtocol(Protocol.HTTP);
-    return AmazonS3ClientBuilder
-        .standard()
-        .withCredentials(new AWSStaticCredentialsProvider(credentials))
-        // Setting endpoint to MinIO S3 API endpoint (e.g., "http://localhost:9000")
-        // configured in integration-tests-ex/cases/cluster/Common/dependencies.yaml
-        .withEndpointConfiguration(new AwsClientBuilder.EndpointConfiguration("http://localhost:9000", S3_REGION))
-        .withPathStyleAccessEnabled(true)
-        .withClientConfiguration(clientConfig)
-        .build();
+    s3Client.createBucket(S3_CLOUD_BUCKET);
   }
 
   /**
@@ -111,7 +64,7 @@ public class S3TestUtil
         s3Client.putObject(
             S3_CLOUD_BUCKET,
             s3ObjectPath,
-            new File(file)
+            Resources.getFileForResource(file)
         );
       }
       catch (Exception e) {

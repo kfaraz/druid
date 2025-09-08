@@ -19,6 +19,7 @@
 
 package org.apache.druid.testing.embedded.indexer;
 
+import org.apache.druid.data.input.s3.S3InputSourceDruidModule;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
 import org.apache.druid.testing.embedded.minio.MinIOStorageResource;
@@ -45,19 +46,21 @@ public abstract class AbstractS3InputSourceParallelIndexTest extends AbstractClo
   @Override
   protected void addResources(EmbeddedDruidCluster cluster)
   {
-    cluster.addResource(minIOStorageResource);
+    cluster.addExtension(S3InputSourceDruidModule.class)
+           .addResource(minIOStorageResource);
   }
 
   @BeforeAll
   public void uploadDataFilesToS3()
   {
     List<String> filesToUpload = new ArrayList<>();
-    String localPath = "resources/data/batch_index/json/";
+    String localPath = "data/json/";
     for (String file : fileList()) {
       filesToUpload.add(localPath + file);
     }
     try {
       s3 = new S3TestUtil(minIOStorageResource.getS3Client());
+      s3.createBucket();
       s3.uploadDataFilesToS3(filesToUpload);
     }
     catch (Exception e) {

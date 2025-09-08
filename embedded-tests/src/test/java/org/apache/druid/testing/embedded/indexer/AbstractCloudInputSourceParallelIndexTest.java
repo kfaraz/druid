@@ -42,9 +42,9 @@ public abstract class AbstractCloudInputSourceParallelIndexTest extends Abstract
   private static final String INPUT_SOURCE_URIS_KEY = "uris";
   private static final String INPUT_SOURCE_PREFIXES_KEY = "prefixes";
   private static final String INPUT_SOURCE_OBJECTS_KEY = "objects";
-  private static final String WIKIPEDIA_DATA_1 = "wikipedia_index_data1.json";
-  private static final String WIKIPEDIA_DATA_2 = "wikipedia_index_data2.json";
-  private static final String WIKIPEDIA_DATA_3 = "wikipedia_index_data3.json";
+  private static final String WIKIPEDIA_DATA_1 = "tiny_wiki_1.json";
+  private static final String WIKIPEDIA_DATA_2 = "tiny_wiki_2.json";
+  private static final String WIKIPEDIA_DATA_3 = "tiny_wiki_3.json";
   private static final String GOOGLE = "google";
   private static final String AZURE = "azure";
   private static final String AZURE_V2 = "azureStorage";
@@ -111,7 +111,7 @@ public abstract class AbstractCloudInputSourceParallelIndexTest extends Abstract
 //    } else {
 //      return config.getCloudPath();
 //    }
-    return "bucket";
+    return "path";
   }
 
   public String getCloudBucket(String inputSourceType)

@@ -24,8 +24,6 @@ import com.google.common.collect.ImmutableList;
 import org.apache.commons.io.IOUtils;
 import org.apache.druid.common.utils.IdUtils;
 import org.apache.druid.indexer.TaskStatusPlus;
-import org.apache.druid.java.util.common.StringUtils;
-import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.java.util.common.parsers.CloseableIterator;
 import org.apache.druid.query.aggregation.datasketches.hll.HllSketchModule;
 import org.apache.druid.query.aggregation.datasketches.quantiles.DoublesSketchModule;
@@ -54,13 +52,15 @@ public abstract class AbstractIndexerTest extends EmbeddedClusterTestBase
   protected static class PlaceHolders
   {
     protected static final String DATASOURCE = "%%DATASOURCE%%";
+    protected static final String DATA_DIRECTORY = "%%DATA_DIRECTORY%%";
   }
-
-  private static final Logger LOG = new Logger(AbstractIndexerTest.class);
 
   protected final EmbeddedCoordinator coordinator = new EmbeddedCoordinator()
       .addProperty("druid.manager.segments.useIncrementalCache", "always");
   protected final EmbeddedOverlord overlord = new EmbeddedOverlord();
+  protected final EmbeddedIndexer indexer = new EmbeddedIndexer()
+      .setServerMemory(500_000_000L)
+      .addProperty("druid.worker.capacity", "5");
 
   /**
    * TODO: Get rid of this mapper. Otherwise here there be 🐉🐉🐉
@@ -80,7 +80,7 @@ public abstract class AbstractIndexerTest extends EmbeddedClusterTestBase
         .addExtensions(SketchModule.class, DoublesSketchModule.class, HllSketchModule.class)
         .addServer(coordinator)
         .addServer(overlord)
-        .addServer(new EmbeddedIndexer())
+        .addServer(indexer)
         .addServer(new EmbeddedBroker())
         .addServer(new EmbeddedHistorical())
         .addServer(new EmbeddedRouter());
@@ -103,21 +103,6 @@ public abstract class AbstractIndexerTest extends EmbeddedClusterTestBase
   protected Closeable unloader(final String dataSource)
   {
     return cluster.callApi().createUnloader(dataSource);
-  }
-
-  protected String submitIndexTask(String indexTaskResourceName, final String fullDatasourceName) throws Exception
-  {
-    // Wait for any existing kill tasks to complete before submitting new index task otherwise
-    // kill tasks can fail with interval lock revoked.
-    waitForAllTasksToCompleteForDataSource(fullDatasourceName);
-    final String taskSpecTemplate = getResourceAsString(indexTaskResourceName);
-    final String taskSpec = StringUtils.replace(
-        StringUtils.replace(taskSpecTemplate, "%%DATASOURCE%%", fullDatasourceName),
-        "%%SEGMENT_AVAIL_TIMEOUT_MILLIS%%",
-        jsonMapper.writeValueAsString("0")
-    );
-
-    return submitTask(taskSpec);
   }
 
   protected String submitTask(String taskSpec)

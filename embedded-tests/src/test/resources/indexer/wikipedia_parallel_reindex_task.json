@@ -52,8 +52,8 @@
             "type": "index_parallel",
             "inputSource": {
                 "type": "local",
-                "baseDir": "/resources/data/batch_index/json",
-                "filter": "wikipedia_index_data2*"
+                "baseDir": "%%DATA_DIRECTORY%%/json",
+                "filter": "tiny_wiki2*"
             },
             "inputFormat": {
                 "type": "json"

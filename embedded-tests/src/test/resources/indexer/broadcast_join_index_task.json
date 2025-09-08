@@ -62,7 +62,7 @@
       "inputSource": {
         "type": "local",
         "baseDir": "/resources/data/broadcast/",
-        "filter": "wikipedia_index_data*"
+        "filter": "tiny_wiki*"
       },
       "appendToExisting": false,
       "inputFormat": {

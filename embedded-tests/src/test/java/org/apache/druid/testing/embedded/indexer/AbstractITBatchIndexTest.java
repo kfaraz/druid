@@ -41,6 +41,7 @@ import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.java.util.common.parsers.CloseableIterator;
 import org.apache.druid.rpc.RequestBuilder;
+import org.apache.druid.testing.embedded.indexing.Resources;
 import org.apache.druid.testing.embedded.msq.EmbeddedMSQApis;
 import org.apache.druid.testing.tools.ITRetryUtil;
 import org.apache.druid.timeline.DataSegment;
@@ -112,11 +113,7 @@ public abstract class AbstractITBatchIndexTest extends AbstractIndexerTest
       throw new ISE(e, "could not read query file: %s", filePath);
     }
 
-    fileString = StringUtils.replace(
-        fileString,
-        "%%DATASOURCE%%",
-        datasource
-    );
+    fileString = StringUtils.replace(fileString, PlaceHolders.DATASOURCE, datasource);
 
     return fileString;
   }
@@ -202,6 +199,7 @@ public abstract class AbstractITBatchIndexTest extends AbstractIndexerTest
     LOG.info("Starting Reindex MSQ test for sql path: %s, query path: %s", sqlFilePath, queryFilePath);
 
     String sqlTask = getStringFromFileAndReplaceDatasource(sqlFilePath, datasource);
+    sqlTask = replaceDataDirectoryInSpec(sqlTask);
     sqlTask = StringUtils.replace(
         sqlTask,
         "%%REINDEX_DATASOURCE%%",
@@ -270,13 +268,14 @@ public abstract class AbstractITBatchIndexTest extends AbstractIndexerTest
       Pair<Boolean, Boolean> segmentAvailabilityConfirmationPair
   ) throws IOException
   {
-    final String taskSpec = taskSpecTransform.apply(
+    String taskSpec = taskSpecTransform.apply(
         StringUtils.replace(
             getResourceAsString(indexTaskFilePath),
-            "%%DATASOURCE%%",
+            PlaceHolders.DATASOURCE,
             dataSource
         )
     );
+    taskSpec = replaceDataDirectoryInSpec(taskSpec);
 
     submitTaskAndWait(
         taskSpec,
@@ -319,10 +318,10 @@ public abstract class AbstractITBatchIndexTest extends AbstractIndexerTest
   {
     String taskSpec = StringUtils.replace(
         getResourceAsString(reindexTaskFilePath),
-        "%%DATASOURCE%%",
+        PlaceHolders.DATASOURCE,
         baseDataSource
     );
-
+    taskSpec = replaceDataDirectoryInSpec(taskSpec);
     taskSpec = StringUtils.replace(
         taskSpec,
         "%%REINDEX_DATASOURCE%%",
@@ -350,7 +349,7 @@ public abstract class AbstractITBatchIndexTest extends AbstractIndexerTest
 
       queryResponseTemplate = StringUtils.replace(
           queryResponseTemplate,
-          "%%DATASOURCE%%",
+          PlaceHolders.DATASOURCE,
           reindexDataSource
       );
 
@@ -380,13 +379,14 @@ public abstract class AbstractITBatchIndexTest extends AbstractIndexerTest
       Function<String, String> taskSpecTransform
   ) throws IOException
   {
-    final String taskSpec = taskSpecTransform.apply(
+    String taskSpec = taskSpecTransform.apply(
         StringUtils.replace(
             getResourceAsString(indexTaskFilePath),
-            "%%DATASOURCE%%",
+            PlaceHolders.DATASOURCE,
             dataSource
         )
     );
+    taskSpec = replaceDataDirectoryInSpec(taskSpec);
 
     Pair<Boolean, Boolean> dummyPair = new Pair<>(false, false);
     submitTaskAndWait(taskSpec, dataSource, false, true, dummyPair);
@@ -537,5 +537,32 @@ public abstract class AbstractITBatchIndexTest extends AbstractIndexerTest
         },
         "Segment count check"
     );
+  }
+
+  protected String submitIndexTask(String indexTaskResourceName, final String fullDatasourceName) throws Exception
+  {
+    // Wait for any existing kill tasks to complete before submitting new index task otherwise
+    // kill tasks can fail with interval lock revoked.
+    waitForAllTasksToCompleteForDataSource(fullDatasourceName);
+    final String taskSpecTemplate = getResourceAsString(indexTaskResourceName);
+    String taskSpec = StringUtils.replace(taskSpecTemplate, PlaceHolders.DATASOURCE, fullDatasourceName);
+    taskSpec = replaceDataDirectoryInSpec(taskSpec);
+    taskSpec = StringUtils.replace(
+      taskSpec,
+      "%%SEGMENT_AVAIL_TIMEOUT_MILLIS%%",
+      jsonMapper.writeValueAsString("0")
+  );
+
+    return submitTask(taskSpec);
+  }
+
+  protected static String getDataDirectory()
+  {
+    return Resources.getFileForResource("data").getAbsolutePath();
+  }
+
+  protected String replaceDataDirectoryInSpec(String spec)
+  {
+    return StringUtils.replace(spec, PlaceHolders.DATA_DIRECTORY, getDataDirectory());
   }
 }

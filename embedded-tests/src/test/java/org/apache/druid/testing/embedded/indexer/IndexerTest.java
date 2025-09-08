@@ -60,7 +60,6 @@ public class IndexerTest extends AbstractITBatchIndexTest
   private static final String MERGE_REINDEX_QUERIES_RESOURCE = "/indexer/wikipedia_merge_index_queries.json";
 
   private static final String INDEX_WITH_MERGE_COLUMN_LIMIT_TASK = "/indexer/wikipedia_index_with_merge_column_limit_task.json";
-  private static final String INDEX_WITH_MERGE_COLUMN_LIMIT_DATASOURCE = "wikipedia_index_with_merge_column_limit_test";
 
   private static final CoordinatorDynamicConfig DYNAMIC_CONFIG_PAUSED =
       CoordinatorDynamicConfig.builder().withPauseCoordination(true).build();
@@ -229,15 +228,13 @@ public class IndexerTest extends AbstractITBatchIndexTest
   public void testIndexDataAwaitSegmentAvailability() throws Exception
   {
     final String indexDatasource = dataSource;
-    try (
-        final Closeable ignored1 = unloader(indexDatasource);
-    ) {
+    try (final Closeable ignored1 = unloader(indexDatasource)) {
       final Function<String, String> transform = spec -> {
         try {
           return StringUtils.replace(
               spec,
               "%%SEGMENT_AVAIL_TIMEOUT_MILLIS%%",
-              jsonMapper.writeValueAsString("600000")
+              jsonMapper.writeValueAsString("120000")
           );
         }
         catch (JsonProcessingException e) {
@@ -304,11 +301,9 @@ public class IndexerTest extends AbstractITBatchIndexTest
   @Test
   public void testIndexWithMergeColumnLimitData() throws Exception
   {
-    try (
-        final Closeable ignored1 = unloader(INDEX_WITH_MERGE_COLUMN_LIMIT_DATASOURCE);
-    ) {
+    try (final Closeable ignored1 = unloader(dataSource)) {
       doIndexTest(
-          INDEX_WITH_MERGE_COLUMN_LIMIT_DATASOURCE,
+          dataSource,
           INDEX_WITH_MERGE_COLUMN_LIMIT_TASK,
           INDEX_QUERIES_RESOURCE,
           false,

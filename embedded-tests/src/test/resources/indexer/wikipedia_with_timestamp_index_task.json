@@ -71,9 +71,9 @@
             "inputSource": {
                 "type": "local",
                 "files": [
-                    "/resources/data/batch_index/json/wikipedia_index_data1.json",
-                    "/resources/data/batch_index/json/wikipedia_index_data2.json",
-                    "/resources/data/batch_index/json/wikipedia_index_data3.json"
+                    "%%DATA_DIRECTORY%%/json/tiny_wiki_1.json",
+                    "%%DATA_DIRECTORY%%/json/tiny_wiki_2.json",
+                    "%%DATA_DIRECTORY%%/json/tiny_wiki_3.json"
                 ]
             },
             "inputFormat": {
