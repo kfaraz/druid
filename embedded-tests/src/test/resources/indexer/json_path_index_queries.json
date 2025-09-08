@@ -3,7 +3,7 @@
     "description": "timeseries",
     "query": {
       "queryType": "timeseries",
-      "dataSource": "json_path_index_test",
+      "dataSource": "%%DATASOURCE%%",
       "intervals": [
         "1000/3000"
       ],

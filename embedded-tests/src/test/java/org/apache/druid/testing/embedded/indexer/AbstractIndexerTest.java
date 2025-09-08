@@ -51,17 +51,23 @@ import java.util.stream.Collectors;
 
 public abstract class AbstractIndexerTest extends EmbeddedClusterTestBase
 {
+  protected static class PlaceHolders
+  {
+    protected static final String DATASOURCE = "%%DATASOURCE%%";
+  }
+
   private static final Logger LOG = new Logger(AbstractIndexerTest.class);
 
-  protected final EmbeddedCoordinator coordinator = new EmbeddedCoordinator();
+  protected final EmbeddedCoordinator coordinator = new EmbeddedCoordinator()
+      .addProperty("druid.manager.segments.useIncrementalCache", "always");
   protected final EmbeddedOverlord overlord = new EmbeddedOverlord();
 
   /**
    * TODO: Get rid of this mapper. Otherwise here there be 🐉🐉🐉
    */
   protected ObjectMapper jsonMapper;
-  protected SqlQueryHelper sqlQueryHelper = null;
-  protected SqlQueryHelper queryHelper = null;
+  protected QueryHelper sqlQueryHelper = null;
+  protected QueryHelper queryHelper = null;
 
   @Override
   public EmbeddedDruidCluster createCluster()
@@ -91,6 +97,7 @@ public abstract class AbstractIndexerTest extends EmbeddedClusterTestBase
   public void initJsonMapper()
   {
     this.jsonMapper = overlord.bindings().jsonMapper();
+    this.queryHelper = new QueryHelper(cluster, jsonMapper);
   }
 
   protected Closeable unloader(final String dataSource)

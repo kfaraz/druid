@@ -1,9 +1,9 @@
 {
   "type": "index",
-  "dataSource": "json_path_index_test",
+  "dataSource": "%%DATASOURCE%%",
   "spec": {
     "dataSchema": {
-      "dataSource": "json_path_index_test",
+      "dataSource": "%%DATASOURCE%%",
       "timestampSpec": {
         "column": "timestamp",
         "format": "iso"

@@ -353,16 +353,24 @@ public class IndexerTest extends AbstractITBatchIndexTest
   @Test
   public void testJsonFunctions() throws Exception
   {
-    final String taskSpec = getResourceAsString("/indexer/json_path_index_task.json");
+    final String taskSpec = StringUtils.replace(
+        getResourceAsString("/indexer/json_path_index_task.json"),
+        PlaceHolders.DATASOURCE,
+        dataSource
+    );
 
     submitTaskAndWait(
         taskSpec,
-        "json_path_index_test",
+        dataSource,
         false,
         true,
         new Pair<>(false, false)
     );
 
-    doTestQuery("json_path_index_test", "/indexer/json_path_index_queries.json");
+    cluster.callApi().verifySqlQuery(
+        "SELECT __time, \"len\", \"min\", \"max\", \"sum\" FROM %s",
+        dataSource,
+        "2013-08-31T01:02:33.000Z,5,0,4,10"
+    );
   }
 }
