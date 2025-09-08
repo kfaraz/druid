@@ -28,8 +28,8 @@ import org.apache.druid.server.coordinator.CoordinatorDynamicConfig;
 import org.apache.druid.testing.embedded.EmbeddedClusterApis;
 import org.apache.druid.testing.tools.ITRetryUtil;
 import org.joda.time.Interval;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
 
 import java.io.Closeable;
 import java.util.Collections;
@@ -54,17 +54,13 @@ public class IndexerTest extends AbstractITBatchIndexTest
 
   private static final String MERGE_INDEX_TASK = "/indexer/wikipedia_merge_index_task.json";
   private static final String MERGE_INDEX_QUERIES_RESOURCE = "/indexer/wikipedia_merge_index_queries.json";
-  private static final String MERGE_INDEX_DATASOURCE = "wikipedia_merge_index_test";
 
   private static final String MERGE_REINDEX_TASK = "/indexer/wikipedia_merge_reindex_task.json";
   private static final String MERGE_REINDEX_TASK_WITH_DRUID_INPUT_SOURCE = "/indexer/wikipedia_merge_reindex_druid_input_source_task.json";
   private static final String MERGE_REINDEX_QUERIES_RESOURCE = "/indexer/wikipedia_merge_index_queries.json";
-  private static final String MERGE_REINDEX_DATASOURCE = "wikipedia_merge_reindex_test";
 
   private static final String INDEX_WITH_MERGE_COLUMN_LIMIT_TASK = "/indexer/wikipedia_index_with_merge_column_limit_task.json";
   private static final String INDEX_WITH_MERGE_COLUMN_LIMIT_DATASOURCE = "wikipedia_index_with_merge_column_limit_test";
-
-  private static final String GET_LOCKED_INTERVALS = "wikipedia_index_get_locked_intervals_test";
 
   private static final CoordinatorDynamicConfig DYNAMIC_CONFIG_PAUSED =
       CoordinatorDynamicConfig.builder().withPauseCoordination(true).build();
@@ -165,7 +161,7 @@ public class IndexerTest extends AbstractITBatchIndexTest
   {
     Pair<Boolean, Boolean> dummyPair = new Pair<>(false, false);
     final String fullBaseDatasourceName = "nonExistingDatasource2904";
-    final String fullReindexDatasourceName = "newDatasource123";
+    final String fullReindexDatasourceName = dataSource;
 
     String taskSpec = StringUtils.replace(
         getResourceAsString(REINDEX_TASK_WITH_DRUID_INPUT_SOURCE),
@@ -192,15 +188,14 @@ public class IndexerTest extends AbstractITBatchIndexTest
   @Test
   public void testMERGEIndexData() throws Exception
   {
-    final String reindexDatasource = MERGE_REINDEX_DATASOURCE + "-testMergeIndexData";
-    final String reindexDatasourceWithDruidInputSource = MERGE_REINDEX_DATASOURCE + "-testMergeReIndexData-druidInputSource";
+    final String reindexDatasource = dataSource;
+    final String reindexDatasourceWithDruidInputSource = EmbeddedClusterApis.createTestDatasourceName();
     try (
-        final Closeable ignored1 = unloader(MERGE_INDEX_DATASOURCE);
         final Closeable ignored2 = unloader(reindexDatasource);
         final Closeable ignored3 = unloader(reindexDatasourceWithDruidInputSource)
     ) {
       doIndexTest(
-          MERGE_INDEX_DATASOURCE,
+          reindexDatasource,
           MERGE_INDEX_TASK,
           MERGE_INDEX_QUERIES_RESOURCE,
           false,
@@ -209,14 +204,14 @@ public class IndexerTest extends AbstractITBatchIndexTest
           new Pair<>(false, false)
       );
       doReindexTest(
-          MERGE_INDEX_DATASOURCE,
+          reindexDatasource,
           reindexDatasource,
           MERGE_REINDEX_TASK,
           MERGE_REINDEX_QUERIES_RESOURCE,
           new Pair<>(false, false)
       );
       doReindexTest(
-          MERGE_INDEX_DATASOURCE,
+          reindexDatasource,
           reindexDatasourceWithDruidInputSource,
           MERGE_REINDEX_TASK_WITH_DRUID_INPUT_SOURCE,
           MERGE_INDEX_QUERIES_RESOURCE,
@@ -327,7 +322,7 @@ public class IndexerTest extends AbstractITBatchIndexTest
   @Test
   public void testGetLockedIntervals() throws Exception
   {
-    final String datasourceName = GET_LOCKED_INTERVALS;
+    final String datasourceName = dataSource;
     try (final Closeable ignored = unloader(datasourceName)) {
       // Submit an Indexing Task
       submitIndexTask(INDEX_TASK, datasourceName);
@@ -345,8 +340,8 @@ public class IndexerTest extends AbstractITBatchIndexTest
       );
 
       // Verify the locked intervals for this datasource
-      Assert.assertEquals(lockedIntervals.size(), 1);
-      Assert.assertEquals(
+      Assertions.assertEquals(lockedIntervals.size(), 1);
+      Assertions.assertEquals(
           lockedIntervals.get(datasourceName),
           Collections.singletonList(Intervals.of("2013-08-31/2013-09-02"))
       );

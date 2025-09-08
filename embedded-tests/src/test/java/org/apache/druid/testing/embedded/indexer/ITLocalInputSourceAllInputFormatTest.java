@@ -22,17 +22,11 @@ package org.apache.druid.testing.embedded.indexer;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import org.apache.druid.java.util.common.Pair;
-import org.apache.druid.testsEx.categories.InputFormat;
-import org.apache.druid.testsEx.config.DruidTestRunner;
-import org.junit.Test;
-import org.junit.experimental.categories.Category;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
-@RunWith(DruidTestRunner.class)
-@Category(InputFormat.class)
 public class ITLocalInputSourceAllInputFormatTest extends AbstractLocalInputSourceParallelIndexTest
 {
   @Test

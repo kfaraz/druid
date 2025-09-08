@@ -103,26 +103,30 @@ public abstract class AbstractCloudInputSourceParallelIndexTest extends Abstract
 
   public String getCloudPath(String inputSourceType)
   {
-    if (GOOGLE.equals(inputSourceType)) {
-      return config.getProperty(GOOGLE_PREFIX);
-    } else if (AZURE_V2.equals(inputSourceType)) {
-      return config.getProperty(AZURE_CONTAINER) + "/" + config.getCloudPath();
-    } else {
-      return config.getCloudPath();
-    }
+    // TODO: fix this
+//    if (GOOGLE.equals(inputSourceType)) {
+//      return config.getProperty(GOOGLE_PREFIX);
+//    } else if (AZURE_V2.equals(inputSourceType)) {
+//      return config.getProperty(AZURE_CONTAINER) + "/" + config.getCloudPath();
+//    } else {
+//      return config.getCloudPath();
+//    }
+    return "bucket";
   }
 
   public String getCloudBucket(String inputSourceType)
   {
-    if (GOOGLE.equals(inputSourceType)) {
-      return config.getProperty(GOOGLE_BUCKET);
-    } else if (AZURE.equals(inputSourceType)) {
-      return config.getProperty(AZURE_CONTAINER);
-    } else if (AZURE_V2.equals(inputSourceType)) {
-      return config.getProperty(AZURE_STORAGE_ACCOUNT);
-    } else {
-      return config.getCloudBucket();
-    }
+    // TODO: fix this
+//    if (GOOGLE.equals(inputSourceType)) {
+//      return config.getProperty(GOOGLE_BUCKET);
+//    } else if (AZURE.equals(inputSourceType)) {
+//      return config.getProperty(AZURE_CONTAINER);
+//    } else if (AZURE_V2.equals(inputSourceType)) {
+//      return config.getProperty(AZURE_STORAGE_ACCOUNT);
+//    } else {
+//      return config.getCloudBucket();
+//    }
+    return "bucket";
   }
 
   /**

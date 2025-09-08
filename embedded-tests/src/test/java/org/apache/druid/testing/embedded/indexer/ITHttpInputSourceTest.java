@@ -20,18 +20,11 @@
 package org.apache.druid.testing.embedded.indexer;
 
 import org.apache.druid.java.util.common.Pair;
-import org.apache.druid.testsEx.categories.InputSource;
-import org.apache.druid.testsEx.config.DruidTestRunner;
-import org.junit.Test;
-import org.junit.experimental.categories.Category;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.Test;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.util.UUID;
 
-@RunWith(DruidTestRunner.class)
-@Category(InputSource.class)
 public class ITHttpInputSourceTest extends AbstractITBatchIndexTest
 {
   private static final String INDEX_TASK = "/indexer/wikipedia_http_inputsource_task.json";
@@ -40,8 +33,8 @@ public class ITHttpInputSourceTest extends AbstractITBatchIndexTest
   @Test
   public void doTest() throws IOException
   {
-    final String indexDatasource = "wikipedia_http_inputsource_test_" + UUID.randomUUID();
-    try (final Closeable ignored1 = unloader(indexDatasource + config.getExtraDatasourceNameSuffix())) {
+    final String indexDatasource = dataSource;
+    try (final Closeable ignored1 = unloader(indexDatasource)) {
       doIndexTest(
           indexDatasource,
           INDEX_TASK,

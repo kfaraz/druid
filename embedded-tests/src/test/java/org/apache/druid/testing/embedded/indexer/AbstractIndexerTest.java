@@ -27,7 +27,9 @@ import org.apache.druid.indexer.TaskStatusPlus;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.java.util.common.parsers.CloseableIterator;
-import org.apache.druid.segment.TestHelper;
+import org.apache.druid.query.aggregation.datasketches.hll.HllSketchModule;
+import org.apache.druid.query.aggregation.datasketches.quantiles.DoublesSketchModule;
+import org.apache.druid.query.aggregation.datasketches.theta.SketchModule;
 import org.apache.druid.testing.embedded.EmbeddedBroker;
 import org.apache.druid.testing.embedded.EmbeddedClusterApis;
 import org.apache.druid.testing.embedded.EmbeddedCoordinator;
@@ -37,6 +39,7 @@ import org.apache.druid.testing.embedded.EmbeddedIndexer;
 import org.apache.druid.testing.embedded.EmbeddedOverlord;
 import org.apache.druid.testing.embedded.EmbeddedRouter;
 import org.apache.druid.testing.embedded.junit5.EmbeddedClusterTestBase;
+import org.junit.jupiter.api.BeforeAll;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -56,7 +59,7 @@ public abstract class AbstractIndexerTest extends EmbeddedClusterTestBase
   /**
    * TODO: Get rid of this mapper. Otherwise here there be 🐉🐉🐉
    */
-  protected final ObjectMapper jsonMapper = TestHelper.JSON_MAPPER;
+  protected ObjectMapper jsonMapper;
   protected SqlQueryHelper sqlQueryHelper = null;
   protected SqlQueryHelper queryHelper = null;
 
@@ -67,6 +70,8 @@ public abstract class AbstractIndexerTest extends EmbeddedClusterTestBase
     addResources(cluster);
 
     cluster
+        .useLatchableEmitter()
+        .addExtensions(SketchModule.class, DoublesSketchModule.class, HllSketchModule.class)
         .addServer(coordinator)
         .addServer(overlord)
         .addServer(new EmbeddedIndexer())
@@ -80,6 +85,12 @@ public abstract class AbstractIndexerTest extends EmbeddedClusterTestBase
   protected void addResources(EmbeddedDruidCluster cluster)
   {
 
+  }
+
+  @BeforeAll
+  public void initJsonMapper()
+  {
+    this.jsonMapper = overlord.bindings().jsonMapper();
   }
 
   protected Closeable unloader(final String dataSource)
