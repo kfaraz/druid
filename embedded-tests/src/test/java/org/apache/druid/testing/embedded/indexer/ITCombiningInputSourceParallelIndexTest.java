@@ -61,12 +61,12 @@ public class ITCombiningInputSourceParallelIndexTest extends AbstractITBatchInde
           spec = StringUtils.replace(
               spec,
               "%%INPUT_SOURCE_FILTER%%",
-              "wikipedia_index_data*"
+              "tiny_wiki*"
           );
           spec = StringUtils.replace(
               spec,
               "%%INPUT_SOURCE_BASE_DIR%%",
-              "/resources/data/batch_index/json"
+              getDataDirectory() + "/json"
           );
           spec = StringUtils.replace(
               spec,
