@@ -556,6 +556,9 @@ public abstract class AbstractITBatchIndexTest extends AbstractIndexerTest
     return submitTask(taskSpec);
   }
 
+  /**
+   * @return Absolute path of the {@code data} resource directory.
+   */
   protected static String getDataDirectory()
   {
     return Resources.getFileForResource("data").getAbsolutePath();

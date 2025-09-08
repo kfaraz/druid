@@ -71,7 +71,7 @@
         "delegates": [
           {
             "type": "local",
-            "baseDir": "/resources/indexer",
+            "baseDir": "%%DATA_DIRECTORY%%/json",
             "filter": "wikipedia_combining_index_data.json"
           },
           {
