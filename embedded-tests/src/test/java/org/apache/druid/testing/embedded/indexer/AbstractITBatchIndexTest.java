@@ -23,14 +23,11 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.google.common.collect.FluentIterable;
 import com.google.common.collect.ImmutableList;
 import org.apache.commons.io.IOUtils;
-import org.apache.druid.common.utils.IdUtils;
 import org.apache.druid.indexer.TaskStatusPlus;
 import org.apache.druid.indexer.report.IngestionStatsAndErrors;
 import org.apache.druid.indexer.report.IngestionStatsAndErrorsTaskReport;
 import org.apache.druid.indexer.report.TaskContextReport;
 import org.apache.druid.indexer.report.TaskReport;
-import org.apache.druid.indexing.common.task.Task;
-import org.apache.druid.indexing.common.task.TaskBuilder;
 import org.apache.druid.indexing.common.task.batch.parallel.PartialDimensionCardinalityTask;
 import org.apache.druid.indexing.common.task.batch.parallel.PartialDimensionDistributionTask;
 import org.apache.druid.indexing.common.task.batch.parallel.PartialGenericSegmentMergeTask;
@@ -492,19 +489,6 @@ public abstract class AbstractITBatchIndexTest extends AbstractIndexerTest
     if (waitForSegmentsToLoad) {
       cluster.callApi().waitForAllSegmentsToBeAvailable(dataSourceName, coordinator);
     }
-  }
-
-  protected void runTask(
-      TaskBuilder<?, ?, ?, ?> taskBuilder,
-      String dataSource
-  )
-  {
-    final String taskId = IdUtils.getRandomId();
-    final Task task = taskBuilder.dataSource(dataSource).withId(taskId);
-    cluster.callApi().runTask(task, overlord);
-    cluster.callApi().waitForAllSegmentsToBeAvailable(dataSource, coordinator);
-
-    // TODO: count subtasks?
   }
 
   private long countCompleteSubTasks(final String dataSource, final boolean perfectRollup)
