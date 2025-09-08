@@ -20,9 +20,10 @@
 package org.apache.druid.testing.embedded.indexer;
 
 import org.apache.druid.java.util.common.logger.Logger;
+import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
 import org.apache.druid.testing.embedded.minio.MinIOStorageResource;
-import org.junit.After;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 
@@ -40,6 +41,12 @@ public abstract class AbstractS3InputSourceParallelIndexTest extends AbstractClo
   private static final Logger LOG = new Logger(AbstractS3InputSourceParallelIndexTest.class);
   private final MinIOStorageResource minIOStorageResource = new MinIOStorageResource();
   private S3TestUtil s3;
+
+  @Override
+  protected void addResources(EmbeddedDruidCluster cluster)
+  {
+    cluster.addResource(minIOStorageResource);
+  }
 
   @BeforeAll
   public void uploadDataFilesToS3()
@@ -60,7 +67,7 @@ public abstract class AbstractS3InputSourceParallelIndexTest extends AbstractClo
     }
   }
 
-  @After
+  @AfterEach
   public void deleteSegmentsFromS3()
   {
     // Deleting folder created for storing segments (by druid) after test is completed

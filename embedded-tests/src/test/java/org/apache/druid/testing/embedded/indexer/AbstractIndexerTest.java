@@ -63,14 +63,23 @@ public abstract class AbstractIndexerTest extends EmbeddedClusterTestBase
   @Override
   public EmbeddedDruidCluster createCluster()
   {
-    return EmbeddedDruidCluster
-        .withEmbeddedDerbyAndZookeeper()
+    final EmbeddedDruidCluster cluster = EmbeddedDruidCluster.withEmbeddedDerbyAndZookeeper();
+    addResources(cluster);
+
+    cluster
         .addServer(coordinator)
         .addServer(overlord)
         .addServer(new EmbeddedIndexer())
         .addServer(new EmbeddedBroker())
         .addServer(new EmbeddedHistorical())
         .addServer(new EmbeddedRouter());
+
+    return cluster;
+  }
+
+  protected void addResources(EmbeddedDruidCluster cluster)
+  {
+
   }
 
   protected Closeable unloader(final String dataSource)
