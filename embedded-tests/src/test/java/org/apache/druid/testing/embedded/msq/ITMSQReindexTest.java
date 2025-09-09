@@ -24,6 +24,7 @@ import org.apache.commons.io.FilenameUtils;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.msq.util.MultiStageQueryContext;
 import org.apache.druid.query.groupby.GroupByQueryConfig;
+import org.apache.druid.testing.embedded.EmbeddedClusterApis;
 import org.apache.druid.testing.embedded.indexer.AbstractITBatchIndexTest;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -51,8 +52,8 @@ public class ITMSQReindexTest extends AbstractITBatchIndexTest
   @ParameterizedTest(name = "Test_{index} ({0}, {1}, {2})")
   public void testMSQDruidInputSource(String sqlFileName, String reIndexSqlFileName, String reIndexQueryFileName)
   {
-    String indexDatasource = FilenameUtils.removeExtension(sqlFileName);
-    String reindexDatasource = FilenameUtils.removeExtension(reIndexSqlFileName);
+    final String indexDatasource = dataSource;
+    final String reindexDatasource = EmbeddedClusterApis.createTestDatasourceName();
     Map<String, Object> context = ImmutableMap.of(MultiStageQueryContext.CTX_FINALIZE_AGGREGATIONS, false,
                                                   MultiStageQueryContext.CTX_MAX_NUM_TASKS, 5,
                                                   GroupByQueryConfig.CTX_KEY_ENABLE_MULTI_VALUE_UNNESTING, false);

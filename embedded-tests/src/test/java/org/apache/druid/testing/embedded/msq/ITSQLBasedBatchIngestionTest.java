@@ -20,7 +20,6 @@
 package org.apache.druid.testing.embedded.msq;
 
 import com.google.common.collect.ImmutableMap;
-import org.apache.commons.io.FilenameUtils;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.testing.embedded.indexer.AbstractITBatchIndexTest;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -56,7 +55,7 @@ public class ITSQLBasedBatchIngestionTest extends AbstractITBatchIndexTest
       runMSQTaskandTestQueries(
           MSQ_TASKS_DIR + sqlFileName,
           MSQ_TASKS_DIR + queryFileName,
-          FilenameUtils.removeExtension(sqlFileName),
+          dataSource,
           ImmutableMap.of("finalizeAggregations", false,
                           "maxNumTasks", 5,
                           "groupByEnableMultiValueUnnesting", false));

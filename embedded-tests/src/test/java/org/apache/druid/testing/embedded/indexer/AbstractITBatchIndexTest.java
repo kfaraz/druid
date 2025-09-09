@@ -114,6 +114,7 @@ public abstract class AbstractITBatchIndexTest extends AbstractIndexerTest
     }
 
     fileString = StringUtils.replace(fileString, PlaceHolders.DATASOURCE, datasource);
+    fileString = StringUtils.replace(fileString, PlaceHolders.DATA_DIRECTORY, getDataDirectory());
 
     return fileString;
   }

@@ -33,7 +33,7 @@ public class QueryWithResults extends AbstractQueryWithResults<Query>
       @JsonProperty("query") Query query,
       @JsonProperty("description") String description,
       @JsonProperty("expectedResults") List<Map<String, Object>> expectedResults,
-      @JsonProperty("fieldsTotest") List<String> fieldsToTest
+      @JsonProperty("fieldsToTest") List<String> fieldsToTest
   )
   {
     super(query, description, expectedResults, fieldsToTest);

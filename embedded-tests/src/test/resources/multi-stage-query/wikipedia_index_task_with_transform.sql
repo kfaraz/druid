@@ -1,7 +1,7 @@
 REPLACE INTO "%%DATASOURCE%%" OVERWRITE ALL
 WITH "source" AS (SELECT * FROM TABLE(
   EXTERN(
-    '{"type":"local","baseDir":"/resources/data/batch_index/json","filter":"wikipedia_index_data*"}',
+    '{"type":"local","baseDir":"%%DATA_DIRECTORY%%/json","filter":"tiny_wiki*"}',
     '{"type":"json"}',
     '[{"name":"timestamp","type":"string"},{"name":"page","type":"string"},{"name":"language","type":"string"},{"name":"user","type":"string"},{"name":"unpatrolled","type":"string"},{"name":"robot","type":"string"},{"name":"anonymous","type":"string"},{"name":"namespace","type":"string"},{"name":"continent","type":"string"},{"name":"country","type":"string"},{"name":"region","type":"string"},{"name":"city","type":"string"},{"name":"added","type":"double"},{"name":"triple-added","type":"double"},{"name":"deleted","type":"double"},{"name":"delta","type":"double"}]'
   )
