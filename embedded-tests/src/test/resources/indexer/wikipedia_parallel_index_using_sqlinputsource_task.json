@@ -69,11 +69,11 @@
       "inputSource": {
         "type": "sql",
         "database": {
-          "type": "mysql",
+          "type": "postgresql",
           "connectorConfig": {
-            "connectURI": "jdbc:mysql://metadata/druid",
-            "user": "druid",
-            "password": "diurd"
+            "connectURI": "%%CONNECT_URI%%",
+            "user": "%%USERNAME%%",
+            "password": "%%PASSWORD%%"
           }
         },
         "sqls": %%SQL_QUERY%%

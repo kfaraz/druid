@@ -23,10 +23,17 @@ import com.google.common.collect.ImmutableList;
 import org.apache.druid.indexer.partitions.DynamicPartitionsSpec;
 import org.apache.druid.java.util.common.Pair;
 import org.apache.druid.java.util.common.StringUtils;
+import org.apache.druid.metadata.storage.postgresql.PostgreSQLMetadataStorageModule;
+import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
+import org.apache.druid.testing.embedded.psql.PostgreSQLMetadataResource;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.Closeable;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.Statement;
 import java.util.List;
 import java.util.function.Function;
 
@@ -34,6 +41,20 @@ public class ITSqlInputSourceTest extends AbstractITBatchIndexTest
 {
   private static final String INDEX_TASK = "/indexer/wikipedia_parallel_index_using_sqlinputsource_task.json";
   private static final String INDEX_QUERIES_RESOURCE = "/indexer/wikipedia_index_queries.json";
+
+  private String connectUri;
+
+  /**
+   * PSql database used only as SQL input source and not as Druid metadata store.
+   */
+  private final PostgreSQLMetadataResource psql = new PostgreSQLMetadataResource()
+  {
+    @Override
+    public void onStarted(EmbeddedDruidCluster cluster)
+    {
+      connectUri = createConnectURI(cluster);
+    }
+  };
 
   public static Object[][] resources()
   {
@@ -57,6 +78,29 @@ public class ITSqlInputSourceTest extends AbstractITBatchIndexTest
     };
   }
 
+  @Override
+  protected void addResources(EmbeddedDruidCluster cluster)
+  {
+    cluster.addResource(psql)
+           .addExtension(PostgreSQLMetadataStorageModule.class);
+  }
+
+  @BeforeAll
+  public void loadDataIntoSqlDatabase() throws Exception
+  {
+    try (Connection conn = DriverManager.getConnection(connectUri, psql.getUsername(), psql.getPassword())) {
+      final String sql = getResourceAsString("/sql/sql_input_source_sample_data.sql");
+      try (Statement stmt = conn.createStatement()) {
+        for (String statement : sql.split(";\n")) {
+          String trimmed = statement.trim();
+          if (!trimmed.isEmpty() && !trimmed.startsWith("--")) {
+            stmt.execute(trimmed);
+          }
+        }
+      }
+    }
+  }
+
   @ParameterizedTest
   @MethodSource("resources")
   public void testIndexData(List<String> sqlQueries) throws Exception
@@ -72,6 +116,9 @@ public class ITSqlInputSourceTest extends AbstractITBatchIndexTest
               "%%PARTITIONS_SPEC%%",
               jsonMapper.writeValueAsString(new DynamicPartitionsSpec(null, null))
           );
+          spec = StringUtils.replace(spec, "%%CONNECT_URI%%", connectUri);
+          spec = StringUtils.replace(spec, "%%USERNAME%%", psql.getUsername());
+          spec = StringUtils.replace(spec, "%%PASSWORD%%", psql.getPassword());
           return StringUtils.replace(
               spec,
               "%%SQL_QUERY%%",

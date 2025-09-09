@@ -89,7 +89,7 @@ public abstract class AbstractIndexerTest extends EmbeddedClusterTestBase
 
   protected void addResources(EmbeddedDruidCluster cluster)
   {
-
+    // Used by test classes to add extensions
   }
 
   @BeforeAll
