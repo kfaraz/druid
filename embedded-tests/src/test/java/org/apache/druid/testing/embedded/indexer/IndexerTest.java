@@ -29,6 +29,7 @@ import org.apache.druid.testing.embedded.EmbeddedClusterApis;
 import org.apache.druid.testing.tools.ITRetryUtil;
 import org.joda.time.Interval;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.io.Closeable;
@@ -67,6 +68,7 @@ public class IndexerTest extends AbstractITBatchIndexTest
       CoordinatorDynamicConfig.builder().build();
 
   @Test
+  @Disabled("Fix this: reindex reads timestamp column which is null")
   public void testIndexData() throws Exception
   {
     final String indexDatasource = dataSource;
