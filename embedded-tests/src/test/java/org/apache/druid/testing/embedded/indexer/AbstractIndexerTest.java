@@ -60,10 +60,11 @@ public abstract class AbstractIndexerTest extends EmbeddedClusterTestBase
   protected final EmbeddedOverlord overlord = new EmbeddedOverlord();
   protected final EmbeddedIndexer indexer = new EmbeddedIndexer()
       .setServerMemory(500_000_000L)
-      .addProperty("druid.worker.capacity", "5");
+      .addProperty("druid.worker.capacity", "5")
+      .addProperty("druid.segment.handoff.pollDuration", "PT0.1s");
 
   /**
-   * TODO: Get rid of this mapper. Otherwise here there be 🐉🐉🐉
+   * Remove usages of this mapper and use TaskBuilder instead.
    */
   protected ObjectMapper jsonMapper;
   protected QueryHelper queryHelper = null;
@@ -80,7 +81,7 @@ public abstract class AbstractIndexerTest extends EmbeddedClusterTestBase
         .addServer(coordinator)
         .addServer(overlord)
         .addServer(indexer)
-        .addServer(new EmbeddedBroker())
+        .addServer(new EmbeddedBroker().addProperty("druid.sql.planner.metadataRefreshPeriod", "PT0.1s"))
         .addServer(new EmbeddedHistorical())
         .addServer(new EmbeddedRouter());
 
@@ -104,13 +105,16 @@ public abstract class AbstractIndexerTest extends EmbeddedClusterTestBase
     return cluster.callApi().createUnloader(dataSource);
   }
 
+  /**
+   * Submits the given task payload to the Overlord.
+   * This method will be updated later to use TaskBuilder instead.
+   */
   protected String submitTask(String taskSpec)
   {
     final String taskID = IdUtils.getRandomId();
     final Map<String, Object> taskPayload = EmbeddedClusterApis.deserializeJsonToMap(taskSpec);
     taskPayload.put("id", taskID);
 
-    // TODO: Try to use TaskBuilder, otherwise 🐉🐉🐉
     cluster.callApi().onLeaderOverlord(o -> o.runTask(taskID, taskPayload));
     return taskID;
   }

@@ -92,7 +92,8 @@
         "maxNumFiles": 1
       },
       "forceGuaranteedRollup": %%FORCE_GUARANTEED_ROLLUP%%,
-      "partitionsSpec": %%PARTITIONS_SPEC%%
+      "partitionsSpec": %%PARTITIONS_SPEC%%,
+      "logParseExceptions": true
     }
   }
 }
