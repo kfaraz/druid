@@ -21,11 +21,7 @@ package org.apache.druid.testing.embedded.indexer;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import org.apache.druid.data.input.avro.AvroExtensionsModule;
-import org.apache.druid.data.input.orc.OrcExtensionsModule;
-import org.apache.druid.data.input.parquet.ParquetExtensionsModule;
 import org.apache.druid.java.util.common.Pair;
-import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
@@ -36,16 +32,6 @@ public class ITLocalInputSourceAllFormatSchemalessTest extends AbstractLocalInpu
 {
   private static final String INDEX_TASK = "/indexer/wikipedia_local_input_source_index_task_schemaless.json";
   private static final String INDEX_QUERIES_RESOURCE = "/indexer/wikipedia_index_schemaless_queries.json";
-
-  @Override
-  protected void addResources(EmbeddedDruidCluster cluster)
-  {
-    cluster.addExtensions(
-        AvroExtensionsModule.class,
-        ParquetExtensionsModule.class,
-        OrcExtensionsModule.class
-    );
-  }
 
   @Test
   public void testAvroInputFormatIndexDataIngestionSpecWithFileSchemaSchemaless() throws Exception

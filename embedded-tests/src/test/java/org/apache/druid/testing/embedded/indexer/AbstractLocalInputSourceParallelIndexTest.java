@@ -20,9 +20,13 @@
 package org.apache.druid.testing.embedded.indexer;
 
 import com.google.common.collect.ImmutableMap;
+import org.apache.druid.data.input.avro.AvroExtensionsModule;
+import org.apache.druid.data.input.orc.OrcExtensionsModule;
+import org.apache.druid.data.input.parquet.ParquetExtensionsModule;
 import org.apache.druid.indexer.partitions.DynamicPartitionsSpec;
 import org.apache.druid.java.util.common.Pair;
 import org.apache.druid.java.util.common.StringUtils;
+import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
 
 import javax.annotation.Nonnull;
 import java.io.Closeable;
@@ -32,8 +36,18 @@ import java.util.function.Function;
 
 public abstract class AbstractLocalInputSourceParallelIndexTest extends AbstractITBatchIndexTest
 {
-  private static final String INDEX_TASK = "/indexer/wikipedia_local_input_source_index_task.json";
-  private static final String INDEX_QUERIES_RESOURCE = "/indexer/wikipedia_index_queries.json";
+  protected static final String INDEX_TASK = "/indexer/wikipedia_local_input_source_index_task.json";
+  protected static final String INDEX_QUERIES_RESOURCE = "/indexer/wikipedia_index_queries.json";
+
+  @Override
+  protected void addResources(EmbeddedDruidCluster cluster)
+  {
+    cluster.addExtensions(
+        AvroExtensionsModule.class,
+        ParquetExtensionsModule.class,
+        OrcExtensionsModule.class
+    );
+  }
 
   public void doIndexTest(
       InputFormatDetails inputFormatDetails,

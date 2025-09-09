@@ -24,6 +24,7 @@ import com.google.common.collect.ImmutableMap;
 import org.apache.druid.java.util.common.Pair;
 import org.junit.jupiter.api.Test;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -67,7 +68,15 @@ public class ITLocalInputSourceAllInputFormatTest extends AbstractLocalInputSour
   @Test
   public void testJsonInputFormatIndexDataIngestionSpecWithSchema() throws Exception
   {
-    doIndexTest(InputFormatDetails.JSON, new Pair<>(false, false));
+    doIndexTest(
+        InputFormatDetails.JSON,
+        INDEX_TASK,
+        INDEX_QUERIES_RESOURCE,
+        false,
+        Map.of("INPUT_SOURCE_FILTER", "tiny_wiki*"),
+        Collections.emptyMap(),
+        new Pair<>(false, false)
+    );
   }
 
   @Test
