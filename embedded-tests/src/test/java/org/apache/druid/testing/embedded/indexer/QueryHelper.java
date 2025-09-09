@@ -25,11 +25,13 @@ import org.apache.druid.java.util.common.ISE;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.jackson.JacksonUtils;
 import org.apache.druid.java.util.common.logger.Logger;
+import org.apache.druid.query.http.ClientSqlQuery;
 import org.apache.druid.segment.TestHelper;
 import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
 import org.apache.druid.testing.utils.AbstractQueryWithResults;
 import org.apache.druid.testing.utils.QueryResultVerifier;
 import org.apache.druid.testing.utils.QueryWithResults;
+import org.apache.druid.testing.utils.SqlQueryWithResults;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -72,9 +74,33 @@ public class QueryHelper
     }
   }
 
-  public void testSqlQueriesFromResource()
+  public void testSqlQueriesFromResource(String resourceName, String dataSource)
   {
+    try {
+      String content = AbstractIndexerTest.getResourceAsString(resourceName);
+      content = StringUtils.replace(content, "%%DATASOURCE%%", dataSource);
 
+      final List<SqlQueryWithResults> queries = mapper.readValue(content, new TypeReference<>() {});
+      for (SqlQueryWithResults queryWithResult : queries) {
+        ClientSqlQuery clientSqlQuery = mapper.convertValue(
+            queryWithResult.getQuery(),
+            ClientSqlQuery.class
+        );
+
+        final String resultAsJson = cluster.callApi().onAnyBroker(
+            b -> b.submitSqlQuery(clientSqlQuery)
+        );
+        List<Map<String, Object>> result = JacksonUtils.readValue(
+            mapper,
+            resultAsJson.getBytes(StandardCharsets.UTF_8),
+            new TypeReference<>() {}
+        );
+        compareResults(queryWithResult, result);
+      }
+    }
+    catch (Exception e) {
+      throw new RuntimeException(e);
+    }
   }
 
   public void testQueriesFromString(String query)

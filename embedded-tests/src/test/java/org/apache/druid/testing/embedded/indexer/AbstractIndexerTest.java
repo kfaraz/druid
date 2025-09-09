@@ -66,7 +66,6 @@ public abstract class AbstractIndexerTest extends EmbeddedClusterTestBase
    * TODO: Get rid of this mapper. Otherwise here there be 🐉🐉🐉
    */
   protected ObjectMapper jsonMapper;
-  protected QueryHelper sqlQueryHelper = null;
   protected QueryHelper queryHelper = null;
 
   @Override

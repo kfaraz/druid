@@ -20,6 +20,7 @@
 package org.apache.druid.testing.embedded.indexer;
 
 import org.apache.druid.java.util.common.Pair;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -36,6 +37,7 @@ import java.util.List;
  */
 public class ITAzureToAzureParallelIndexTest extends AbstractAzureInputSourceParallelIndexTest
 {
+  @Disabled("Can be enabled after adding Azure testcontainer")
   @ParameterizedTest
   @MethodSource("resources")
   public void testAzureIndexData(Pair<String, List<?>> azureInputSource) throws Exception

@@ -21,6 +21,7 @@ package org.apache.druid.testing.embedded.msq;
 
 import org.apache.druid.java.util.common.Pair;
 import org.apache.druid.testing.embedded.indexer.AbstractAzureInputSourceParallelIndexTest;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -39,6 +40,7 @@ public class ITAzureV2SQLBasedIngestionTest extends AbstractAzureInputSourcePara
   private static final String CLOUD_INGEST_SQL = "/multi-stage-query/wikipedia_cloud_index_msq.sql";
   private static final String INDEX_QUERIES_FILE = "/multi-stage-query/wikipedia_index_queries.json";
 
+  @Disabled("Can be enabled after adding Azure testcontainer")
   @ParameterizedTest(name = "Test_{index} ({0})")
   @MethodSource("resources")
   public void testSQLBasedBatchIngestion(Pair<String, List<?>> azureStorageInputSource)

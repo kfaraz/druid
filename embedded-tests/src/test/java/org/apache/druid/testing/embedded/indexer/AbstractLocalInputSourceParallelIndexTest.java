@@ -84,7 +84,7 @@ public abstract class AbstractLocalInputSourceParallelIndexTest extends Abstract
             spec = StringUtils.replace(
                 spec,
                 "%%" + entry.getKey() + "%%",
-                jsonMapper.writeValueAsString(entry.getValue())
+                entry.getValue().toString()
             );
           }
           spec = StringUtils.replace(
@@ -100,7 +100,7 @@ public abstract class AbstractLocalInputSourceParallelIndexTest extends Abstract
           spec = StringUtils.replace(
               spec,
               "%%INPUT_SOURCE_BASE_DIR%%",
-              "/resources/data/batch_index" + inputFormatDetails.getFolderSuffix()
+              getDataDirectory() + "/" + inputFormatDetails.getFolderSuffix()
           );
           spec = StringUtils.replace(
               spec,

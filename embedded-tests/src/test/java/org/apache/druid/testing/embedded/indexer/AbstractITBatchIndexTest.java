@@ -129,11 +129,10 @@ public abstract class AbstractITBatchIndexTest extends AbstractIndexerTest
   protected void doTestQuery(String dataSource, String queryFilePath, boolean isSql)
   {
     try {
-      String query = getStringFromFileAndReplaceDatasource(queryFilePath, dataSource);
       if (isSql) {
-        sqlQueryHelper.testQueriesFromString(query);
+        queryHelper.testSqlQueriesFromResource(queryFilePath, dataSource);
       } else {
-        queryHelper.testQueriesFromString(query);
+        queryHelper.testNativeQueriesFromResource(queryFilePath, dataSource);
       }
     }
     catch (Exception e) {
@@ -391,7 +390,7 @@ public abstract class AbstractITBatchIndexTest extends AbstractIndexerTest
     Pair<Boolean, Boolean> dummyPair = new Pair<>(false, false);
     submitTaskAndWait(taskSpec, dataSource, false, true, dummyPair);
     try {
-      sqlQueryHelper.testQueriesFromFile(queryFilePath);
+      queryHelper.testSqlQueriesFromResource(queryFilePath, dataSource);
     }
     catch (Exception e) {
       LOG.error(e, "Error while testing");
