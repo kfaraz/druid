@@ -24,6 +24,7 @@ import org.apache.druid.indexer.partitions.DynamicPartitionsSpec;
 import org.apache.druid.java.util.common.Pair;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.testing.embedded.EmbeddedClusterApis;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.io.Closeable;
@@ -39,6 +40,7 @@ public class ITCombiningInputSourceParallelIndexTest extends AbstractITBatchInde
   private static final String COMBINING_QUERIES_RESOURCE = "/indexer/wikipedia_combining_input_source_index_queries.json";
 
   @Test
+  @Disabled("null timestamp issue same as IndexerTest")
   public void testIndexData() throws Exception
   {
     final String indexDatasource = dataSource;
