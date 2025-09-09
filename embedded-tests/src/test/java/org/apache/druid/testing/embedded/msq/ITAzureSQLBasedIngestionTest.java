@@ -35,12 +35,12 @@ import java.util.List;
  * <p>
  * <a href="https://druid.apache.org/docs/latest/development/extensions-core/azure.html">Azure Deep Storage setup in druid</a>
  */
+@Disabled("Can be enabled after adding Azure testcontainer")
 public class ITAzureSQLBasedIngestionTest extends AbstractAzureInputSourceParallelIndexTest
 {
   private static final String CLOUD_INGEST_SQL = "/multi-stage-query/wikipedia_cloud_index_msq.sql";
   private static final String INDEX_QUERIES_FILE = "/multi-stage-query/wikipedia_index_queries.json";
 
-  @Disabled("Can be enabled after adding Azure testcontainer")
   @ParameterizedTest(name = "Test_{index} ({0})")
   @MethodSource("resources")
   public void testSQLBasedBatchIngestion(Pair<String, List<?>> s3InputSource)

@@ -337,22 +337,7 @@ public abstract class AbstractITBatchIndexTest extends AbstractIndexerTest
         segmentAvailabilityConfirmationPair
     );
     try {
-      String queryResponseTemplate;
-      try {
-        InputStream is = AbstractITBatchIndexTest.class.getResourceAsStream(queryFilePath);
-        queryResponseTemplate = IOUtils.toString(is, StandardCharsets.UTF_8);
-      }
-      catch (IOException e) {
-        throw new ISE(e, "could not read query file: %s", queryFilePath);
-      }
-
-      queryResponseTemplate = StringUtils.replace(
-          queryResponseTemplate,
-          PlaceHolders.DATASOURCE,
-          reindexDataSource
-      );
-
-      queryHelper.testQueriesFromString(queryResponseTemplate);
+      queryHelper.testNativeQueriesFromResource(queryFilePath, reindexDataSource);
       // verify excluded dimension is not reIndexed
       final String url = StringUtils.format(
           "/druid/v2/datasources/%s/dimensions?interval=%s",

@@ -34,9 +34,9 @@ import java.util.List;
  * GOOGLE_APPLICATION_CREDENTIALS - path to the json file containing google cloud credentials
  * <a href="https://druid.apache.org/docs/latest/development/extensions-core/google.html">Google Cloud Storage setup in druid</a>
  */
+@Disabled("Can be enabled after adding GCS testcontainer")
 public class ITGcsToGcsParallelIndexTest extends AbstractGcsInputSourceParallelIndexTest
 {
-  @Disabled("Can be enabled after adding GCS testcontainer")
   @ParameterizedTest
   @MethodSource("resources")
   public void testGcsIndexData(Pair<String, List<?>> gcsInputSource) throws Exception

@@ -103,26 +103,6 @@ public class QueryHelper
     }
   }
 
-  public void testQueriesFromString(String query)
-  {
-
-  }
-
-  public void testQueriesFromString(String url, String query)
-  {
-    testQueriesFromString(query);
-  }
-
-  public void testQueriesFromFile(String file)
-  {
-
-  }
-
-  public void testQueriesFromFile(String url, String file)
-  {
-    testQueriesFromFile(file);
-  }
-
   private <Q extends AbstractQueryWithResults<?>> void compareResults(
       Q queryWithResult,
       List<Map<String, Object>> result

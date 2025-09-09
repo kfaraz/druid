@@ -35,9 +35,9 @@ import java.util.List;
  * <p>
  * <a href="https://druid.apache.org/docs/latest/development/extensions-core/azure.html">Azure Deep Storage setup in druid</a>
  */
+@Disabled("Can be enabled after adding Azure testcontainer")
 public class ITAzureToAzureParallelIndexTest extends AbstractAzureInputSourceParallelIndexTest
 {
-  @Disabled("Can be enabled after adding Azure testcontainer")
   @ParameterizedTest
   @MethodSource("resources")
   public void testAzureIndexData(Pair<String, List<?>> azureInputSource) throws Exception

@@ -35,13 +35,12 @@ import java.util.List;
  * GOOGLE_APPLICATION_CREDENTIALS - path to the json file containing google cloud credentials
  * <a href="https://druid.apache.org/docs/latest/development/extensions-core/google.html">Google Cloud Storage setup in druid</a>
  */
-
+@Disabled("Can be enabled after adding GCS testcontainer")
 public class ITGcsSQLBasedIngestionTest extends AbstractGcsInputSourceParallelIndexTest
 {
   private static final String CLOUD_INGEST_SQL = "/multi-stage-query/wikipedia_cloud_index_msq.sql";
   private static final String INDEX_QUERIES_FILE = "/multi-stage-query/wikipedia_index_queries.json";
 
-  @Disabled("Can be enabled after adding GCS testcontainer")
   @ParameterizedTest(name = "Test_{index} ({0})")
   @MethodSource("resources")
   public void testSQLBasedBatchIngestion(Pair<String, List<?>> GcsInputSource)
