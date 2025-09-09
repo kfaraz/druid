@@ -131,9 +131,9 @@ public abstract class AbstractITBatchIndexTest extends AbstractIndexerTest
   {
     try {
       if (isSql) {
-        queryHelper.testSqlQueriesFromResource(queryFilePath, dataSource);
+        queryResultsVerifier.testSqlQueriesFromResource(queryFilePath, dataSource);
       } else {
-        queryHelper.testNativeQueriesFromResource(queryFilePath, dataSource);
+        queryResultsVerifier.testNativeQueriesFromResource(queryFilePath, dataSource);
       }
     }
     catch (Exception e) {
@@ -338,7 +338,7 @@ public abstract class AbstractITBatchIndexTest extends AbstractIndexerTest
         segmentAvailabilityConfirmationPair
     );
     try {
-      queryHelper.testNativeQueriesFromResource(queryFilePath, reindexDataSource);
+      queryResultsVerifier.testNativeQueriesFromResource(queryFilePath, reindexDataSource);
       // verify excluded dimension is not reIndexed
       final String url = StringUtils.format(
           "/druid/v2/datasources/%s/dimensions?interval=%s",
@@ -376,7 +376,7 @@ public abstract class AbstractITBatchIndexTest extends AbstractIndexerTest
     Pair<Boolean, Boolean> dummyPair = new Pair<>(false, false);
     submitTaskAndWait(taskSpec, dataSource, false, true, dummyPair);
     try {
-      queryHelper.testSqlQueriesFromResource(queryFilePath, dataSource);
+      queryResultsVerifier.testSqlQueriesFromResource(queryFilePath, dataSource);
     }
     catch (Exception e) {
       LOG.error(e, "Error while testing");

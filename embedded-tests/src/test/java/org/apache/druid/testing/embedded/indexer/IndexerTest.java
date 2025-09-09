@@ -26,10 +26,10 @@ import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.metadata.LockFilterPolicy;
 import org.apache.druid.server.coordinator.CoordinatorDynamicConfig;
 import org.apache.druid.testing.embedded.EmbeddedClusterApis;
+import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
 import org.apache.druid.testing.tools.ITRetryUtil;
 import org.joda.time.Interval;
 import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.io.Closeable;
@@ -67,8 +67,15 @@ public class IndexerTest extends AbstractITBatchIndexTest
   private static final CoordinatorDynamicConfig DYNAMIC_CONFIG_DEFAULT =
       CoordinatorDynamicConfig.builder().build();
 
+  @Override
+  protected void addResources(EmbeddedDruidCluster cluster)
+  {
+    // Testing the legacy config from https://github.com/apache/druid/pull/10267
+    // Can remove this when the flag is no longer needed
+    cluster.addCommonProperty("druid.indexer.task.ignoreTimestampSpecForDruidInputSource", "true");
+  }
+
   @Test
-  @Disabled("Fix this: reindex reads timestamp column which is null")
   public void testIndexData() throws Exception
   {
     final String indexDatasource = dataSource;

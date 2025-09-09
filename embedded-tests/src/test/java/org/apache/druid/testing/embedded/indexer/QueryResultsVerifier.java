@@ -37,19 +37,27 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
-public class QueryHelper
+/**
+ * Runs queries and verifies their results. This class can later be merged with
+ * {@link QueryResultVerifier}.
+ */
+public class QueryResultsVerifier
 {
-  private static final Logger LOG = new Logger(QueryHelper.class);
+  private static final Logger LOG = new Logger(QueryResultsVerifier.class);
 
   private final EmbeddedDruidCluster cluster;
   private final ObjectMapper mapper;
 
-  public QueryHelper(EmbeddedDruidCluster cluster, ObjectMapper mapper)
+  public QueryResultsVerifier(EmbeddedDruidCluster cluster, ObjectMapper mapper)
   {
     this.cluster = cluster;
     this.mapper = mapper;
   }
 
+  /**
+   * Reads {@link QueryWithResults} from a resource file, runs them for the given
+   * datasource and verifies the results.
+   */
   public void testNativeQueriesFromResource(String resourceName, String dataSource)
   {
     try {
@@ -74,6 +82,10 @@ public class QueryHelper
     }
   }
 
+  /**
+   * Reads {@link SqlQueryWithResults} from a resource file, runs them for the given
+   * datasource and verifies the results.
+   */
   public void testSqlQueriesFromResource(String resourceName, String dataSource)
   {
     try {

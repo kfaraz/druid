@@ -67,7 +67,7 @@ public abstract class AbstractIndexerTest extends EmbeddedClusterTestBase
    * Remove usages of this mapper and use TaskBuilder instead.
    */
   protected ObjectMapper jsonMapper;
-  protected QueryHelper queryHelper = null;
+  protected QueryResultsVerifier queryResultsVerifier = null;
 
   @Override
   public EmbeddedDruidCluster createCluster()
@@ -97,7 +97,7 @@ public abstract class AbstractIndexerTest extends EmbeddedClusterTestBase
   public void initJsonMapper()
   {
     this.jsonMapper = overlord.bindings().jsonMapper();
-    this.queryHelper = new QueryHelper(cluster, jsonMapper);
+    this.queryResultsVerifier = new QueryResultsVerifier(cluster, jsonMapper);
   }
 
   protected Closeable unloader(final String dataSource)
