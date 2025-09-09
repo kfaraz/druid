@@ -20,7 +20,6 @@
 package org.apache.druid.testing.embedded.msq;
 
 import com.google.common.collect.ImmutableMap;
-import org.apache.commons.io.FilenameUtils;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.msq.util.MultiStageQueryContext;
 import org.apache.druid.query.groupby.GroupByQueryConfig;
