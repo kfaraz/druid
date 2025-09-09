@@ -35,8 +35,8 @@ public class ITOverwriteBatchIndexTest extends AbstractITBatchIndexTest
   private static final String INDEX_QUERIES_ALL_INGESTION_RESOURCE = "/indexer/wikipedia_index_queries.json";
   private static final String INDEX_QUERIES_WITH_DROP_INGESTION_RESOURCE = "/indexer/wikipedia_index_queries_only_data3.json";
   private static final InputFormatDetails INPUT_FORMAT_DETAILS = InputFormatDetails.JSON;
-  private static final String ALL_DATA = "*" + INPUT_FORMAT_DETAILS.getFileExtension();
-  private static final String ONE_DAY_DATA = "tiny_wiki_3" + INPUT_FORMAT_DETAILS.getFileExtension();
+  private static final String ALL_DATA = "tiny_wiki*";
+  private static final String ONE_DAY_DATA = "tiny_wiki_3.json";
 
   @Test
   public void doIndexTestWithOverwriteAndDrop() throws Exception

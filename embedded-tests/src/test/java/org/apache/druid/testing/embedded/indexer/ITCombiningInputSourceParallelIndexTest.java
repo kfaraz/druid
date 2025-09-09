@@ -91,7 +91,7 @@ public class ITCombiningInputSourceParallelIndexTest extends AbstractITBatchInde
           spec = StringUtils.replace(
               spec,
               "%%COMBINING_DATASOURCE%%",
-              combiningDatasource
+              indexDatasource
           );
           return spec;
         }
