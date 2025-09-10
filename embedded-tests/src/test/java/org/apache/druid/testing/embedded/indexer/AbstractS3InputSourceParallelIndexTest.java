@@ -59,7 +59,11 @@ public abstract class AbstractS3InputSourceParallelIndexTest extends AbstractClo
       filesToUpload.add(localPath + file);
     }
     try {
-      s3 = new S3TestUtil(minIOStorageResource.getS3Client());
+      s3 = new S3TestUtil(
+          minIOStorageResource.getS3Client(),
+          getCloudBucket("s3"),
+          getCloudPath("s3")
+      );
       s3.createBucket();
       s3.uploadDataFilesToS3(filesToUpload);
     }

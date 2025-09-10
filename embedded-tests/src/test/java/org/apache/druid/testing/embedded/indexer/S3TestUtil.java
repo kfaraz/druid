@@ -36,17 +36,19 @@ public class S3TestUtil
   private static final Logger LOG = new Logger(S3TestUtil.class);
 
   private final AmazonS3 s3Client;
-  private static final String S3_CLOUD_PATH = "path";
-  private static final String S3_CLOUD_BUCKET = "bucket";
+  private final String path;
+  private final String bucket;
 
-  public S3TestUtil(AmazonS3 s3Client)
+  public S3TestUtil(AmazonS3 s3Client, String bucket, String path)
   {
     this.s3Client = s3Client;
+    this.bucket = bucket;
+    this.path = path;
   }
 
   public void createBucket()
   {
-    s3Client.createBucket(S3_CLOUD_BUCKET);
+    s3Client.createBucket(bucket);
   }
 
   /**
@@ -58,11 +60,11 @@ public class S3TestUtil
   {
     List<String> s3ObjectPaths = new ArrayList<>();
     for (String file : localFiles) {
-      String s3ObjectPath = S3_CLOUD_PATH + "/" + file.substring(file.lastIndexOf('/') + 1);
+      String s3ObjectPath = path + "/" + file.substring(file.lastIndexOf('/') + 1);
       s3ObjectPaths.add(s3ObjectPath);
       try {
         s3Client.putObject(
-            S3_CLOUD_BUCKET,
+            bucket,
             s3ObjectPath,
             Resources.getFileForResource(file)
         );
@@ -87,9 +89,9 @@ public class S3TestUtil
     try {
       ArrayList<KeyVersion> keys = new ArrayList<>();
       for (String fileName : fileList) {
-        keys.add(new KeyVersion(S3_CLOUD_PATH + "/" + fileName));
+        keys.add(new KeyVersion(path + "/" + fileName));
       }
-      DeleteObjectsRequest delObjReq = new DeleteObjectsRequest(S3_CLOUD_BUCKET)
+      DeleteObjectsRequest delObjReq = new DeleteObjectsRequest(bucket)
           .withKeys(keys);
       s3Client.deleteObjects(delObjReq);
     }
@@ -109,14 +111,14 @@ public class S3TestUtil
     try {
       // Delete segments created by druid
       ListObjectsRequest listObjectsRequest = new ListObjectsRequest()
-          .withBucketName(S3_CLOUD_BUCKET)
-          .withPrefix(S3_CLOUD_PATH + "/" + datasource + "/");
+          .withBucketName(bucket)
+          .withPrefix(path + "/" + datasource + "/");
 
       ObjectListing objectListing = s3Client.listObjects(listObjectsRequest);
 
       while (true) {
         for (S3ObjectSummary objectSummary : objectListing.getObjectSummaries()) {
-          s3Client.deleteObject(S3_CLOUD_BUCKET, objectSummary.getKey());
+          s3Client.deleteObject(bucket, objectSummary.getKey());
         }
         if (objectListing.isTruncated()) {
           objectListing = s3Client.listNextBatchOfObjects(objectListing);

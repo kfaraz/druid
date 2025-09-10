@@ -19,12 +19,12 @@
 
 package org.apache.druid.testing.embedded.indexer;
 
-import com.microsoft.azure.storage.CloudStorageAccount;
 import com.microsoft.azure.storage.StorageException;
 import com.microsoft.azure.storage.blob.CloudBlobClient;
 import com.microsoft.azure.storage.blob.CloudBlobContainer;
 import com.microsoft.azure.storage.blob.CloudBlockBlob;
 import org.apache.druid.java.util.common.logger.Logger;
+import org.apache.druid.testing.embedded.indexing.Resources;
 import org.apache.druid.testing.tools.ITRetryUtil;
 
 import java.io.File;
@@ -32,63 +32,27 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
-import java.security.InvalidKeyException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 public class AzureTestUtil
 {
   public static final Logger LOG = new Logger(AzureTestUtil.class);
   private final CloudBlobClient azureStorageClient;
-  private final String AZURE_ACCOUNT;
-  private final String AZURE_CONTAINER;
-  private final String AZURE_KEY;
-  private final String DRUID_CLOUD_PATH;
+  private final String container;
+  private final String cloudPath;
 
-  public AzureTestUtil() throws URISyntaxException, InvalidKeyException
+  public AzureTestUtil(CloudBlobClient storageClient, String container, String cloudPath)
   {
-    verifyEnvironment();
-    AZURE_KEY = System.getenv("AZURE_KEY");
-    AZURE_ACCOUNT = System.getenv("AZURE_ACCOUNT");
-    // The container name must be in lower cases
-    AZURE_CONTAINER = System.getenv("AZURE_CONTAINER");
-    DRUID_CLOUD_PATH = System.getenv("DRUID_CLOUD_PATH");
-    azureStorageClient = azureClient();
-  }
-
-  /**
-   * Verify required environment variables are set
-   */
-  public void verifyEnvironment()
-  {
-    String[] envVars = {"AZURE_KEY", "AZURE_ACCOUNT", "AZURE_CONTAINER", "DRUID_CLOUD_PATH"};
-    for (String val : envVars) {
-      String envValue = System.getenv(val);
-      if (envValue == null) {
-        LOG.error("%s was not set", val);
-        LOG.error("All of %s MUST be set in the environment", Arrays.toString(envVars));
-      }
-    }
-  }
-
-  /**
-   * Creates an azureClient which will be used for uploading and deleting files from azure storage
-   */
-  private CloudBlobClient azureClient() throws URISyntaxException, InvalidKeyException
-  {
-    String storageConnectionString =
-        "DefaultEndpointsProtocol=https;" +
-        "AccountName=" + AZURE_ACCOUNT + ";" +
-        "AccountKey=" + AZURE_KEY;
-    CloudStorageAccount storageAccount = CloudStorageAccount.parse(storageConnectionString);
-    return storageAccount.createCloudBlobClient();
+    this.azureStorageClient = storageClient;
+    this.container = container;
+    this.cloudPath = cloudPath;
   }
 
   public void createStorageContainer() throws URISyntaxException, StorageException
   {
-    LOG.info("Creating azure container " + AZURE_CONTAINER);
-    CloudBlobContainer container = azureStorageClient.getContainerReference(AZURE_CONTAINER);
+    LOG.info("Creating azure container " + container);
+    CloudBlobContainer container = azureStorageClient.getContainerReference(this.container);
     // Create the container if it does not exist.
 
     // From the azure documentation -
@@ -103,16 +67,16 @@ public class AzureTestUtil
         true,
         10000,
         13,
-        "Create Azure container : " + AZURE_CONTAINER + " "
+        "Create Azure container : " + this.container + " "
     );
 
-    LOG.info("Azure container " + AZURE_CONTAINER + " created");
+    LOG.info("Azure container " + this.container + " created");
   }
 
   public void deleteStorageContainer() throws URISyntaxException, StorageException
   {
     // Retrieve reference to a previously created container.
-    CloudBlobContainer container = azureStorageClient.getContainerReference(AZURE_CONTAINER);
+    CloudBlobContainer container = azureStorageClient.getContainerReference(this.container);
     // Delete the blob container.
     container.deleteIfExists();
   }
@@ -125,12 +89,12 @@ public class AzureTestUtil
   public void uploadFileToContainer(String filePath) throws IOException, URISyntaxException, StorageException
   {
     // Retrieve reference to a previously created container.
-    CloudBlobContainer container = azureStorageClient.getContainerReference(AZURE_CONTAINER);
+    CloudBlobContainer container = azureStorageClient.getContainerReference(this.container);
 
     // Create or overwrite the "myimage.jpg" blob with contents from a local file.
-    File source = new File(filePath);
-    CloudBlockBlob blob = container.getBlockBlobReference(DRUID_CLOUD_PATH + '/' + source.getName());
-    LOG.info("Uploading file " + DRUID_CLOUD_PATH + '/' + source.getName() + " in azure container " + AZURE_CONTAINER);
+    File source = Resources.getFileForResource(filePath);
+    CloudBlockBlob blob = container.getBlockBlobReference(cloudPath + '/' + source.getName());
+    LOG.info("Uploading file " + cloudPath + '/' + source.getName() + " in azure container " + this.container);
     blob.upload(Files.newInputStream(source.toPath()), source.length());
   }
 
@@ -142,9 +106,9 @@ public class AzureTestUtil
   public List<URI> listFiles(String filePath) throws URISyntaxException, StorageException
   {
     // Retrieve reference to a previously created container.
-    CloudBlobContainer container = azureStorageClient.getContainerReference(AZURE_CONTAINER);
+    CloudBlobContainer container = azureStorageClient.getContainerReference(this.container);
     List<URI> activeFiles = new ArrayList<>();
-    container.listBlobs(DRUID_CLOUD_PATH + '/' + filePath).iterator().forEachRemaining(
+    container.listBlobs(cloudPath + '/' + filePath).iterator().forEachRemaining(
         blob -> activeFiles.add(blob.getUri())
     );
     return activeFiles;

@@ -21,14 +21,16 @@ package org.apache.druid.testing.embedded.indexer;
 
 import com.google.common.collect.ImmutableList;
 import org.apache.druid.java.util.common.logger.Logger;
+import org.apache.druid.storage.azure.output.AzureStorageConnectorModule;
+import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
+import org.apache.druid.testing.embedded.azure.AzureStorageResource;
 import org.junit.Assert;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 
 import java.net.URI;
 import java.util.List;
-
-import static org.junit.Assert.fail;
 
 /**
  * This class defines methods to upload and delete the data files used by the tests, which will inherit this class.
@@ -41,16 +43,28 @@ public abstract class AbstractAzureInputSourceParallelIndexTest extends Abstract
   private static final Logger LOG = new Logger(AbstractAzureInputSourceParallelIndexTest.class);
 
   private AzureTestUtil azure;
+  private final AzureStorageResource azureStorageResource = new AzureStorageResource();
+
+  @Override
+  protected void addResources(EmbeddedDruidCluster cluster)
+  {
+    cluster.addExtension(AzureStorageConnectorModule.class)
+           .addResource(azureStorageResource);
+  }
 
   @BeforeAll
   public void uploadDataFilesToAzure()
   {
     try {
       LOG.info("Uploading files to Azure");
-      azure = new AzureTestUtil();
+      azure = new AzureTestUtil(
+          azureStorageResource.getStorageClient(),
+          getCloudBucket("azure"),
+          getCloudPath("azure")
+      );
       // Creating a container with name set in AZURE_CONTAINER env variable.
       azure.createStorageContainer();
-      String localPath = "resources/data/batch_index/json/";
+      final String localPath = "data/json/";
       for (String file : fileList()) {
         azure.uploadFileToContainer(localPath + file);
       }
@@ -58,7 +72,7 @@ public abstract class AbstractAzureInputSourceParallelIndexTest extends Abstract
     catch (Exception e) {
       LOG.error(e, "Unable to upload files to azure");
       // Fail if exception
-      fail();
+      Assertions.fail();
     }
   }
 
