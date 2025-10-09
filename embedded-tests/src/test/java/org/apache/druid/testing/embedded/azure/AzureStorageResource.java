@@ -32,12 +32,12 @@ public class AzureStorageResource extends TestcontainerResource<AzuriteContainer
   private static final String IMAGE_NAME = "mcr.microsoft.com/azure-storage/azurite:3.33.0";
 
   /**
-   * Copied from {@link AzuriteContainer} as it is not exposed.
+   * Default account name used by the {@link AzuriteContainer}.
    */
-  private static final String WELL_KNOWN_ACCOUNT_NAME = "devstoreaccount1";
+  public static final String WELL_KNOWN_ACCOUNT_NAME = "devstoreaccount1";
 
   /**
-   * Copied from {@link AzuriteContainer} as it is not exposed.
+   * Default account key used by the {@link AzuriteContainer}.
    */
   private static final String WELL_KNOWN_ACCOUNT_KEY =
       "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==";
@@ -50,7 +50,8 @@ public class AzureStorageResource extends TestcontainerResource<AzuriteContainer
   @Override
   protected AzuriteContainer createContainer()
   {
-    return new AzuriteContainer(DockerImageName.parse(IMAGE_NAME));
+    return new AzuriteContainer(DockerImageName.parse(IMAGE_NAME))
+        .withCommand("azurite-blob", "--blobHost", "0.0.0.0", "--loose");
   }
 
   @Override
@@ -72,7 +73,11 @@ public class AzureStorageResource extends TestcontainerResource<AzuriteContainer
     // Configure azure properties
     cluster.addCommonProperty("druid.azure.account", WELL_KNOWN_ACCOUNT_NAME);
     cluster.addCommonProperty("druid.azure.key", WELL_KNOWN_ACCOUNT_KEY);
-    cluster.addCommonProperty("druid.azure.storageAccountEndpointSuffix", storageClient.getEndpoint().toString());
+    cluster.addCommonProperty("druid.azure.protocol", "testHttp");
+    cluster.addCommonProperty(
+        "druid.azure.storageAccountEndpointSuffix",
+        "localhost:" + getMappedPort(10000)
+    );
   }
 
   public String getAzureContainerName()

@@ -25,6 +25,7 @@ import org.apache.druid.indexer.partitions.DynamicPartitionsSpec;
 import org.apache.druid.java.util.common.Pair;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.logger.Logger;
+import org.apache.druid.testing.embedded.azure.AzureStorageResource;
 
 import java.io.Closeable;
 import java.util.Arrays;
@@ -103,12 +104,20 @@ public abstract class AbstractCloudInputSourceParallelIndexTest extends Abstract
 
   public String getCloudPath(String inputSourceType)
   {
-    return "path";
+    if (AZURE_V2.equals(inputSourceType)) {
+      return "bucket/path";
+    } else {
+      return "path";
+    }
   }
 
   public String getCloudBucket(String inputSourceType)
   {
-    return "bucket";
+    if (AZURE_V2.equals(inputSourceType)) {
+      return AzureStorageResource.WELL_KNOWN_ACCOUNT_NAME;
+    } else {
+      return "bucket";
+    }
   }
 
   /**

@@ -20,7 +20,6 @@
 package org.apache.druid.testing.embedded.indexer;
 
 import org.apache.druid.java.util.common.Pair;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -35,7 +34,6 @@ import java.util.List;
  * <p>
  * <a href="https://druid.apache.org/docs/latest/development/extensions-core/azure.html">Azure Deep Storage setup in druid</a>
  */
-@Disabled("Can be enabled after adding Azure testcontainer")
 public class ITAzureV2ParallelIndexTest extends AbstractAzureInputSourceParallelIndexTest
 {
   @ParameterizedTest

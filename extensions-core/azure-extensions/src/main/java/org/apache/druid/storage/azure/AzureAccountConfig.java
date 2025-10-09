@@ -167,4 +167,13 @@ public class AzureAccountConfig
 
     return storageAccountEndpointSuffix;
   }
+
+  public static String createStorageEndpointUrl(String storageAccount, AzureAccountConfig config)
+  {
+    if ("testHttp".equals(config.getProtocol())) {
+      return "http://" + config.getBlobStorageEndpoint() + "/" + storageAccount;
+    } else {
+      return "https://" + storageAccount + "." + config.getBlobStorageEndpoint();
+    }
+  }
 }

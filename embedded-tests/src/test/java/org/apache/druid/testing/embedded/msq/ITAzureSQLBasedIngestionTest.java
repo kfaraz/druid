@@ -21,7 +21,6 @@ package org.apache.druid.testing.embedded.msq;
 
 import org.apache.druid.java.util.common.Pair;
 import org.apache.druid.testing.embedded.indexer.AbstractAzureInputSourceParallelIndexTest;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -35,7 +34,6 @@ import java.util.List;
  * <p>
  * <a href="https://druid.apache.org/docs/latest/development/extensions-core/azure.html">Azure Deep Storage setup in druid</a>
  */
-@Disabled("Can be enabled after adding Azure testcontainer")
 public class ITAzureSQLBasedIngestionTest extends AbstractAzureInputSourceParallelIndexTest
 {
   private static final String CLOUD_INGEST_SQL = "/multi-stage-query/wikipedia_cloud_index_msq.sql";
