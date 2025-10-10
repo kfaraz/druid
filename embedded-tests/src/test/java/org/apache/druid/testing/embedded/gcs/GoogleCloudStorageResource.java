@@ -65,7 +65,8 @@ public class GoogleCloudStorageResource extends TestcontainerResource<FakeGcsSer
 
     try (Storage storage = GoogleStorageTestModule.createStorageForTests(connectionUrl)) {
       storage.create(BucketInfo.of(getBucket()));
-    } catch (Exception e) {
+    }
+    catch (Exception e) {
       throw new RuntimeException(e);
     }
   }

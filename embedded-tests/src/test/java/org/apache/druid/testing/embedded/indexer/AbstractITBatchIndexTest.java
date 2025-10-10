@@ -40,6 +40,7 @@ import org.apache.druid.java.util.common.Pair;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.java.util.common.parsers.CloseableIterator;
+import org.apache.druid.query.http.SqlTaskStatus;
 import org.apache.druid.rpc.RequestBuilder;
 import org.apache.druid.testing.embedded.indexing.Resources;
 import org.apache.druid.testing.embedded.msq.EmbeddedMSQApis;
@@ -147,11 +148,10 @@ public abstract class AbstractITBatchIndexTest extends AbstractIndexerTest
    */
   protected void submitMSQTask(String sqlTask, String datasource, Map<String, Object> msqContext)
   {
-    LOG.info("SqlTask - \n %s", sqlTask);
-
     // Submit the tasks and wait for the datasource to get loaded
     final EmbeddedMSQApis msqApis = new EmbeddedMSQApis(cluster, overlord);
-    msqApis.submitTaskSql(msqContext, sqlTask);
+    final SqlTaskStatus taskStatus = msqApis.submitTaskSql(msqContext, sqlTask);
+    cluster.callApi().waitForTaskToSucceed(taskStatus.getTaskId(), overlord.latchableEmitter());
 
     cluster.callApi().waitForAllSegmentsToBeAvailable(datasource, coordinator, broker);
   }

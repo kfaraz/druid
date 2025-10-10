@@ -26,18 +26,6 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.List;
 
-/**
- * IMPORTANT:
- * To run this test, you must set the following env variables in the build environment
- * DRUID_CLOUD_BUCKET -    s3 Bucket to store in (value to be set in druid.storage.bucket)
- * DRUID_CLOUD_PATH -      path inside the bucket where the test data files will be uploaded
- *                         (this will also be used as druid.storage.baseKey for s3 deep storage setup)
- * <p>
- * The AWS key, secret and region should be set in
- * AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_REGION respectively.
- * <p>
- * <a href="https://druid.apache.org/docs/latest/development/extensions-core/s3.html">S3 Deep Storage setup in druid</a>
- */
 public class ITS3SQLBasedIngestionTest extends AbstractS3InputSourceParallelIndexTest
 {
   private static final String CLOUD_INGEST_SQL = "/multi-stage-query/wikipedia_cloud_index_msq.sql";

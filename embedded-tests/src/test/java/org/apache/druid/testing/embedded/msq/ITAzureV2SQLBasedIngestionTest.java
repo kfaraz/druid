@@ -26,14 +26,6 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.List;
 
-/**
- * IMPORTANT:
- * To run this test, you must set the following env variables in the build environment -
- * <p>
- * The AZURE account, key and container should be set in AZURE_ACCOUNT, AZURE_KEY and AZURE_CONTAINER respectively.
- * <p>
- * <a href="https://druid.apache.org/docs/latest/development/extensions-core/azure.html">Azure Deep Storage setup in druid</a>
- */
 public class ITAzureV2SQLBasedIngestionTest extends AbstractAzureInputSourceParallelIndexTest
 {
   private static final String CLOUD_INGEST_SQL = "/multi-stage-query/wikipedia_cloud_index_msq.sql";

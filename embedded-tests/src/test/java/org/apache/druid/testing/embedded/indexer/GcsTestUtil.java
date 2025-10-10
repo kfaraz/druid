@@ -48,7 +48,8 @@ public class GcsTestUtil
     try (Storage storage = GoogleStorageTestModule.createStorageForTests(storageUrl)) {
       storage.create(BucketInfo.of(bucket));
       this.googleStorageClient = new GoogleStorage(() -> storage);
-    } catch (Exception e) {
+    }
+    catch (Exception e) {
       throw new RuntimeException(e);
     }
   }

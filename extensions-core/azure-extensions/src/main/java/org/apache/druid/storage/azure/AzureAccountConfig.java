@@ -170,7 +170,8 @@ public class AzureAccountConfig
 
   public static String createStorageEndpointUrl(String storageAccount, AzureAccountConfig config)
   {
-    if ("testHttp".equals(config.getProtocol())) {
+    if ("azurite".equals(config.getProtocol())) {
+      // Used by Azurite container in tests
       return "http://" + config.getBlobStorageEndpoint() + "/" + storageAccount;
     } else {
       return "https://" + storageAccount + "." + config.getBlobStorageEndpoint();

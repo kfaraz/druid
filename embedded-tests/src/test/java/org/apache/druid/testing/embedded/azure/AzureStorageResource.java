@@ -77,7 +77,7 @@ public class AzureStorageResource extends TestcontainerResource<AzuriteContainer
     // Configure azure properties
     cluster.addCommonProperty("druid.azure.account", WELL_KNOWN_ACCOUNT_NAME);
     cluster.addCommonProperty("druid.azure.key", WELL_KNOWN_ACCOUNT_KEY);
-    cluster.addCommonProperty("druid.azure.protocol", "testHttp");
+    cluster.addCommonProperty("druid.azure.protocol", "azurite");
     cluster.addCommonProperty(
         "druid.azure.storageAccountEndpointSuffix",
         "localhost:" + getMappedPort(10000)
