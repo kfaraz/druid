@@ -20,9 +20,11 @@
 package org.apache.druid.testing.embedded.indexer;
 
 import org.apache.druid.java.util.common.logger.Logger;
-import org.junit.After;
-import org.junit.Assert;
+import org.apache.druid.storage.google.output.GoogleStorageConnectorModule;
+import org.apache.druid.testing.embedded.EmbeddedDruidCluster;
+import org.apache.druid.testing.embedded.gcs.GoogleCloudStorageResource;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 
 /**
@@ -35,26 +37,36 @@ public class AbstractGcsInputSourceParallelIndexTest extends AbstractCloudInputS
 {
   private static final Logger LOG = new Logger(AbstractGcsInputSourceParallelIndexTest.class);
   private GcsTestUtil gcs;
+  private final GoogleCloudStorageResource gcsResource = new GoogleCloudStorageResource();
+
+  @Override
+  protected void addResources(EmbeddedDruidCluster cluster)
+  {
+    cluster.addExtension(GoogleStorageConnectorModule.class)
+           .addResource(gcsResource);
+  }
 
   @BeforeAll
   public void uploadDataFilesToGcs()
   {
     LOG.info("Uploading data files to GCS");
-    String localPath = "resources/data/batch_index/json/";
+    String localPath = "data/json/";
     try {
-      gcs = new GcsTestUtil();
+      gcs = new GcsTestUtil(
+          gcsResource.getUrl(),
+          getCloudBucket("google"),
+          getCloudPath("google")
+      );
       for (String file : fileList()) {
         gcs.uploadFileToGcs(localPath + file, "application/json");
       }
     }
     catch (Exception e) {
-      LOG.error(e, "Unable to upload files to GCS");
-      // Fail if exception
-      Assert.fail(e.getMessage());
+      throw new RuntimeException(e);
     }
   }
 
-  @After
+  @AfterEach
   public void deleteSegmentsFromGcs()
   {
     // Deleting folder created for storing segments (by druid) after test is completed

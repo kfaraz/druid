@@ -19,83 +19,47 @@
 
 package org.apache.druid.testing.embedded.indexer;
 
-import com.google.api.client.googleapis.auth.oauth2.GoogleCredential;
-import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.http.FileContent;
-import com.google.api.client.http.HttpTransport;
-import com.google.api.client.json.JsonFactory;
-import com.google.api.client.json.jackson2.JacksonFactory;
-import com.google.cloud.storage.StorageOptions;
+import com.google.cloud.storage.BucketInfo;
+import com.google.cloud.storage.Storage;
 import com.google.common.base.Predicates;
-import com.google.common.base.Suppliers;
 import org.apache.druid.java.util.common.logger.Logger;
 import org.apache.druid.storage.google.GoogleInputDataConfig;
 import org.apache.druid.storage.google.GoogleStorage;
 import org.apache.druid.storage.google.GoogleUtils;
+import org.apache.druid.testing.embedded.gcs.GoogleStorageTestModule;
+import org.apache.druid.testing.embedded.indexing.Resources;
 
 import java.io.File;
 import java.io.IOException;
-import java.security.GeneralSecurityException;
-import java.util.Arrays;
-import java.util.Collections;
 
 public class GcsTestUtil
 {
   private static final Logger LOG = new Logger(GcsTestUtil.class);
   private final GoogleStorage googleStorageClient;
-  private final String GOOGLE_BUCKET;
-  private final String GOOGLE_PREFIX;
+  private final String bucket;
+  private final String pathPrefix;
 
-  public GcsTestUtil() throws GeneralSecurityException, IOException
+  public GcsTestUtil(String storageUrl, String bucket, String pathPrefix)
   {
-    verifyEnvironment();
-    GOOGLE_PREFIX = System.getenv("GOOGLE_PREFIX");
-    GOOGLE_BUCKET = System.getenv("GOOGLE_BUCKET");
-    googleStorageClient = googleStorageClient();
-  }
+    this.bucket = bucket;
+    this.pathPrefix = pathPrefix;
 
-  /**
-   * Verify required environment variables are set
-   */
-  public void verifyEnvironment()
-  {
-    String[] envVars = {"GOOGLE_BUCKET", "GOOGLE_PREFIX", "GOOGLE_APPLICATION_CREDENTIALS"};
-    for (String val : envVars) {
-      String envValue = System.getenv(val);
-      if (envValue == null) {
-        LOG.error("%s was not set", val);
-        LOG.error("All of %s MUST be set in the environment", Arrays.toString(envVars));
-      }
+    try (Storage storage = GoogleStorageTestModule.createStorageForTests(storageUrl)) {
+      storage.create(BucketInfo.of(bucket));
+      this.googleStorageClient = new GoogleStorage(() -> storage);
+    } catch (Exception e) {
+      throw new RuntimeException(e);
     }
-  }
-
-  /**
-   * Gets the Google cloud storage client using credentials set in GOOGLE_APPLICATION_CREDENTIALS
-   */
-  private GoogleStorage googleStorageClient() throws GeneralSecurityException, IOException
-  {
-    HttpTransport httpTransport = GoogleNetHttpTransport.newTrustedTransport();
-    JsonFactory jsonFactory = JacksonFactory.getDefaultInstance();
-    GoogleCredential credential = GoogleCredential.getApplicationDefault(httpTransport, jsonFactory);
-    if (credential.createScopedRequired()) {
-      credential = credential.createScoped(Collections.singleton("https://www.googleapis.com/auth/cloud-platform"));
-    }
-    LOG.info("Creating Storage object");
-    GoogleCredential finalCredential = credential;
-    return new GoogleStorage(
-        Suppliers.memoize(
-            () -> StorageOptions.getDefaultInstance().getService()
-        )
-    );
   }
 
   public void uploadFileToGcs(String filePath, String contentType) throws IOException
   {
-    LOG.info("Uploading file %s at path %s in bucket %s", filePath, GOOGLE_PREFIX, GOOGLE_BUCKET);
-    File file = new File(filePath);
+    LOG.info("Uploading file %s at path %s in bucket %s", filePath, pathPrefix, bucket);
+    File file = Resources.getFileForResource(filePath);
     googleStorageClient.insert(
-        GOOGLE_BUCKET,
-        GOOGLE_PREFIX + "/" + file.getName(),
+        bucket,
+        pathPrefix + "/" + file.getName(),
         new FileContent(contentType, file),
         null
     );
@@ -103,18 +67,18 @@ public class GcsTestUtil
 
   public void deleteFileFromGcs(String gcsObjectName)
   {
-    LOG.info("Deleting object %s at path %s in bucket %s", gcsObjectName, GOOGLE_PREFIX, GOOGLE_BUCKET);
-    googleStorageClient.delete(GOOGLE_BUCKET, GOOGLE_PREFIX + "/" + gcsObjectName);
+    LOG.info("Deleting object %s at path %s in bucket %s", gcsObjectName, pathPrefix, bucket);
+    googleStorageClient.delete(bucket, pathPrefix + "/" + gcsObjectName);
   }
 
   public void deletePrefixFolderFromGcs(String datasource) throws Exception
   {
-    LOG.info("Deleting path %s in bucket %s", GOOGLE_PREFIX, GOOGLE_BUCKET);
+    LOG.info("Deleting path %s in bucket %s", pathPrefix, bucket);
     GoogleUtils.deleteObjectsInPath(
         googleStorageClient,
         new GoogleInputDataConfig(),
-        GOOGLE_BUCKET,
-        GOOGLE_PREFIX + "/" + datasource,
+        bucket,
+        pathPrefix + "/" + datasource,
         Predicates.alwaysTrue()
     );
   }

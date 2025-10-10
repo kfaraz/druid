@@ -27,6 +27,10 @@ import org.apache.druid.testing.embedded.TestcontainerResource;
 import org.testcontainers.azure.AzuriteContainer;
 import org.testcontainers.utility.DockerImageName;
 
+/**
+ * Configures the embedded cluster to use Azure blob storage for deep storage of
+ * segments and task logs.
+ */
 public class AzureStorageResource extends TestcontainerResource<AzuriteContainer>
 {
   private static final String IMAGE_NAME = "mcr.microsoft.com/azure-storage/azurite:3.33.0";

@@ -47,12 +47,7 @@ public abstract class AbstractCloudInputSourceParallelIndexTest extends Abstract
   private static final String WIKIPEDIA_DATA_2 = "tiny_wiki_2.json";
   private static final String WIKIPEDIA_DATA_3 = "tiny_wiki_3.json";
   private static final String GOOGLE = "google";
-  private static final String AZURE = "azure";
   private static final String AZURE_V2 = "azureStorage";
-  private static final String GOOGLE_PREFIX = "googlePrefix";
-  private static final String GOOGLE_BUCKET = "googleBucket";
-  private static final String AZURE_CONTAINER = "azureContainer";
-  private static final String AZURE_STORAGE_ACCOUNT = "azureAccount";
   private static final Logger LOG = new Logger(AbstractCloudInputSourceParallelIndexTest.class);
 
   public static Object[][] resources()

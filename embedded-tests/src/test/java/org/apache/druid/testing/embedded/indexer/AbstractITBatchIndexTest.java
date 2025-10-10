@@ -153,7 +153,7 @@ public abstract class AbstractITBatchIndexTest extends AbstractIndexerTest
     final EmbeddedMSQApis msqApis = new EmbeddedMSQApis(cluster, overlord);
     msqApis.submitTaskSql(msqContext, sqlTask);
 
-    cluster.callApi().waitForAllSegmentsToBeAvailable(datasource, coordinator);
+    cluster.callApi().waitForAllSegmentsToBeAvailable(datasource, coordinator, broker);
   }
 
   /**
@@ -472,7 +472,7 @@ public abstract class AbstractITBatchIndexTest extends AbstractIndexerTest
     }
 
     if (waitForSegmentsToLoad) {
-      cluster.callApi().waitForAllSegmentsToBeAvailable(dataSourceName, coordinator);
+      cluster.callApi().waitForAllSegmentsToBeAvailable(dataSourceName, coordinator, broker);
     }
   }
 
@@ -502,7 +502,7 @@ public abstract class AbstractITBatchIndexTest extends AbstractIndexerTest
 
   void verifySegmentsCountAndLoaded(String dataSource, int numExpectedSegments, int numExpectedTombstones)
   {
-    cluster.callApi().waitForAllSegmentsToBeAvailable(dataSource, coordinator);
+    cluster.callApi().waitForAllSegmentsToBeAvailable(dataSource, coordinator, broker);
     ITRetryUtil.retryUntilTrue(
         () -> {
           Set<DataSegment> segments = cluster.callApi().getVisibleUsedSegments(dataSource, overlord);

@@ -302,7 +302,7 @@ public class IndexerTest extends AbstractITBatchIndexTest
           new Pair<>(true, false)
       );
       cluster.callApi().onLeaderCoordinator(c -> c.updateCoordinatorDynamicConfig(DYNAMIC_CONFIG_DEFAULT));
-      cluster.callApi().waitForAllSegmentsToBeAvailable(dataSource, coordinator);
+      cluster.callApi().waitForAllSegmentsToBeAvailable(dataSource, coordinator, broker);
     }
   }
 
@@ -350,7 +350,7 @@ public class IndexerTest extends AbstractITBatchIndexTest
           Collections.singletonList(Intervals.of("2013-08-31/2013-09-02"))
       );
 
-      cluster.callApi().waitForAllSegmentsToBeAvailable(dataSource, coordinator);
+      cluster.callApi().waitForAllSegmentsToBeAvailable(dataSource, coordinator, broker);
     }
   }
 

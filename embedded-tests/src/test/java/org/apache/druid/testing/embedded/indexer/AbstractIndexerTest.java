@@ -62,6 +62,7 @@ public abstract class AbstractIndexerTest extends EmbeddedClusterTestBase
       .setServerMemory(500_000_000L)
       .addProperty("druid.worker.capacity", "5")
       .addProperty("druid.segment.handoff.pollDuration", "PT0.1s");
+  protected final EmbeddedBroker broker = new EmbeddedBroker();
 
   /**
    * Remove usages of this mapper and use TaskBuilder instead.
@@ -81,7 +82,7 @@ public abstract class AbstractIndexerTest extends EmbeddedClusterTestBase
         .addServer(coordinator)
         .addServer(overlord)
         .addServer(indexer)
-        .addServer(new EmbeddedBroker().addProperty("druid.sql.planner.metadataRefreshPeriod", "PT0.1s"))
+        .addServer(broker)
         .addServer(new EmbeddedHistorical())
         .addServer(new EmbeddedRouter());
 
