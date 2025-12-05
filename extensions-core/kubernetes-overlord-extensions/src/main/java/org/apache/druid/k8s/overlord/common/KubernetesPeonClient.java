@@ -46,14 +46,22 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * A KubernetesPeonClient implementation that directly queries the Kubernetes API server for all read and write
+ * operations on a per-task basis.
+ * <p>
+ * This implementation does not use caching and may put more load on the Kubernetes API server compared to
+ * {@link CachingKubernetesPeonClient}, especially when many tasks are running concurrently.
+ * </p>
+ */
 public class KubernetesPeonClient
 {
   private static final EmittingLogger log = new EmittingLogger(KubernetesPeonClient.class);
 
-  private final KubernetesClientApi clientApi;
-  private final String namespace;
-  private final String overlordNamespace;
-  private final boolean debugJobs;
+  protected final KubernetesClientApi clientApi;
+  protected final String namespace;
+  protected final String overlordNamespace;
+  protected final boolean debugJobs;
   private final ServiceEmitter emitter;
 
   public KubernetesPeonClient(
@@ -119,7 +127,7 @@ public class KubernetesPeonClient
                       .withName(taskId.getK8sJobName())
                       .waitUntilCondition(
                           x -> (x == null) || (x.getStatus() != null && x.getStatus().getActive() == null
-                          && (x.getStatus().getFailed() != null || x.getStatus().getSucceeded() != null)),
+                                               && (x.getStatus().getFailed() != null || x.getStatus().getSucceeded() != null)),
                           howLong,
                           unit
                       );
